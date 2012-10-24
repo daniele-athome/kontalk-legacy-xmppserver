@@ -19,7 +19,7 @@
 '''
 
 
-import kontalk.util.logging as log
+import kontalklib.logging as log
 
 from twisted.application import service, internet
 from wokkel import component

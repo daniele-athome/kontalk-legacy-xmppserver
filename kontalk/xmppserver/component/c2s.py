@@ -19,16 +19,18 @@
 '''
 
 from twisted.application import internet
-from twisted.cred import portal, checkers
+from twisted.cred import portal
 from twisted.internet.protocol import ServerFactory
 from twisted.words.protocols.jabber import jid, xmlstream, error
 from twisted.words.xish import domish, xmlstream as xish_xmlstream
 from twisted.words.protocols.jabber.error import NS_XMPP_STANZAS
 from wokkel import component
+
 from zope.interface import implements
 
 import kontalk.xmppserver.xmlstream as c2s_xmpp
-import kontalk.util.logging as log
+import kontalklib.logging as log
+from kontalklib import utils
 
 
 class XMPPServerFactory(xish_xmlstream.XmlStreamFactoryMixin, ServerFactory):
@@ -48,7 +50,7 @@ class XMPPServerFactory(xish_xmlstream.XmlStreamFactoryMixin, ServerFactory):
         
         for event, fn in self.bootstraps:
             xs.addObserver(event, fn)
-        
+
         self.streams.append(xs)
         return xs
 
@@ -194,17 +196,14 @@ class C2SComponent(component.Component):
         router_cfg = config['router']
         component.Component.__init__(self, router_cfg['host'], router_cfg['port'], router_cfg['jid'], router_cfg['secret'])
 
-
     def startService(self):
         log.debug("starting c2s")
         component.Component.startService(self)
 
+        #credFactory = utils.AuthKontalkTokenFactory(str(self.config['server']['fingerprint']), self.keyring)
         authrealm = SASLRealm("Kontalk")
-        authportal = portal.Portal(authrealm)
-        check = checkers.InMemoryUsernamePasswordDatabaseDontUse()
-        check.addUser("admin", "admin")
-        authportal.registerChecker(check)
-        
+        authportal = portal.Portal(authrealm, [utils.AuthKontalkToken()])
+
         factory = XMPPServerFactory(authportal)
         factory.logTraffic = self.config['debug']
         factory.addBootstrap(xmlstream.STREAM_CONNECTED_EVENT, self.connected)
@@ -231,26 +230,18 @@ class C2SComponent(component.Component):
         xs.send(response)
 
     def connected(self, xs):
-        xs.rawDataInFn = self.rawIn
-        xs.rawDataOutFn = self.rawOut
         xs.addObserver('/iq', self.onIQ, xs = xs)
         #xs.addObserver('/presence', self.onPresence, xs = xs)
         #xs.addObserver('/message', self.onMessage, xs = xs)
-        pass
     
     def authenticated(self, xs):
         log.debug("xml stream authenticated")
+        # TODO this should create a specialized StreamManager to handle xs
         self.authenticated_streams.append(xs)
 
     def disconnected(self, xs):
         if xs in self.authenticated_streams:
             self.authenticated_streams.remove(xs)
-
-    def rawIn(self, d):
-        log.debug(("RECV", repr(d)))
-    
-    def rawOut(self, d):
-        log.debug(("SEND", repr(d)))
 
     def _verify(self, stanza, xs):
         """ Verify that the stream is authenticated and the stanza is adressed to us

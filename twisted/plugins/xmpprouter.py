@@ -28,7 +28,7 @@ from twisted.python import usage
 from twisted.plugin import IPlugin
 from twisted.application.service import IServiceMaker, IService
 
-import kontalk.util.logging as log
+import kontalklib.logging as log
 
 class Options(usage.Options):
     optParameters = [["config", "c", "server.conf", "Configuration file."]]

@@ -13,7 +13,9 @@ import os
 import random
 import time
 
-import kontalk.util.logging as log
+from kontalklib import utils
+import kontalklib.logging as log
+
 
 INIT_SUCCESS_EVENT = intern("//event/xmpp/initsuccess")
 
@@ -181,12 +183,9 @@ class ISASLServerMechanism(Interface):
         """
 
 
-class Plain(object):
+class KontalkTokenMechanism(object):
     """
-    Implements the PLAIN SASL authentication mechanism.
-    
-    The PLAIN SASL authentication mechanism is defined in RFC 2595.
-    This should be folded into twisted.words.protocols.jabber.sasl_mechanisms.Plain
+    Implements the Kontalk token SASL authentication mechanism.
     """
     implements(ISASLServerMechanism)
     
@@ -198,8 +197,7 @@ class Plain(object):
     
     def parseInitialResponse(self, response):
         self.deferred = defer.Deferred()
-        authzid, authcid, password = response.split('\x00')
-        login = self.portal.login(credentials.UsernamePassword(authcid, password), None, IXMPPUser)
+        login = self.portal.login(utils.KontalkToken(response, 'fingerprint-NONE', None), None, IXMPPUser)
         login.addCallbacks(self.onSuccess, self.onFailure)
         return self.deferred
     
@@ -223,8 +221,7 @@ class SASLReceivingInitializer(BaseFeatureReceivingInitializer):
     
     def feature(self):
         feature = domish.Element((sasl.NS_XMPP_SASL, 'mechanisms'), defaultUri=sasl.NS_XMPP_SASL)
-        #feature.addElement('mechanism', content='DIGEST-MD5')
-        feature.addElement('mechanism', content='PLAIN')
+        feature.addElement('mechanism', content='KONTALK-TOKEN')
         return feature
     
     def initialize(self):
@@ -250,10 +247,8 @@ class SASLReceivingInitializer(BaseFeatureReceivingInitializer):
             return
         
         mechanism = element.getAttribute('mechanism')
-        if mechanism == 'PLAIN':
-            self.mechanism = Plain(self.xmlstream.portal)
-        elif mechanism == 'DIGEST-MD5':
-            self.mechanism = DigestMD5('xmpp', 'localhost', None, portal=self.xmlstream.portal)  #TODO: Make serv_type configurable
+        if mechanism == 'KONTALK-TOKEN':
+            self.mechanism = KontalkTokenMechanism(self.xmlstream.portal)
         else:
             self._sendFailure('invalid-mechanism')
             return
