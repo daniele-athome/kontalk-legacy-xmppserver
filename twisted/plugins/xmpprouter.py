@@ -40,7 +40,7 @@ class KontalkRouterServiceMaker(object):
 
     def makeService(self, options):
         from twisted.words.protocols.jabber import component
-        import kontalklib.logging as log
+        from kontalk.xmppserver import log
 
         # load configuration
         fp = open(options['config'], 'r')

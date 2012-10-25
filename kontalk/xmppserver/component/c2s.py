@@ -22,17 +22,13 @@
 from twisted.application import service, strports
 from twisted.cred import portal
 from twisted.internet.protocol import ServerFactory
-from twisted.words.protocols.jabber import jid, xmlstream, error
+from twisted.words.protocols.jabber import xmlstream, error
 from twisted.words.protocols.jabber.error import NS_XMPP_STANZAS
 from twisted.words.protocols.jabber.xmlstream import XMPPHandler
 from twisted.words.xish import domish, xmlstream as xish_xmlstream
 
-from zope.interface import implements
-
-from kontalklib import utils
-import kontalk.xmppserver.xmlstream as c2s_xmpp
-import kontalklib.logging as log
-
+from kontalk.xmppserver import log, auth, keyring
+import kontalk.xmppserver.xmlstream as xmlstream2
 
 
 
@@ -56,41 +52,6 @@ class XMPPServerFactory(xish_xmlstream.XmlStreamFactoryMixin, ServerFactory):
 
         self.streams.append(xs)
         return xs
-
-
-class SASLRealm:
-    """
-    A twisted.cred Realm for XMPP/SASL authentication
-    
-    You can subclass this and override the buildAvatar function to return an
-    object that implements the IXMPPUser interface.
-    """
-    
-    implements(portal.IRealm)
-    
-    def __init__(self, name):
-        """ @param name: a string identifying the realm
-        """
-        self.name = name
-    
-    def requestAvatar(self, avatarId, mind, *interfaces):
-        if c2s_xmpp.IXMPPUser in interfaces:
-            avatar = self.buildAvatar(avatarId)
-            return c2s_xmpp.IXMPPUser, avatar, avatar.logout
-        else:
-            raise NotImplementedError("Only IXMPPUser interface is supported by this realm")
-    
-    def buildAvatar(self, avatarId):
-        """
-        @param avatarId: a string that identifies an avatar, as returned by
-        L{ICredentialsChecker.requestAvatarId<twisted.cred.checkers.ICredentialsChecker.requestAvatarId>}
-        (via a Deferred).  Alternatively, it may be
-        C{twisted.cred.checkers.ANONYMOUS}.
-        """
-        # The hostname will be overwritten by the SASLReceivingInitializer
-        # We put in example.com to keep the JID constructor from complaining
-        return c2s_xmpp.XMPPUser(jid.JID(tuple=(avatarId, "kontalk.net", None)))
-
 
 class XMPPListenAuthenticator(xmlstream.ListenAuthenticator):
     """
@@ -125,13 +86,13 @@ class XMPPListenAuthenticator(xmlstream.ListenAuthenticator):
         """
         
         xmlstream.ListenAuthenticator.associateWithStream(self, xs)
-        xs.addObserver(c2s_xmpp.INIT_SUCCESS_EVENT, self.onSuccess)
+        xs.addObserver(xmlstream2.INIT_SUCCESS_EVENT, self.onSuccess)
 
         xs.initializers = []
         inits = [
             #(xmlstream.TLSInitiatingInitializer, False),
-            (c2s_xmpp.SASLReceivingInitializer, True),
-            (c2s_xmpp.BindInitializer, True),
+            (xmlstream2.SASLReceivingInitializer, True),
+            (xmlstream2.BindInitializer, True),
             #(SessionInitializer, False),
         ]
         for initClass, required in inits:
@@ -190,18 +151,16 @@ class XMPPListenAuthenticator(xmlstream.ListenAuthenticator):
 class C2SComponent(XMPPHandler, service.Service):
     '''Kontalk c2s component.'''
 
-    def __init__(self, application, config):
+    def __init__(self, config):
         XMPPHandler.__init__(self)
         self.config = config
         self.logTraffic = config['debug']
         self.authenticated_streams = []
-        self.application = application
-        
-    def startService(self):
-        service.Service.startService(self)
-        #credFactory = utils.AuthKontalkTokenFactory(str(self.config['server']['fingerprint']), self.keyring)
-        authrealm = SASLRealm("Kontalk")
-        authportal = portal.Portal(authrealm, [utils.AuthKontalkToken()])
+
+    def setup(self):
+        authrealm = auth.SASLRealm("Kontalk")
+        ring = keyring.Keyring(None, self.config['fingerprint'])
+        authportal = portal.Portal(authrealm, [auth.AuthKontalkToken(self.config['fingerprint'], ring)])
 
         factory = XMPPServerFactory(authportal)
         factory.logTraffic = self.config['debug']
@@ -209,12 +168,7 @@ class C2SComponent(XMPPHandler, service.Service):
         factory.addBootstrap(xmlstream.STREAM_AUTHD_EVENT, self.authenticated)
         factory.addBootstrap(xmlstream.STREAM_END_EVENT, self.disconnected)
 
-        c2s = strports.service('tcp:' + str(self.config['bind'][1]) + ':interface=' + str(self.config['bind'][0]), factory)
-        c2s.setServiceParent(self.application)
-
-    def stopService(self):
-        service.Service.stopService(self)
-        # TODO
+        return strports.service('tcp:' + str(self.config['bind'][1]) + ':interface=' + str(self.config['bind'][0]), factory)
 
     def sendError(self, stanza, xs, error_type, error_condition, error_message=None):
         """ Send an error in response to a stanza

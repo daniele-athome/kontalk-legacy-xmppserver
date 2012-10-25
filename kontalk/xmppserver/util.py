@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-'''Kontalk XMPP resolver component.'''
+'''Utilities for everybody.'''
 '''
   Kontalk XMPP server
   Copyright (C) 2011 Kontalk Devteam <devteam@kontalk.org>
@@ -19,13 +19,9 @@
 '''
 
 
-from twisted.words.protocols.jabber.xmlstream import XMPPHandler
+USERID_LENGTH = 40
+USERID_LENGTH_RESOURCE = 48
 
 
-class Resolver(XMPPHandler):
-    '''Kontalk resolver XMPP handler.'''
-
-    def __init__(self, config):
-        XMPPHandler.__init__(self)
-        self.config = config
-        self.logTraffic = config['debug']
+def split_userid(userid):
+    return userid[:USERID_LENGTH], userid[USERID_LENGTH:]

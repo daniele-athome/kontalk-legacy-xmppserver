@@ -40,7 +40,7 @@ class KontalkC2SServiceMaker(object):
     def makeService(self, options):
         from wokkel import component
         from kontalk.xmppserver.component.c2s import C2SComponent
-        import kontalklib.logging as log
+        from kontalk.xmppserver import log
 
         # load configuration
         fp = open(options['config'], 'r')
@@ -58,8 +58,10 @@ class KontalkC2SServiceMaker(object):
         comp.logTraffic = config['debug']
 
         # initialize c2s handler
-        c2s = C2SComponent(appl, config)
-        c2s.setHandlerParent(comp)
+        handler = C2SComponent(config)
+        handler.setHandlerParent(comp)
+        c2s = handler.setup()
+        c2s.setServiceParent(appl)
 
         comp.setServiceParent(appl)
         return appl

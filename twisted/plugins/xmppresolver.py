@@ -40,7 +40,7 @@ class KontalkResolverServiceMaker(object):
     def makeService(self, options):
         from wokkel import component
         from kontalk.xmppserver.component.resolver import Resolver
-        import kontalklib.logging as log
+        from kontalk.xmppserver import log
 
         # load configuration
         fp = open(options['config'], 'r')

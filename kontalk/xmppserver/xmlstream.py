@@ -1,5 +1,5 @@
 
-from twisted.cred import credentials, error
+from twisted.cred import error
 from twisted.internet import defer
 from twisted.words.protocols.jabber import ijabber, xmlstream, xmpp_stringprep, sasl
 from twisted.words.protocols.jabber.error import NS_XMPP_STANZAS
@@ -13,8 +13,7 @@ import os
 import random
 import time
 
-from kontalklib import utils
-import kontalklib.logging as log
+import auth
 
 
 INIT_SUCCESS_EVENT = intern("//event/xmpp/initsuccess")
@@ -188,7 +187,7 @@ class KontalkTokenMechanism(object):
     Implements the Kontalk token SASL authentication mechanism.
     """
     implements(ISASLServerMechanism)
-    
+
     def __init__(self, portal=None):
         self.portal = portal
     
@@ -197,7 +196,7 @@ class KontalkTokenMechanism(object):
     
     def parseInitialResponse(self, response):
         self.deferred = defer.Deferred()
-        login = self.portal.login(utils.KontalkToken(response, 'fingerprint-NONE', None), None, IXMPPUser)
+        login = self.portal.login(auth.KontalkToken(response), None, IXMPPUser)
         login.addCallbacks(self.onSuccess, self.onFailure)
         return self.deferred
     
@@ -218,34 +217,34 @@ class SASLReceivingInitializer(BaseFeatureReceivingInitializer):
     
     The supported mechanisms by this initializer are C{DIGEST-MD5} and C{PLAIN}
     """
-    
+
     def feature(self):
         feature = domish.Element((sasl.NS_XMPP_SASL, 'mechanisms'), defaultUri=sasl.NS_XMPP_SASL)
         feature.addElement('mechanism', content='KONTALK-TOKEN')
         return feature
-    
+
     def initialize(self):
         self.xmlstream.addOnetimeObserver('/auth', self.onAuth)
-    
+
     def deinitialize(self):
         self.xmlstream.removeObserver('/auth', self.onAuth)
-    
+
     def _sendChallenge(self, content):
         self.xmlstream.addOnetimeObserver('/response', self.onResponse)
         challenge = domish.Element((sasl.NS_XMPP_SASL, 'challenge'))
         challenge.addContent(sasl.b64encode(content))
         self.xmlstream.send(challenge)
-    
+
     def _sendFailure(self, error):
         failure = domish.Element((sasl.NS_XMPP_SASL, 'failure'), defaultUri=sasl.NS_XMPP_SASL)
         failure.addElement(error)
         self.xmlstream.send(failure)
         self.xmlstream.sendFooter()
-    
+
     def onAuth(self, element):
         if not self.canInitialize(self):
             return
-        
+
         mechanism = element.getAttribute('mechanism')
         if mechanism == 'KONTALK-TOKEN':
             self.mechanism = KontalkTokenMechanism(self.xmlstream.portal)
@@ -260,18 +259,18 @@ class SASLReceivingInitializer(BaseFeatureReceivingInitializer):
             deferred.addCallbacks(self.onSucces, self.onFailure)
         else:
             self._sendChallenge(self.mechanism.getInitialChallenge())
-    
+
     def onResponse(self, element):
         response = sasl.fromBase64(str(element))
         deferred = self.mechanism.parseResponse(response)
         deferred.addCallbacks(self.onSucces, self.onFailure)
-    
+
     def onSucces(self, result):
         if IXMPPUser.providedBy(result):
             self.xmlstream.otherEntity = result.jid
             self.xmlstream.otherEntity.host = self.xmlstream.thisEntity.host
             self.xmlstream.dispatch(self, INIT_SUCCESS_EVENT)
-            
+
             succes = domish.Element((sasl.NS_XMPP_SASL, 'success'))
             self.xmlstream.send(succes)
             self.xmlstream.reset()
@@ -280,7 +279,7 @@ class SASLReceivingInitializer(BaseFeatureReceivingInitializer):
         else:
             self._sendFailure('temporary-auth-failure')
             print "No vaild result in onSuccess: %s" % (type(result))
-    
+
     def onFailure(self, fail):
         fail.trap(sasl.SASLAuthError, SASLMechanismError)
         
