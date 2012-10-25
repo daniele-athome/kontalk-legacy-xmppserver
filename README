@@ -1,0 +1,43 @@
+Name: kontalk-xmppserver
+Description: XMPP-based Kontalk server using Twisted Words and Wokkel.
+
+
+Components
+========================================
+* Router
+* C2S
+* SM
+* S2S
+
+
+Router
+========================================
+Router will not be a standard XMPP router. It will be able to route by JID,
+not only by domain.
+Components can request routes to be assigned to them; a new route will
+overwrite any existing route with the same destination. On route conflict,
+previous route will be warned about re-assignment.
+
+C2S
+========================================
+C2S will listen on XMPP client ports (5222, etc.) and accept client
+connections. Obviously only Kontalk users will be allowed and special
+extensions to the protocol will be added to fit the Kontalk protocol needs,
+using existing XEPs if possible.
+A C2S channel instance, upon client connection, will request a route to be
+assigned to itself identified by the client JID. On client disconnection,
+route will be unassigned.
+
+SM
+========================================
+Session manager handles sessions opened by C2S with clients. Features:
+* message exchange between users
+* message and file storage
+SM is actually part of C2S, let's say it's a C2S plugin.
+SM can send stanza for some JID/domain to the router, then:
+1. a local route is found - stanza is bounced back to C2S, which will
+   internally route it to the assigned SM instance
+2. a remote route is found - stanza is sent to S2S, which will forward it to
+   the server that hosts the JID the stanza is for
+3. a route is not found - stanza is refused and bounced back, SM will act
+   accordingly (e.g. store the message for future send, discard it, etc.)
