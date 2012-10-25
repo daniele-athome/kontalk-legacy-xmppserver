@@ -1,5 +1,6 @@
 eclipse.preferences.version=1
 encoding//kontalk/xmppserver/component/c2s.py=utf-8
-encoding//kontalk/xmppserver/component/router.py=utf-8
+encoding//kontalk/xmppserver/component/resolver.py=utf-8
 encoding//twisted/plugins/xmppc2s.py=utf-8
+encoding//twisted/plugins/xmppresolver.py=utf-8
 encoding//twisted/plugins/xmpprouter.py=utf-8

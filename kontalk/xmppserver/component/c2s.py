@@ -18,19 +18,22 @@
  along with this program.  If not, see <http://www.gnu.org/licenses/>.
 '''
 
-from twisted.application import internet
+
+from twisted.application import service, strports
 from twisted.cred import portal
 from twisted.internet.protocol import ServerFactory
 from twisted.words.protocols.jabber import jid, xmlstream, error
-from twisted.words.xish import domish, xmlstream as xish_xmlstream
 from twisted.words.protocols.jabber.error import NS_XMPP_STANZAS
-from wokkel import component
+from twisted.words.protocols.jabber.xmlstream import XMPPHandler
+from twisted.words.xish import domish, xmlstream as xish_xmlstream
 
 from zope.interface import implements
 
+from kontalklib import utils
 import kontalk.xmppserver.xmlstream as c2s_xmpp
 import kontalklib.logging as log
-from kontalklib import utils
+
+
 
 
 class XMPPServerFactory(xish_xmlstream.XmlStreamFactoryMixin, ServerFactory):
@@ -184,22 +187,18 @@ class XMPPListenAuthenticator(xmlstream.ListenAuthenticator):
             self.xmlstream.dispatch(self.xmlstream, xmlstream.STREAM_AUTHD_EVENT)
 
 
-class C2SComponent(component.Component):
+class C2SComponent(XMPPHandler, service.Service):
     '''Kontalk c2s component.'''
 
     def __init__(self, application, config):
-        self.setServiceParent(application)
+        XMPPHandler.__init__(self)
         self.config = config
-        self.logTraffic = self.config['debug']
+        self.logTraffic = config['debug']
         self.authenticated_streams = []
-
-        router_cfg = config['router']
-        component.Component.__init__(self, router_cfg['host'], router_cfg['port'], router_cfg['jid'], router_cfg['secret'])
-
+        self.application = application
+        
     def startService(self):
-        log.debug("starting c2s")
-        component.Component.startService(self)
-
+        service.Service.startService(self)
         #credFactory = utils.AuthKontalkTokenFactory(str(self.config['server']['fingerprint']), self.keyring)
         authrealm = SASLRealm("Kontalk")
         authportal = portal.Portal(authrealm, [utils.AuthKontalkToken()])
@@ -210,9 +209,12 @@ class C2SComponent(component.Component):
         factory.addBootstrap(xmlstream.STREAM_AUTHD_EVENT, self.authenticated)
         factory.addBootstrap(xmlstream.STREAM_END_EVENT, self.disconnected)
 
-        c2s = internet.TCPServer(port=self.config['bind'][1],
-            factory=factory, interface=self.config['bind'][0])
-        c2s.setServiceParent(self.parent)
+        c2s = strports.service('tcp:' + str(self.config['bind'][1]) + ':interface=' + str(self.config['bind'][0]), factory)
+        c2s.setServiceParent(self.application)
+
+    def stopService(self):
+        service.Service.stopService(self)
+        # TODO
 
     def sendError(self, stanza, xs, error_type, error_condition, error_message=None):
         """ Send an error in response to a stanza

@@ -1,0 +1,11 @@
+Kontalk XMPP router
+========================================
+
+alice@kontalk.net/resource -> alice@prime.kontalk.net/resource
+bob@kontalk.net/resource -> bob@fifth.kontalk.net/resource
+
+* JID resolution: from network domain to server domain
+* a full JID is unique in the whole network
+
+Using JID resolution we can use a standard XMPP router.
+Resolution is done through an external component (resolver).

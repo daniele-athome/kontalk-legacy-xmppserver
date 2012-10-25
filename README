@@ -1,6 +1,12 @@
 Name: kontalk-xmppserver
 Description: XMPP-based Kontalk server using Twisted Words and Wokkel.
 
+Overview
+========================================
+Kontalk XMPP server will be a fully compatible XMPP server integrated with the
+Jabber federation, being also a big clustered system where every user will be
+under the network domain (e.g. kontalk.net).
+
 
 Components
 ========================================
@@ -8,15 +14,13 @@ Components
 * C2S
 * SM
 * S2S
-
+* Resolver
 
 Router
 ========================================
-Router will not be a standard XMPP router. It will be able to route by JID,
-not only by domain.
-Components can request routes to be assigned to them; a new route will
-overwrite any existing route with the same destination. On route conflict,
-previous route will be warned about re-assignment.
+Router will be a standard XMPP router. Resolver will take care of sending user
+stanzas to the right server or the c2s component. Stanza will be regenerated
+with the host part changed to the full host name of the recipient server.
 
 C2S
 ========================================
@@ -34,10 +38,21 @@ Session manager handles sessions opened by C2S with clients. Features:
 * message exchange between users
 * message and file storage
 SM is actually part of C2S, let's say it's a C2S plugin.
-SM can send stanza for some JID/domain to the router, then:
+SM can send stanzas for some JID/domain to the router, then:
 1. a local route is found - stanza is bounced back to C2S, which will
    internally route it to the assigned SM instance
 2. a remote route is found - stanza is sent to S2S, which will forward it to
    the server that hosts the JID the stanza is for
 3. a route is not found - stanza is refused and bounced back, SM will act
    accordingly (e.g. store the message for future send, discard it, etc.)
+
+S2S
+========================================
+S2S will listen on XMPP s2s ports and accept connections from other Kontalk and
+non-Kontalk servers.
+S2S will handle presence notifications among the other servers and external
+message routing:
+1. a presence notification is received by another server, a route will be
+  requested to the router
+2. a user wants to send a message to another user on another server: stanza is
+   routed to the S2S component, which will deliver it to the server

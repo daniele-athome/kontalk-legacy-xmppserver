@@ -23,15 +23,13 @@ import json
 
 from zope.interface import implements
 
-from twisted.application import service
+from twisted.application import strports
 from twisted.python import usage
 from twisted.plugin import IPlugin
-from twisted.application.service import IServiceMaker, IService
-
-import kontalklib.logging as log
+from twisted.application.service import IServiceMaker
 
 class Options(usage.Options):
-    optParameters = [["config", "c", "server.conf", "Configuration file."]]
+    optParameters = [["config", "c", "router.conf", "Configuration file."]]
 
 
 class KontalkRouterServiceMaker(object):
@@ -41,22 +39,21 @@ class KontalkRouterServiceMaker(object):
     options = Options
 
     def makeService(self, options):
-        from kontalk.xmppserver.component import router
-
-        cfgfile = 'server.conf'
-        if 'config' in options:
-            cfgfile = options['config']
+        from twisted.words.protocols.jabber import component
+        import kontalklib.logging as log
 
         # load configuration
-        fp = open(cfgfile, 'r')
+        fp = open(options['config'], 'r')
         config = json.load(fp)
         fp.close()
 
         log.init(config)
 
-        appl = service.Application(self.tapname)
-        router.Router(appl, config['router'])
-        return IService(appl)
+        router = component.Router()
+        factory = component.XMPPComponentServerFactory(router, config['secret'])
+        factory.logTraffic = config['debug']
+
+        return strports.service('tcp:' + str(config['bind'][1]) + ':interface=' + str(config['bind'][0]), factory)
 
 
 serviceMaker = KontalkRouterServiceMaker()

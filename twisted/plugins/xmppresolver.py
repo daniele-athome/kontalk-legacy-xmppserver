@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-'''twistd plugin for XMPP c2s.'''
+'''twistd plugin for XMPP resolver.'''
 '''
   Kontalk XMPP server
   Copyright (C) 2011 Kontalk Devteam <devteam@kontalk.org>
@@ -25,43 +25,37 @@ from zope.interface import implements
 
 from twisted.python import usage
 from twisted.plugin import IPlugin
-from twisted.application.service import IServiceMaker, MultiService
+from twisted.application.service import IServiceMaker
 
 class Options(usage.Options):
-    optParameters = [["config", "c", "c2s.conf", "Configuration file."]]
+    optParameters = [["config", "c", "resolver.conf", "Configuration file."]]
 
 
-class KontalkC2SServiceMaker(object):
+class KontalkResolverServiceMaker(object):
     implements(IServiceMaker, IPlugin)
-    tapname = "kontalk-c2s"
-    description = "Kontalk XMPP C2S component."
+    tapname = "kontalk-resolver"
+    description = "Kontalk XMPP resolver component."
     options = Options
 
     def makeService(self, options):
         from wokkel import component
-        from kontalk.xmppserver.component.c2s import C2SComponent
+        from kontalk.xmppserver.component.resolver import Resolver
         import kontalklib.logging as log
 
         # load configuration
         fp = open(options['config'], 'r')
         config = json.load(fp)
         fp.close()
-
+        
         log.init(config)
 
-        # services container (Component, C2S service)
-        appl = MultiService()
-
-        # initialize component
         router_cfg = config['router']
         comp = component.Component(router_cfg['host'], router_cfg['port'], router_cfg['jid'], router_cfg['secret'])
         comp.logTraffic = config['debug']
+        
+        resolver = Resolver(config)
+        resolver.setHandlerParent(comp)
 
-        # initialize c2s handler
-        c2s = C2SComponent(appl, config)
-        c2s.setHandlerParent(comp)
+        return comp
 
-        comp.setServiceParent(appl)
-        return appl
-
-serviceMaker = KontalkC2SServiceMaker()
+serviceMaker = KontalkResolverServiceMaker()
