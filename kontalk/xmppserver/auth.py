@@ -19,8 +19,6 @@
 '''
 
 
-import base64
-
 from zope.interface import implements
 
 from twisted.cred import credentials, checkers, error, portal
@@ -49,10 +47,8 @@ class KontalkToken(object):
 
     def checkToken(self, fingerprint, keyring):
         try:
-            # decode base64 first
-            data = base64.b64decode(self.token)
             # setup pyme
-            cipher = core.Data(data)
+            cipher = core.Data(self.token)
             plain = core.Data()
             ctx = core.Context()
             ctx.set_armor(0)

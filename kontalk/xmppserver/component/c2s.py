@@ -31,10 +31,17 @@ from kontalk.xmppserver import log, auth, keyring
 import kontalk.xmppserver.xmlstream as xmlstream2
 
 
+class C2SStreamManager(xmlstream.XmlStream, xmlstream.StreamManager):
+    '''Class mixing XmlStream and StreamManager.'''
+
+    def __init__(self, authenticator, factory):
+        xmlstream.XmlStream.__init__(self, authenticator)
+        xmlstream.StreamManager.__init__(self, factory)
+
 
 class XMPPServerFactory(xish_xmlstream.XmlStreamFactoryMixin, ServerFactory):
 
-    protocol = xmlstream.XmlStream
+    protocol = C2SStreamManager
 
     def __init__(self, portal):
         xish_xmlstream.XmlStreamFactoryMixin.__init__(self)
@@ -42,7 +49,7 @@ class XMPPServerFactory(xish_xmlstream.XmlStreamFactoryMixin, ServerFactory):
         self.portal = portal
 
     def buildProtocol(self, addr):
-        xs = self.protocol(XMPPListenAuthenticator())
+        xs = self.protocol(XMPPListenAuthenticator(), self)
         xs.factory = self
         xs.portal = self.portal
         xs.logTraffic = self.logTraffic

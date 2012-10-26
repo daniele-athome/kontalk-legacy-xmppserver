@@ -130,26 +130,13 @@ class BindInitializer(BaseFeatureReceivingInitializer):
     def onBind(self, stanza):
         if not self.canInitialize(self):
             return
-        
-        if not stanza.bind.resource is None:
-            resource = str(stanza.bind.resource)
-            if resource == "":
-                resource = md5.new("%s:%s:%s" % (str(random.random()) , str(time.gmtime()),str(os.getpid()))).hexdigest()
-            
-            try:
-                resource = xmpp_stringprep.resourceprep.prepare(unicode(resource))
-            except UnicodeError:
-                self._sendError(stanza, 'modify', 'bad-request')
-            
-            self.xmlstream.otherEntity.resource = resource
-                
-            response = xmlstream.toResponse(stanza, 'result')
-            bind = response.addElement((NS_XMPP_BIND, 'bind'))
-            bind.addElement((None, 'jid'), content=self.xmlstream.otherEntity.full().encode('UTF-8'))
-            self.xmlstream.send(response)
-            self.xmlstream.dispatch(self, INIT_SUCCESS_EVENT)
-        else:
-            self._sendError(stanza, 'auth', 'not-authorized')
+
+        # resource has already been extracted by realm (avatarId)
+        response = xmlstream.toResponse(stanza, 'result')
+        bind = response.addElement((NS_XMPP_BIND, 'bind'))
+        bind.addElement((None, 'jid'), content=self.xmlstream.otherEntity.full().encode('UTF-8'))
+        self.xmlstream.send(response)
+        self.xmlstream.dispatch(self, INIT_SUCCESS_EVENT)
 
 
 class ISASLServerMechanism(Interface):
