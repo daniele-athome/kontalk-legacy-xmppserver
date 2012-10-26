@@ -7,9 +7,7 @@ from twisted.words.protocols.jabber.client import CheckVersionInitializer, BindI
 from zope.interface import implements
 
 class KontalkTokenMechanism(object):
-    """
-    Implements the Kontalk token SASL authentication mechanism.
-    """
+    """Implements the Kontalk token SASL authentication mechanism."""
     implements(sasl_mechanisms.ISASLMechanism)
 
     name = 'KONTALK-TOKEN'
@@ -22,9 +20,7 @@ class KontalkTokenMechanism(object):
 
 
 class KontalkSASLInitiatingInitializer(xmlstream.BaseFeatureInitiatingInitializer):
-    """
-    Stream initializer that performs SASL authentication.
-    """
+    """Stream initializer that performs SASL authentication (only Kontalk)."""
 
     feature = (sasl.NS_XMPP_SASL, 'mechanisms')
     _deferred = None
@@ -37,14 +33,10 @@ class KontalkSASLInitiatingInitializer(xmlstream.BaseFeatureInitiatingInitialize
         token = self.xmlstream.authenticator.token
 
         mechanisms = sasl.get_mechanisms(self.xmlstream)
-        if token is not None:
-            if 'KONTALK-TOKEN' in mechanisms:
-                self.mechanism = KontalkTokenMechanism(token)
-            else:
-                raise sasl.SASLNoAcceptableMechanism()
+        if token is not None and 'KONTALK-TOKEN' in mechanisms:
+            self.mechanism = KontalkTokenMechanism(token)
         else:
             raise sasl.SASLNoAcceptableMechanism()
-
 
     def start(self):
         """
@@ -57,7 +49,6 @@ class KontalkSASLInitiatingInitializer(xmlstream.BaseFeatureInitiatingInitialize
         self.xmlstream.addOnetimeObserver('/failure', self.onFailure)
         self.sendAuth(self.mechanism.getInitialResponse())
         return self._deferred
-
 
     def sendAuth(self, data=None):
         """
@@ -114,9 +105,10 @@ class KontalkXMPPAuthenticator(xmlstream.ConnectAuthenticator):
         xmlstream.ConnectAuthenticator.associateWithStream(self, xs)
 
         xs.initializers = [CheckVersionInitializer(xs)]
-        inits = [ (KontalkSASLInitiatingInitializer, True),
-                  (BindInitializer, False),
-                ]
+        inits = [
+            (KontalkSASLInitiatingInitializer, True),
+            (BindInitializer, False)
+        ]
 
         for initClass, required in inits:
             init = initClass(xs)

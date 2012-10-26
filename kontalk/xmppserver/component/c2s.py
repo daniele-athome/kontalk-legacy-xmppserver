@@ -31,18 +31,28 @@ from kontalk.xmppserver import log, auth, keyring
 import kontalk.xmppserver.xmlstream as xmlstream2
 
 
-class C2SStreamManager(xmlstream.XmlStream, xmlstream.StreamManager):
-    '''C2S stream manager.'''
+
+class C2SHandler(XMPPHandler):
+    '''C2S handler.'''
     # TODO this should go to a separated file, it will grow very big
 
-    def __init__(self, authenticator, factory):
-        xmlstream.XmlStream.__init__(self, authenticator)
-        xmlstream.StreamManager.__init__(self, factory)
+    def __init__(self):
+        XMPPHandler.__init__(self)
+
+    def connectionInitialized(self):
+        log.debug("[MGR] xml stream authenticated")
+        self.xmlstream.addObserver('/presence', self.onPresence)
+
+    def onPresence(self, iq):
+        log.debug("[MGR] presence: %s" % (iq, ))
+
+    def connectionLost(self, reason):
+        log.debug("[MGR] xml stream disconnected (%s)" % (reason, ))
 
 
 class XMPPServerFactory(xish_xmlstream.XmlStreamFactoryMixin, ServerFactory):
 
-    protocol = C2SStreamManager
+    protocol = xmlstream.XmlStream
 
     def __init__(self, portal):
         xish_xmlstream.XmlStreamFactoryMixin.__init__(self)
@@ -50,11 +60,13 @@ class XMPPServerFactory(xish_xmlstream.XmlStreamFactoryMixin, ServerFactory):
         self.portal = portal
 
     def buildProtocol(self, addr):
-        xs = self.protocol(XMPPListenAuthenticator(), self)
+        xs = self.protocol(XMPPListenAuthenticator())
         xs.factory = self
         xs.portal = self.portal
-        xs.logTraffic = self.logTraffic
-        
+        xs.manager = xmlstream.StreamManager(self)
+        xs.manager.logTraffic = self.logTraffic
+        xs.manager.addHandler(C2SHandler())
+
         for event, fn in self.bootstraps:
             xs.addObserver(event, fn)
 
@@ -194,12 +206,18 @@ class C2SComponent(XMPPHandler, service.Service):
         xs.send(response)
 
     def connected(self, xs):
-        xs.addObserver('/iq', self.onIQ, xs = xs)
-        #xs.addObserver('/presence', self.onPresence, xs = xs)
-        #xs.addObserver('/message', self.onMessage, xs = xs)
+        def logDataIn(buf):
+            log.debug("RECV: %r" % buf)
+
+        def logDataOut(buf):
+            log.debug("SEND: %r" % buf)
+
+        if self.logTraffic:
+            xs.rawDataInFn = logDataIn
+            xs.rawDataOutFn = logDataOut
     
     def authenticated(self, xs):
-        log.debug("xml stream authenticated")
+        log.debug("xml stream %s authenticated" % (xs, ))
         # TODO this should create a specialized StreamManager to handle xs
         self.authenticated_streams.append(xs)
 
@@ -222,9 +240,9 @@ class C2SComponent(XMPPHandler, service.Service):
         return True
 
     def onIQ(self, iq, xs):
-        """ Respond to IQ stanzas sent to the server
-        """
+        """ Respond to IQ stanzas sent to the server."""
         if not iq.bind is None or not self._verify(iq, xs):
             return
-        
+
+        # FIXME bounce back response        
         xs.send(xmlstream.toResponse(iq, 'result'))

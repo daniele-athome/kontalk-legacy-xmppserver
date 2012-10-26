@@ -33,7 +33,7 @@ level = 0
 def init(cfg):
     '''Initializes logging system.'''
     global level
-    l = ['log.levels']
+    l = cfg['log.levels']
     if 'ALL' in l:
         level = LEVEL_ALL
     else:
