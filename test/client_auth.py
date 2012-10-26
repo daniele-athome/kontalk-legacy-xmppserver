@@ -1,12 +1,5 @@
 #!/usr/bin/env python
 
-'''
-<auth xmlns='urn:ietf:params:xml:ns:xmpp-sasl' mechanism='KONTALK-TOKEN'>token</auth>
-'''
-
-# Copyright (c) Twisted Matrix Laboratories.
-# See LICENSE for details.
-
 from twisted.internet import reactor, defer
 from twisted.words.xish import domish
 from twisted.words.protocols.jabber import xmlstream, sasl, sasl_mechanisms, jid
@@ -60,7 +53,6 @@ class KontalkSASLInitiatingInitializer(xmlstream.BaseFeatureInitiatingInitialize
 
         self.setMechanism()
         self._deferred = defer.Deferred()
-        self.xmlstream.addObserver('/challenge', self.onChallenge)
         self.xmlstream.addOnetimeObserver('/success', self.onSuccess)
         self.xmlstream.addOnetimeObserver('/failure', self.onFailure)
         self.sendAuth(self.mechanism.getInitialResponse())
@@ -85,63 +77,13 @@ class KontalkSASLInitiatingInitializer(xmlstream.BaseFeatureInitiatingInitialize
             auth.addContent(data)
         self.xmlstream.send(auth)
 
-
-    def sendResponse(self, data=''):
-        """
-        Send response to a challenge.
-
-        @param data: client response.
-        @type data: L{str}.
-        """
-
-        response = domish.Element((sasl.NS_XMPP_SASL, 'response'))
-        if data:
-            response.addContent(sasl.b64encode(data))
-        self.xmlstream.send(response)
-
-
-    def onChallenge(self, element):
-        """
-        Parse challenge and send response from the mechanism.
-
-        @param element: the challenge protocol element.
-        @type element: L{domish.Element}.
-        """
-
-        try:
-            challenge = sasl.fromBase64(str(element))
-        except sasl.SASLIncorrectEncodingError:
-            self._deferred.errback()
-        else:
-            self.sendResponse(self.mechanism.getResponse(challenge))
-
-
     def onSuccess(self, success):
-        """
-        Clean up observers, reset the XML stream and send a new header.
-
-        @param success: the success protocol element. For now unused, but
-                        could hold additional data.
-        @type success: L{domish.Element}
-        """
-
-        self.xmlstream.removeObserver('/challenge', self.onChallenge)
         self.xmlstream.removeObserver('/failure', self.onFailure)
         self.xmlstream.reset()
         self.xmlstream.sendHeader()
         self._deferred.callback(xmlstream.Reset)
 
-
     def onFailure(self, failure):
-        """
-        Clean up observers, parse the failure and errback the deferred.
-
-        @param failure: the failure protocol element. Holds details on
-                        the error condition.
-        @type failure: L{domish.Element}
-        """
-
-        self.xmlstream.removeObserver('/challenge', self.onChallenge)
         self.xmlstream.removeObserver('/success', self.onSuccess)
         try:
             condition = failure.firstChildElement().name

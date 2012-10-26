@@ -32,7 +32,8 @@ import kontalk.xmppserver.xmlstream as xmlstream2
 
 
 class C2SStreamManager(xmlstream.XmlStream, xmlstream.StreamManager):
-    '''Class mixing XmlStream and StreamManager.'''
+    '''C2S stream manager.'''
+    # TODO this should go to a separated file, it will grow very big
 
     def __init__(self, authenticator, factory):
         xmlstream.XmlStream.__init__(self, authenticator)
