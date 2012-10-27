@@ -5,6 +5,7 @@ from twisted.words.xish import domish
 from twisted.words.protocols.jabber import xmlstream, sasl, sasl_mechanisms, jid
 from twisted.words.protocols.jabber.client import CheckVersionInitializer, BindInitializer
 from zope.interface import implements
+from wokkel import xmppim
 
 class KontalkTokenMechanism(object):
     """Implements the Kontalk token SASL authentication mechanism."""
@@ -153,7 +154,7 @@ class Client(object):
     def authenticated(self, xs):
         print "Authenticated."
 
-        presence = domish.Element((None, 'presence'))
+        presence = xmppim.Presence()
         xs.send(presence)
 
         reactor.callLater(5, xs.sendFooter)

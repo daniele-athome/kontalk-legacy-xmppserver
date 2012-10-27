@@ -39,7 +39,7 @@ class KontalkRouterServiceMaker(object):
     options = Options
 
     def makeService(self, options):
-        from twisted.words.protocols.jabber import component
+        from kontalk.xmppserver.component import router
         from kontalk.xmppserver import log
 
         # load configuration
@@ -49,8 +49,10 @@ class KontalkRouterServiceMaker(object):
 
         log.init(config)
 
-        router = component.Router()
-        factory = component.XMPPComponentServerFactory(router, config['secret'])
+        engine = router.Router()
+        engine.logTraffic = config['debug']
+
+        factory = router.XMPPRouterFactory(engine, config['secret'])
         factory.logTraffic = config['debug']
 
         return strports.service('tcp:' + str(config['bind'][1]) + ':interface=' + str(config['bind'][0]), factory)

@@ -11,16 +11,22 @@ under the network domain (e.g. kontalk.net).
 Components
 ========================================
 * Router
+* Resolver
 * C2S
 * SM
 * S2S
-* Resolver
 
 Router
 ========================================
-Router will be a standard XMPP router. Resolver will take care of sending user
-stanzas to the right server or the c2s component. Stanza will be regenerated
-with the host part changed to the full host name of the recipient server.
+Router will be a standard XMPP router. Router will also be capable of receving
+routing requests via inter-component protocol, for example from S2S.
+
+Resolver
+========================================
+Resolver takes care of resolving network JIDs (user@kontalk.net) into server
+JIDs (user@prime.kontalk.net). Resolution is achieved by checking both SM and
+S2S components.
+Stanza are then modified with the resolved JID and sent back to the router.
 
 C2S
 ========================================
@@ -56,3 +62,9 @@ message routing:
   requested to the router
 2. a user wants to send a message to another user on another server: stanza is
    routed to the S2S component, which will deliver it to the server
+
+Default route
+========================================
+"Default" route might be:
+* blank route - broadcast stanza -> resolver
+* unknown route - stanza with a domain but nowhere to route it -> S2S
