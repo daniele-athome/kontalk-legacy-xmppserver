@@ -27,6 +27,7 @@ Resolver takes care of resolving network JIDs (user@kontalk.net) into server
 JIDs (user@prime.kontalk.net). Resolution is achieved by checking both SM and
 S2S components.
 Stanza are then modified with the resolved JID and sent back to the router.
+C2S component should bind to the network route (e.g. kontalk.net)
 
 C2S
 ========================================
@@ -37,6 +38,7 @@ using existing XEPs if possible.
 A C2S channel instance, upon client connection, will request a route to be
 assigned to itself identified by the client JID. On client disconnection,
 route will be unassigned.
+C2S component should bind to the host route (e.g. prime.kontalk.net)
 
 SM
 ========================================
@@ -63,8 +65,5 @@ message routing:
 2. a user wants to send a message to another user on another server: stanza is
    routed to the S2S component, which will deliver it to the server
 
-Default route
-========================================
-"Default" route might be:
-* blank route - broadcast stanza -> resolver
-* unknown route - stanza with a domain but nowhere to route it -> S2S
+S2S component should bind to the default route, because all unknown routes (e.g.
+jabber.org, gmail.com, ...) are handled by interserver communication.
