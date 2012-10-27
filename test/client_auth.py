@@ -127,22 +127,20 @@ class Client(object):
         f.addBootstrap(xmlstream.INIT_FAILED_EVENT, self.init_failed)
         reactor.connectTCP('localhost', 5222, f)
 
-    def rawDataIn(self, buf):
-        print "RECV: %s" % unicode(buf, 'utf-8').encode('ascii', 'replace')
-
-
-    def rawDataOut(self, buf):
-        print "SEND: %s" % unicode(buf, 'utf-8').encode('ascii', 'replace')
-
-
     def connected(self, xs):
         print 'Connected.'
 
         self.xmlstream = xs
 
+        def logDataIn(buf):
+            print "RECV: %r" % buf
+
+        def logDataOut(buf):
+            print "SEND: %r" % buf
+
         # Log all traffic
-        xs.rawDataInFn = self.rawDataIn
-        xs.rawDataOutFn = self.rawDataOut
+        xs.rawDataInFn = logDataIn
+        xs.rawDataOutFn = logDataOut
 
 
     def disconnected(self, xs):
@@ -156,8 +154,13 @@ class Client(object):
 
         presence = xmppim.Presence()
         xs.send(presence)
+        jid = xs.authenticator.jid
+        message = domish.Element((None, 'message'))
+        message['to'] = jid.full()
+        message.addElement('body', content='test message')
+        xs.send(message)
 
-        reactor.callLater(5, xs.sendFooter)
+        #reactor.callLater(5, xs.sendFooter)
 
 
     def init_failed(self, failure):

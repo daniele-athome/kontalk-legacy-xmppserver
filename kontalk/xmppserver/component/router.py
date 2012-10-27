@@ -80,7 +80,7 @@ class Router(component.Router):
         @type stanza: L{domish.Element}.
         """
 
-        if stanza['type'] == 'broadcast':
+        if stanza.getAttribute('type') == 'broadcast':
             log.debug("broadcasting stanza %s" % (stanza.toXml()))
             self.broadcast(stanza)
         else:

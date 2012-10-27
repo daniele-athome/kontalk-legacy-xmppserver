@@ -22,7 +22,7 @@
 from twisted.application import service, strports
 from twisted.cred import portal
 from twisted.internet.protocol import ServerFactory
-from twisted.words.protocols.jabber import xmlstream, error
+from twisted.words.protocols.jabber import xmlstream, error, jid
 from twisted.words.protocols.jabber.error import NS_XMPP_STANZAS
 from twisted.words.protocols.jabber.xmlstream import XMPPHandler
 from twisted.words.xish import domish, xmlstream as xish_xmlstream
@@ -35,7 +35,8 @@ from kontalk.xmppserver import xmlstream2
 
 class C2SHandler(XMPPHandler):
     """
-    Handles communication with a client.
+    Handles communication with a client. Note that this is the L{XMPPHandler}
+    towards the client, not the router!!
 
     @param router: the connection with the router
     @type router: L{xmlstream.StreamManager}
@@ -45,13 +46,13 @@ class C2SHandler(XMPPHandler):
         XMPPHandler.__init__(self)
         self.router = router
 
-        router.addObserver('/route', self.onRoute)
-
     def connectionInitialized(self):
-        #log.debug("[MGR] xml stream authenticated")
+        #log.debug("[c2s] xml stream authenticated")
         self.xmlstream.addObserver('/presence', self.onPresence)
+        self.xmlstream.addObserver('/message', self.onMessage)
 
     def onPresence(self, iq):
+        """Process incoming presence stanzas from client."""
         log.debug("[c2s] presence: %s" % (iq.toXml(), ))
 
         # presence stanza is coming from client
@@ -65,8 +66,16 @@ class C2SHandler(XMPPHandler):
 
         self.router.send(stanza)
 
-    def onRoute(self, stanza):
-        log.debug("route stanza %s" % (stanza.toXml(), ))
+    def onMessage(self, iq):
+        """Process incoming message stanzas from client."""
+        log.debug("[c2s] message: %s" % (iq.toXml()))
+        # presence stanza is coming from client
+        iq['from'] = self.xmlstream.otherEntity.full()
+
+        stanza = domish.Element((None, 'route'))
+        stanza['to'] = jid.JID(iq['to']).host
+        stanza.addChild(iq)
+        self.router.send(stanza)
 
     def connectionLost(self, reason):
         #log.debug("[MGR] xml stream disconnected (%s)" % (reason, ))
@@ -78,6 +87,7 @@ class C2SHandler(XMPPHandler):
 class XMPPServerFactory(xish_xmlstream.XmlStreamFactoryMixin, ServerFactory):
 
     protocol = xmlstream.XmlStream
+    handler = C2SHandler
 
     def __init__(self, portal, router):
         xish_xmlstream.XmlStreamFactoryMixin.__init__(self)
@@ -90,7 +100,7 @@ class XMPPServerFactory(xish_xmlstream.XmlStreamFactoryMixin, ServerFactory):
         xs.portal = self.portal
         xs.manager = xmlstream2.StreamManager(xs)
         xs.manager.logTraffic = self.logTraffic
-        xs.manager.addHandler(C2SHandler(self.router))
+        xs.manager.addHandler(self.handler(self.router))
 
         # install bootstrap handlers
         self.installBootstraps(xs)
@@ -193,7 +203,10 @@ class XMPPListenAuthenticator(xmlstream.ListenAuthenticator):
 
 
 class C2SComponent(XMPPHandler, service.Service):
-    '''Kontalk c2s component.'''
+    """
+    Kontalk c2s component.
+    L{XMPPHandler} is for the connection with the router.
+    """
 
     def __init__(self, config):
         XMPPHandler.__init__(self)
@@ -230,6 +243,12 @@ class C2SComponent(XMPPHandler, service.Service):
 
         response.addChild(error)
         xs.send(response)
+
+    def connectionInitialized(self):
+        log.debug("connected to router.")
+
+    def connectionLost(self, reason):
+        log.debug("lost connection to router (%s)" % (reason, ))
 
     def connected(self, xs):
         log.debug("xml stream %s connected" % (xs, ))
