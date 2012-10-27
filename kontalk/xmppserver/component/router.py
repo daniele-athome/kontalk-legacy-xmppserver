@@ -62,16 +62,14 @@ class Router(component.Router):
         self.routes[destination] = xs
         xs.addObserver('/bind', self.onBind)
         xs.addObserver('/unbind', self.onUnbind)
-        xs.addObserver('/presence', self.onPresence)
         xs.addObserver('/route', self.route)
-
 
     def removeRoute(self, destination, xs):
         component.Router.removeRoute(self, destination, xs)
 
         stanza = UnavailablePresence()
         stanza['from'] = destination
-        log.debug("unadvertising component %s" % (stanza.toXml()))
+        log.debug("unadvertising component %s" % (stanza.toXml(),))
         self.broadcast(stanza)
 
     def route(self, stanza):
@@ -95,6 +93,7 @@ class Router(component.Router):
         for host, xs in self.routes.iteritems():
             # do not send to the original sender
             if host != stanza['from'] or same:
+                log.debug("sending to %s" % (host, ))
                 stanza['to'] = host
                 xs.send(stanza)
 
@@ -104,10 +103,6 @@ class Router(component.Router):
 
     def onUnbind(self, stanza):
         log.debug("unbinding component %s" % (stanza.toXml(), ))
-        # TODO
-
-    def onPresence(self, stanza):
-        log.debug("component presence %s" % (stanza.toXml(), ))
         # TODO
 
 

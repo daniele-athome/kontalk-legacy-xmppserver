@@ -26,6 +26,7 @@ from twisted.words.protocols.jabber import xmlstream, error
 from twisted.words.protocols.jabber.error import NS_XMPP_STANZAS
 from twisted.words.protocols.jabber.xmlstream import XMPPHandler
 from twisted.words.xish import domish, xmlstream as xish_xmlstream
+from wokkel.xmppim import UnavailablePresence
 
 from kontalk.xmppserver import log, auth, keyring
 import kontalk.xmppserver.xmlstream as xmlstream2
@@ -64,6 +65,9 @@ class C2SHandler(XMPPHandler):
 
     def connectionLost(self, reason):
         log.debug("[MGR] xml stream disconnected (%s)" % (reason, ))
+        stanza = UnavailablePresence()
+        stanza['from'] = self.xmlstream.otherEntity.full()
+        self.onPresence(stanza)
 
 
 class XMPPServerFactory(xish_xmlstream.XmlStreamFactoryMixin, ServerFactory):
@@ -72,7 +76,6 @@ class XMPPServerFactory(xish_xmlstream.XmlStreamFactoryMixin, ServerFactory):
 
     def __init__(self, portal, router):
         xish_xmlstream.XmlStreamFactoryMixin.__init__(self)
-        self.streams = []
         self.portal = portal
         self.router = router
 
@@ -80,14 +83,13 @@ class XMPPServerFactory(xish_xmlstream.XmlStreamFactoryMixin, ServerFactory):
         xs = self.protocol(XMPPListenAuthenticator())
         xs.factory = self
         xs.portal = self.portal
-        xs.manager = xmlstream.StreamManager(self)
+        xs.manager = xmlstream2.StreamManager(xs)
         xs.manager.logTraffic = self.logTraffic
         xs.manager.addHandler(C2SHandler(self.router))
 
-        for event, fn in self.bootstraps:
-            xs.addObserver(event, fn)
+        # install bootstrap handlers
+        self.installBootstraps(xs)
 
-        self.streams.append(xs)
         return xs
 
 class XMPPListenAuthenticator(xmlstream.ListenAuthenticator):

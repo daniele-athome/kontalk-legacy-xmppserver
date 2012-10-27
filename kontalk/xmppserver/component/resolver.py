@@ -21,11 +21,29 @@
 
 from twisted.words.protocols.jabber.xmlstream import XMPPHandler
 
+from kontalk.xmppserver import log
+
 
 class Resolver(XMPPHandler):
-    '''Kontalk resolver XMPP handler.'''
+    """
+    Kontalk resolver XMPP handler.
+    This component resolves network JIDs (user@kontalk.net) into server JIDs
+    (user@prime.kontalk.net), altering the "to" attribute and bouncing the
+    stanza back to the router.
+    """
 
     def __init__(self, config):
         XMPPHandler.__init__(self)
         self.config = config
         self.logTraffic = config['debug']
+
+    def connectionInitialized(self):
+        log.debug("connected to router")
+        self.xmlstream.addObserver('/presence', self.onPresence)
+        self.xmlstream.addObserver('/route', self.onRoute)
+
+    def onPresence(self, stanza):
+        log.debug("component presence %s" % (stanza.toXml(), ))
+
+    def onRoute(self, stanza):
+        log.debug("route stanza %s" % (stanza.toXml(), ))

@@ -46,13 +46,13 @@ class KontalkResolverServiceMaker(object):
         fp = open(options['config'], 'r')
         config = json.load(fp)
         fp.close()
-        
+
         log.init(config)
 
         router_cfg = config['router']
         comp = component.Component(router_cfg['host'], router_cfg['port'], router_cfg['jid'], router_cfg['secret'])
         comp.logTraffic = config['debug']
-        
+
         resolver = Resolver(config)
         resolver.setHandlerParent(comp)
 
