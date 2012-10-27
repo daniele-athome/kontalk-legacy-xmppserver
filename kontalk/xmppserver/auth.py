@@ -29,8 +29,7 @@ from twisted.words.protocols.jabber import jid
 # pyme
 from pyme import core
 
-import xmlstream as xmlstream2
-import log, util
+import xmlstream2, log, util
 
 
 class IKontalkToken(credentials.ICredentials):
@@ -52,7 +51,7 @@ class KontalkToken(object):
             plain = core.Data()
             ctx = core.Context()
             ctx.set_armor(0)
-        
+
             ctx.op_verify(cipher, None, plain)
             # check verification result
             res = ctx.op_verify_result()
@@ -61,25 +60,25 @@ class KontalkToken(object):
                 plain.seek(0, 0)
                 text = plain.read()
                 data = text.split('|', 2)
-        
+
                 # not a valid token
                 if len(data) != 2:
                     return None
-        
+
                 # length not matching - refused
                 userid = data[0]
                 if len(userid) != util.USERID_LENGTH_RESOURCE:
                     return None
-        
+
                 # compare with provided fingerprint (if any)
                 if fingerprint and (sign.fpr.upper() == fingerprint.upper()):
                     return userid
-        
+
                 # no match - compare with keyring
                 for key in keyring:
                     if sign.fpr.upper() == key.upper():
                         return userid
-        
+
             return None
         except:
             import traceback
@@ -110,7 +109,7 @@ class AuthKontalkToken(object):
 class SASLRealm:
     """
     A twisted.cred Realm for XMPP/SASL authentication
-    
+
     You can subclass this and override the buildAvatar function to return an
     object that implements the IXMPPUser interface.
     """

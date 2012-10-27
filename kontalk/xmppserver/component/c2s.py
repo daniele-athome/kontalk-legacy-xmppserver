@@ -29,7 +29,7 @@ from twisted.words.xish import domish, xmlstream as xish_xmlstream
 from wokkel.xmppim import UnavailablePresence
 
 from kontalk.xmppserver import log, auth, keyring
-import kontalk.xmppserver.xmlstream as xmlstream2
+from kontalk.xmppserver import xmlstream2
 
 
 
@@ -45,12 +45,14 @@ class C2SHandler(XMPPHandler):
         XMPPHandler.__init__(self)
         self.router = router
 
+        router.addObserver('/route', self.onRoute)
+
     def connectionInitialized(self):
-        log.debug("[MGR] xml stream authenticated")
+        #log.debug("[MGR] xml stream authenticated")
         self.xmlstream.addObserver('/presence', self.onPresence)
 
     def onPresence(self, iq):
-        log.debug("[MGR] presence: %s" % (iq.toXml(), ))
+        log.debug("[c2s] presence: %s" % (iq.toXml(), ))
 
         # presence stanza is coming from client
         iq['from'] = self.xmlstream.otherEntity.full()
@@ -63,8 +65,11 @@ class C2SHandler(XMPPHandler):
 
         self.router.send(stanza)
 
+    def onRoute(self, stanza):
+        log.debug("route stanza %s" % (stanza.toXml(), ))
+
     def connectionLost(self, reason):
-        log.debug("[MGR] xml stream disconnected (%s)" % (reason, ))
+        #log.debug("[MGR] xml stream disconnected (%s)" % (reason, ))
         stanza = UnavailablePresence()
         stanza['from'] = self.xmlstream.otherEntity.full()
         self.onPresence(stanza)
