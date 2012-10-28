@@ -18,10 +18,51 @@
  along with this program.  If not, see <http://www.gnu.org/licenses/>.
 '''
 
+import random
 
 USERID_LENGTH = 40
 USERID_LENGTH_RESOURCE = 48
 
+CHARSBOX_AZN_CASEINS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz1234567890'
+CHARSBOX_AZN_LOWERCASE = 'abcdefghijklmnopqrstuvwxyz1234567890'
+CHARSBOX_AZN_UPPERCASE = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890'
+CHARSBOX_NUMBERS = '1234567890'
+CHARSBOX_HEX_LOWERCASE = 'abcdef1234567890'
+CHARSBOX_HEX_UPPERCASE = 'ABCDEF1234567890'
+
 
 def split_userid(userid):
     return userid[:USERID_LENGTH], userid[USERID_LENGTH:]
+
+def jid_to_userid(_jid, splitted=False):
+    """Converts a L{JID} to a user id."""
+    if _jid.resource:
+        if splitted:
+            return _jid.user, _jid.resource
+        return _jid.user + _jid.resource
+    else:
+        if splitted:
+            return _jid.user, None
+        return _jid.user
+
+def rand_str(length = 32, chars = CHARSBOX_AZN_CASEINS):
+    # Length of character list
+    chars_length = (len(chars) - 1)
+
+    # Start our string
+    string = chars[random.randrange(chars_length)]
+
+    # Generate random string
+    i = 1
+    while i < length:
+        # Grab a random character from our list
+        r = chars[random.randrange(chars_length)]
+
+        # Make sure the same two characters don't appear next to each other
+        if r != string[i - 1]:
+            string +=  r
+
+        i = len(string)
+
+    # Return the string
+    return string

@@ -37,7 +37,7 @@ class Keyring:
     def __init__(self, serversdb, fingerprint):
         self._db = serversdb
         self.fingerprint = fingerprint
-        # TODO database classes are not ready yet self.reload()
+        self.reload()
 
     def itervalues(self):
         '''Wrapper for itervalues() of internal server list.'''

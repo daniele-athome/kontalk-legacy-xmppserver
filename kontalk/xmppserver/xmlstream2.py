@@ -1,7 +1,7 @@
 
-from twisted.cred import error
+from twisted.cred import error as cred_error
 from twisted.internet import defer
-from twisted.words.protocols.jabber import ijabber, sasl, xmlstream
+from twisted.words.protocols.jabber import ijabber, sasl, xmlstream, error
 from twisted.words.protocols.jabber.error import NS_XMPP_STANZAS
 from twisted.words.xish import domish
 
@@ -188,7 +188,7 @@ class KontalkTokenMechanism(object):
         self.deferred.callback(avatar)
 
     def onFailure(self, failure):
-        failure.trap(error.UnauthorizedLogin)
+        failure.trap(cred_error.UnauthorizedLogin)
         self.deferred.errback(sasl.SASLAuthError())
 
 

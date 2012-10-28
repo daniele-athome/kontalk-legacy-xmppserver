@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 """Kontalk XMPP router component."""
-from wokkel.xmppim import Presence, UnavailablePresence
 """
   Kontalk XMPP server
   Copyright (C) 2011 Kontalk Devteam <devteam@kontalk.org>
@@ -19,15 +18,20 @@ from wokkel.xmppim import Presence, UnavailablePresence
  along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
-from kontalk.xmppserver import log
-from twisted.words.protocols.jabber.component import XMPPComponentServerFactory
-from wokkel import component
-from twisted.words.xish import domish
 from copy import deepcopy
+
+from twisted.words.protocols.jabber.component import XMPPComponentServerFactory
+from twisted.words.protocols.jabber import jid
+from twisted.words.xish import domish
+
+from wokkel import component
+from wokkel.xmppim import Presence, UnavailablePresence
+
+from kontalk.xmppserver import log
 
 
 class Router(component.Router):
-    '''Kontalk router.'''
+    """Kontalk router."""
 
     def __init__(self):
         component.Router.__init__(self)
@@ -50,7 +54,7 @@ class Router(component.Router):
         stanza = Presence()
         stanza['from'] = destination
 
-        log.debug("adversiting component %s" % (stanza.toXml()))
+        log.debug("adversiting component %s" % (destination, ))
         self.broadcast(stanza)
 
         # advertise this component about the others
@@ -59,20 +63,23 @@ class Router(component.Router):
             stanza['from'] = host
             xs.send(stanza)
 
+        # add route and observers
         self.routes[destination] = xs
-        xs.addObserver('/bind', self.onBind)
-        xs.addObserver('/unbind', self.onUnbind)
-        xs.addObserver('/route', self.route)
+        xs.addObserver('/bind', self.onBind, xs = xs)
+        xs.addObserver('/unbind', self.onUnbind, xs = xs)
+        xs.addObserver('/*', self.route, xs = xs)
 
     def removeRoute(self, destination, xs):
+        # remove route immediately
+        # we assume component is disconnecting so we don't remove observers
         component.Router.removeRoute(self, destination, xs)
 
         stanza = UnavailablePresence()
         stanza['from'] = destination
-        log.debug("unadvertising component %s" % (stanza.toXml(),))
+        log.debug("unadvertising component %s" % (stanza['from'],))
         self.broadcast(stanza)
 
-    def route(self, stanza):
+    def route(self, stanza, xs):
         """
         Route a stanza.
 
@@ -80,28 +87,43 @@ class Router(component.Router):
         @type stanza: L{domish.Element}.
         """
 
-        if stanza.getAttribute('type') == 'broadcast':
+        if not stanza.hasAttribute('to'):
             log.debug("broadcasting stanza %s" % (stanza.toXml()))
             self.broadcast(stanza)
         else:
             log.debug("routing stanza %s" % (stanza.toXml()))
-            component.Router.route(self, stanza)
+            try:
+                destination = jid.JID(stanza['to'])
+
+                if destination.host in self.routes:
+                    self.routes[destination.host].send(stanza)
+                else:
+                    self.routes[None].send(stanza)
+
+            except KeyError:
+                log.debug("unroutable stanza, bouncing back to component")
+                error = domish.Element((None, 'error'))
+                error['type'] = 'unroutable'
+                error['to'] = stanza['from']
+                error.addChild(stanza)
+                xs.send(error)
 
     def broadcast(self, stanza, same=False):
         """Broadcast a stanza to every component."""
         stanza = deepcopy(stanza)
+        jid_from = jid.JID(stanza['from'])
         for host, xs in self.routes.iteritems():
             # do not send to the original sender
-            if host != stanza['from'] or same:
+            if host != jid_from.host or same:
                 log.debug("sending to %s" % (host, ))
                 stanza['to'] = host
                 xs.send(stanza)
 
-    def onBind(self, stanza):
+    def onBind(self, stanza, xs):
         log.debug("binding component %s" % (stanza.toXml(), ))
         # TODO
 
-    def onUnbind(self, stanza):
+    def onUnbind(self, stanza, xs):
         log.debug("unbinding component %s" % (stanza.toXml(), ))
         # TODO
 

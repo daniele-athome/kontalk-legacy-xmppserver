@@ -1,11 +1,21 @@
 #!/usr/bin/env python
 
+from kontalk.xmppserver import util
 from twisted.internet import reactor, defer
-from twisted.words.xish import domish
 from twisted.words.protocols.jabber import xmlstream, sasl, sasl_mechanisms, jid
 from twisted.words.protocols.jabber.client import CheckVersionInitializer, BindInitializer
-from zope.interface import implements
+from twisted.words.xish import domish
+
 from wokkel import xmppim
+
+from zope.interface import implements
+
+# pyme
+from pyme import core
+from pyme.constants.sig import mode
+
+import sys, base64
+
 
 class KontalkTokenMechanism(object):
     """Implements the Kontalk token SASL authentication mechanism."""
@@ -87,8 +97,8 @@ class KontalkSASLInitiatingInitializer(xmlstream.BaseFeatureInitiatingInitialize
 class KontalkXMPPAuthenticator(xmlstream.ConnectAuthenticator):
     namespace = 'jabber:client'
 
-    def __init__(self, token):
-        xmlstream.ConnectAuthenticator.__init__(self, 'kontalk.net')
+    def __init__(self, network, token):
+        xmlstream.ConnectAuthenticator.__init__(self, network)
         self.token = token
         # this is for making twisted bits not complaining
         self.jid = jid.JID('anon@example.com')
@@ -118,8 +128,8 @@ class KontalkXMPPAuthenticator(xmlstream.ConnectAuthenticator):
 
 
 class Client(object):
-    def __init__(self, token):
-        a = KontalkXMPPAuthenticator(token)
+    def __init__(self, network, token):
+        a = KontalkXMPPAuthenticator(network, token)
         f = xmlstream.XmlStreamFactory(a)
         f.addBootstrap(xmlstream.STREAM_CONNECTED_EVENT, self.connected)
         f.addBootstrap(xmlstream.STREAM_END_EVENT, self.disconnected)
@@ -152,15 +162,23 @@ class Client(object):
     def authenticated(self, xs):
         print "Authenticated."
 
-        presence = xmppim.Presence()
+        presence = xmppim.AvailablePresence(statuses={None: 'status message'})
         xs.send(presence)
-        jid = xs.authenticator.jid
-        message = domish.Element((None, 'message'))
-        message['to'] = jid.full()
-        message.addElement('body', content='test message')
-        xs.send(message)
 
-        #reactor.callLater(5, xs.sendFooter)
+        # subscription request
+        presence = xmppim.Presence(jid.JID('test@kontalk.net'), 'subscribe')
+        xs.send(presence)
+
+        def testMessage(self):
+            jid = xs.authenticator.jid
+            message = domish.Element((None, 'message'))
+            message['id'] = 'kontalk' + util.rand_str(8, util.CHARSBOX_AZN_LOWERCASE)
+            message['to'] = jid.full()
+            message.addElement('body', content='test message')
+            xs.send(message)
+
+        #reactor.callLater(5, self.testMessage)
+        #reactor.callLater(10, xs.sendFooter)
 
 
     def init_failed(self, failure):
@@ -170,10 +188,32 @@ class Client(object):
         self.xmlstream.sendFooter()
 
 
-fp = open('auth.token', 'r')
-token = fp.read()
-fp.close()
+def user_token(userid, fp):
+    '''Generates a user token.'''
 
-c = Client(token)
+    '''
+    token is made up of the hashed phone number (the user id)
+    plus the resource (in one big string, 40+8 characters),
+    and the fingerprint of the server he registered to
+    '''
+    string = '%s|%s' % (userid, fp)
+    plain = core.Data(string)
+    cipher = core.Data()
+    ctx = core.Context()
+    ctx.set_armor(0)
+
+    # signing key
+    ctx.signers_add(ctx.get_key(fp, True))
+
+    ctx.op_sign(plain, cipher, mode.NORMAL)
+    cipher.seek(0, 0)
+    token = cipher.read()
+    return base64.b64encode(token)
+
+
+FINGERPRINT = '37D0E678CDD19FB9B182B3804C9539B401F8229C'
+
+token = user_token(sys.argv[1], FINGERPRINT)
+c = Client('kontalk.net', token)
 
 reactor.run()
