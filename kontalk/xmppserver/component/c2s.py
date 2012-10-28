@@ -55,6 +55,7 @@ class C2SHandler(XMPPHandler):
         """Process incoming presence stanzas from client."""
         log.debug("[c2s] presence: %s" % (iq.toXml(), ))
 
+        iq.defaultUri = iq.uri = None
         iq['from'] = self.resolveJID(self.xmlstream.otherEntity).full()
         self.router.send(iq)
 
@@ -111,13 +112,16 @@ class XMPPServerFactory(xish_xmlstream.XmlStreamFactoryMixin, ServerFactory):
             del self.streams[userid][resource]
 
     def dispatch(self, stanza, to):
-        """Dispatch a stanza to a JID all to all available resources found locally."""
+        """
+        Dispatch a stanza to a JID all to all available resources found locally.
+        @raise L{KeyError}: if a destination route is not found
+        """
         userid, resource = util.jid_to_userid(to, True)
         # deliver to the request jid
         stanza['to'] = to.full()
         stanza.defaultUri = stanza.uri = None
         if to.resource is not None:
-            self.streams[userid][resource].send(stanza)
+                self.streams[userid][resource].send(stanza)
         else:
             for xs in self.streams[userid].itervalues():
                 xs.send(stanza)

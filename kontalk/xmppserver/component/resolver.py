@@ -38,7 +38,7 @@ class Resolver(XMPPHandler):
 
     @ivar usercache: database connection to the usercache table
     @type usercache: L{UsercacheDb}
-    @ivar subscriptions: a map of user subscriptions
+    @ivar subscriptions: a map of user subscriptions (key=watched, value=subscribers)
     @type subscriptions: C{dict}
     """
 
@@ -77,7 +77,7 @@ class Resolver(XMPPHandler):
         if user.user:
             userid = util.jid_to_userid(user)
 
-            # TODO what about xml:lang statuses?
+            # TODO handle multiple statuses with xml:lang
             if stanza.status:
                 status = str(stanza.status)
             else:
@@ -88,15 +88,46 @@ class Resolver(XMPPHandler):
 
             self.usercache.update(userid, status=status)
 
+        self.broadcastSubscribers(stanza)
+
     def routePresenceUnavailable(self, stanza):
         """Handle unavailable presence stanzas from C2S."""
         log.debug("user unavailable: %s" % (stanza.toXml(), ))
         user = jid.JID(stanza['from'])
+        # forget any subscription requested by this user
+        self.cancelSubscriptions(user)
+
         if user.user:
             userid = util.jid_to_userid(user)
 
             # update usercache with last seen
             self.usercache.update(userid)
+
+        self.broadcastSubscribers(stanza)
+
+    def broadcastSubscribers(self, stanza):
+        """Broadcast stanza to JID subscribers."""
+
+        user = jid.JID(stanza['from'])
+
+        if user.host == self.servername:
+            # local user: translate host name
+            watched = jid.JID(tuple=(user.user, self.network, user.resource))
+        else:
+            # other JIDs, use unchaged
+            watched = user
+
+        log.debug("checking subscriptions to %s" % (watched.full(), ))
+        bareWatched = watched.userhostJID()
+        if bareWatched in self.subscriptions:
+            stanza.defaultUri = stanza.uri = None
+            stanza['from'] = watched.full()
+
+            for sub in self.subscriptions[bareWatched]:
+                log.debug("notifying subscriber %s" % (sub, ))
+                stanza['to'] = sub.userhost()
+                self.xmlstream.send(stanza)
+
 
     def routeSubscribe(self, stanza):
         """Handle subscription requests from clients."""
@@ -107,10 +138,12 @@ class Resolver(XMPPHandler):
         jid_from = jid.JID(stanza['from'])
 
         try:
-            if jid_to not in self.subscriptions[jid_from]:
-                self.subscriptions[jid_from].append(jid_to)
+            if jid_from not in self.subscriptions[jid_to]:
+                self.subscriptions[jid_to].append(jid_from)
         except:
-            self.subscriptions[jid_from] = [jid_to]
+            self.subscriptions[jid_to] = [jid_from]
+
+        log.debug("subscriptions: %r" % (self.subscriptions, ))
 
         # send subscription accepted immediately
         pres = domish.Element((None, "presence"))
@@ -133,9 +166,21 @@ class Resolver(XMPPHandler):
 
         self.xmlstream.send(stanza)
 
+    def cancelSubscriptions(self, user):
+        """Cancel all subscriptions requested by the given user."""
+        for rlist in self.subscriptions.itervalues():
+            for sub in rlist:
+                if sub == user:
+                    rlist.remove(sub)
+
+    def subscribe(self, to, subscriber):
+        """Subscribe a given user to events from another one."""
+        # TODO
+        pass
+
     def lookupJID(self, _jid):
         """
-        Lookup a jid locally and remotely.
+        Lookup a jid in the network.
         If jid is a bare JID, a list of matching server JIDs is returned.
         Otherwise single server JID is returned.
         FIXME one day this will return a deferred

@@ -87,6 +87,9 @@ class Router(component.Router):
         @type stanza: L{domish.Element}.
         """
 
+        # reset namespace
+        stanza.defaultUri = stanza.uri = component.NS_COMPONENT_ACCEPT
+
         if not stanza.hasAttribute('to'):
             log.debug("broadcasting stanza %s" % (stanza.toXml()))
             self.broadcast(stanza)

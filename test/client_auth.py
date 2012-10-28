@@ -2,6 +2,7 @@
 
 from kontalk.xmppserver import util
 from twisted.internet import reactor, defer
+from twisted.internet.task import LoopingCall
 from twisted.words.protocols.jabber import xmlstream, sasl, sasl_mechanisms, jid
 from twisted.words.protocols.jabber.client import CheckVersionInitializer, BindInitializer
 from twisted.words.xish import domish
@@ -128,7 +129,7 @@ class KontalkXMPPAuthenticator(xmlstream.ConnectAuthenticator):
 
 
 class Client(object):
-    def __init__(self, network, token):
+    def __init__(self, network, token, peer=None):
         a = KontalkXMPPAuthenticator(network, token)
         f = xmlstream.XmlStreamFactory(a)
         f.addBootstrap(xmlstream.STREAM_CONNECTED_EVENT, self.connected)
@@ -136,6 +137,8 @@ class Client(object):
         f.addBootstrap(xmlstream.STREAM_AUTHD_EVENT, self.authenticated)
         f.addBootstrap(xmlstream.INIT_FAILED_EVENT, self.init_failed)
         reactor.connectTCP('localhost', 5222, f)
+        self.network = network
+        self.peer = peer
 
     def connected(self, xs):
         print 'Connected.'
@@ -166,8 +169,18 @@ class Client(object):
         xs.send(presence)
 
         # subscription request
-        presence = xmppim.Presence(jid.JID('test@kontalk.net'), 'subscribe')
-        xs.send(presence)
+        self.index = 0
+        if self.peer is not None:
+            userid, resource = util.split_userid(self.peer)
+            presence = xmppim.Presence(jid.JID(tuple=(userid, self.network, None)), 'subscribe')
+            xs.send(presence)
+        else:
+            def pres():
+                self.index += 1
+                presence = xmppim.AvailablePresence(statuses={None: 'status message (%d)' % (self.index, )})
+                xs.send(presence)
+
+            LoopingCall(pres).start(2, False)
 
         def testMessage(self):
             jid = xs.authenticator.jid
@@ -214,6 +227,6 @@ def user_token(userid, fp):
 FINGERPRINT = '37D0E678CDD19FB9B182B3804C9539B401F8229C'
 
 token = user_token(sys.argv[1], FINGERPRINT)
-c = Client('kontalk.net', token)
+c = Client('kontalk.net', token, sys.argv[2] if len(sys.argv) > 2 else None)
 
 reactor.run()
