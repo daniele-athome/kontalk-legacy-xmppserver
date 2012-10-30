@@ -54,7 +54,7 @@ class PingHandler(XMPPHandler):
     """
 
     def connectionInitialized(self):
-        self.xmlstream.addObserver("/iq[@type='get']/ping[@xmlns='%s']" % (xmlstream2.NS_XMPP_PING, ), self.parent.bounce, 1)
+        self.xmlstream.addObserver("/iq[@type='get']/ping[@xmlns='%s']" % (xmlstream2.NS_XMPP_PING, ), self.parent.bounce, 100)
 
 class IQQueryHandler(XMPPHandler):
     """Handle various iq/query stanzas."""
@@ -76,13 +76,14 @@ class IQQueryHandler(XMPPHandler):
             self.send(response)
 
     def connectionInitialized(self):
+        log.debug("iq/query: initialized")
         self.xmlstream.addObserver("/iq[@type='get'][@to='%s']/query[@xmlns='%s']" % (self.parent.network, xmlstream2.NS_DISCO_ITEMS), self.onDiscoItems, 100)
         self.xmlstream.addObserver("/iq[@type='get'][@to='%s']/query[@xmlns='%s']" % (self.parent.network, xmlstream2.NS_DISCO_INFO), self.onDiscoInfo, 100)
         self.xmlstream.addObserver("/iq[@type='get']/query[@xmlns='%s']" % (xmlstream2.NS_IQ_ROSTER), self.parent.bounce, 100)
         self.xmlstream.addObserver("/iq[@type='get']/query[@xmlns='%s']" % (xmlstream2.NS_IQ_LAST), self.parent.forward, 100)
 
         # fallback: service unavailable
-        self.xmlstream.addObserver("/iq", self.parent.error, 80)
+        self.xmlstream.addObserver("/iq/query", self.parent.error, 80)
 
 
 class C2SManager(xmlstream2.StreamManager):
@@ -94,6 +95,12 @@ class C2SManager(xmlstream2.StreamManager):
     @type router: L{xmlstream.StreamManager}
     """
 
+    init_handlers = (
+        PresenceHandler,
+        PingHandler,
+        IQQueryHandler,
+    )
+
     def __init__(self, xs, factory, router, network, servername):
         xmlstream2.StreamManager.__init__(self, xs)
         self.factory = factory
@@ -101,9 +108,8 @@ class C2SManager(xmlstream2.StreamManager):
         self.network = network
         self.servername = servername
 
-        PresenceHandler().setHandlerParent(self)
-        PingHandler().setHandlerParent(self)
-        IQQueryHandler().setHandlerParent(self)
+        for handler in self.init_handlers:
+            handler().setHandlerParent(self)
 
     def _authd(self, xs):
         xmlstream2.StreamManager._authd(self, xs)
@@ -152,6 +158,10 @@ class C2SManager(xmlstream2.StreamManager):
 
 
 class XMPPServerFactory(xish_xmlstream.XmlStreamFactoryMixin, ServerFactory):
+    """
+    The XMPP server factory for incoming client connections.
+    @type streams: C{dict}
+    """
 
     protocol = xmlstream.XmlStream
     manager = C2SManager
@@ -364,10 +374,17 @@ class C2SComponent(XMPPHandler):
         if stanza.hasAttribute('to'):
             to = jid.JID(stanza['to'])
             # process only username JIDs
-            if to.user and to.host == self.servername:
-                self.factory.dispatch(stanza, jid.JID(tuple=(to.user, self.network, to.resource)))
+            if to.host == self.servername:
+                if to.user:
+                    self.factory.dispatch(stanza, jid.JID(tuple=(to.user, self.network, to.resource)))
+                else:
+                    self.local(stanza)
             else:
                 log.debug("stanza is not our concern or is an error")
+
+    def local(self, stanza):
+        e = error.StanzaError('service-unavailable', 'cancel')
+        self.send(e.toResponse(stanza))
 
     def onError(self, stanza):
         log.debug("routing error: %s" % (stanza.toXml()))

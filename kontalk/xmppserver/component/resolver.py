@@ -24,7 +24,7 @@ import base64
 from twisted.application import service
 from twisted.words.protocols.jabber.xmlstream import XMPPHandler
 from twisted.words.xish import domish
-from twisted.words.protocols.jabber import jid, xmlstream
+from twisted.words.protocols.jabber import jid, xmlstream, error
 
 from wokkel import xmppim, component
 
@@ -32,12 +32,12 @@ from kontalk.xmppserver import log, database, util, xmlstream2
 
 
 class PresenceHandler(XMPPHandler):
-    """Handles presence stanzas."""
+    """Handle presence stanzas."""
 
     def connectionInitialized(self):
-        self.xmlstream.addObserver("/presence[not(@type)]", self.onPresenceAvailable)
-        self.xmlstream.addObserver("/presence[@type='unavailable']", self.onPresenceUnavailable)
-        self.xmlstream.addObserver("/presence[@type='subscribe']", self.onSubscribe)
+        self.xmlstream.addObserver("/presence[not(@type)]", self.onPresenceAvailable, 100)
+        self.xmlstream.addObserver("/presence[@type='unavailable']", self.onPresenceUnavailable, 100)
+        self.xmlstream.addObserver("/presence[@type='subscribe']", self.onSubscribe, 100)
 
     def onPresenceAvailable(self, stanza):
         """Handle availability presence stanzas."""
@@ -87,11 +87,29 @@ class PresenceHandler(XMPPHandler):
         self.parent.subscribe(jid_to, jid_from)
 
 class IQQueryHandler(XMPPHandler):
-    """Handles IQ query stanzas."""
+    """
+    Handle IQ query stanzas.
+    @type parent: L{Resolver}
+    """
 
     def connectionInitialized(self):
-        pass
+        self.xmlstream.addObserver("/iq[@type='get']/query[@xmlns='%s']" % (xmlstream2.NS_IQ_LAST), self.lastActivity, 100)
+        self.xmlstream.addObserver("/iq/query", self.parent.error, 80)
 
+    def lastActivity(self, stanza):
+        if not stanza.consumed:
+            stanza.consumed = True
+            response = xmlstream.toResponse(stanza, 'result')
+
+            if stanza['to'] == self.parent.network:
+                # TODO server uptime
+                seconds = 123456
+            else:
+                # TODO seconds ago user was last seen
+                seconds = 10
+
+            response.addChild(domish.Element((xmlstream2.NS_IQ_LAST, 'query'), attribs={'seconds': str(seconds)}))
+            self.send(response)
 
 class Resolver(component.Component):
     """
@@ -134,6 +152,13 @@ class Resolver(component.Component):
     def onError(self, stanza):
         log.debug("routing error: %s" % (stanza.toXml(), ))
 
+    def error(self, stanza):
+        if not stanza.consumed:
+            log.debug("error %s" % (stanza.toXml(), ))
+            stanza.consumed = True
+            e = error.StanzaError('service-unavailable', 'cancel')
+            self.send(e.toResponse(stanza))
+
     def send(self, stanza, to=None):
         """Resolves stanza recipient and send the route to the stanza."""
         if to is None:
@@ -147,7 +172,7 @@ class Resolver(component.Component):
                 to = rcpts
                 stanza['to'] = to.full()
 
-        XMPPHandler.send(self, stanza)
+        component.Component.send(self, stanza)
 
     def cancelSubscriptions(self, user):
         """Cancel all subscriptions requested by the given user."""

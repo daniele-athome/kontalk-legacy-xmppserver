@@ -396,6 +396,7 @@ class StreamManager(xmlstream.XMPPHandlerCollection):
 
         # get protocol handler up to speed when a connection has already
         # been established
+        log.debug("adding handler: %r" % (handler, ))
         if self.xmlstream and self._initialized:
             handler.makeConnection(self.xmlstream)
             handler.connectionInitialized()
