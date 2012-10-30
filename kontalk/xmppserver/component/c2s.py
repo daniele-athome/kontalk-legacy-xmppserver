@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 '''Kontalk XMPP c2s component.'''
-from bzrlib import initialize
 '''
   Kontalk XMPP server
   Copyright (C) 2011 Kontalk Devteam <devteam@kontalk.org>
@@ -24,11 +23,11 @@ from twisted.application import strports
 from twisted.cred import portal
 from twisted.internet.protocol import ServerFactory
 
-from twisted.words.protocols.jabber import xmlstream, error, jid, error
+from twisted.words.protocols.jabber import xmlstream, jid, error
 from twisted.words.protocols.jabber.xmlstream import XMPPHandler
 from twisted.words.xish import domish, xmlstream as xish_xmlstream
 
-from wokkel.xmppim import UnavailablePresence
+from wokkel import xmppim, component
 
 from kontalk.xmppserver import log, auth, keyring, database, util
 from kontalk.xmppserver import xmlstream2
@@ -42,7 +41,7 @@ class PresenceHandler(XMPPHandler):
 
     def connectionLost(self, reason):
         if self.xmlstream.otherEntity is not None:
-            stanza = UnavailablePresence()
+            stanza = xmppim.UnavailablePresence()
             stanza['from'] = self.xmlstream.otherEntity.full()
             self.parent.forward(stanza, True)
 
@@ -325,14 +324,15 @@ class XMPPListenAuthenticator(xmlstream.ListenAuthenticator):
             self.xmlstream.dispatch(self.xmlstream, xmlstream.STREAM_AUTHD_EVENT)
 
 
-class C2SComponent(XMPPHandler):
+class C2SComponent(component.Component):
     """
     Kontalk c2s component.
     L{XMPPHandler} is for the connection with the router.
     """
 
     def __init__(self, config):
-        XMPPHandler.__init__(self)
+        router_cfg = config['router']
+        component.Component.__init__(self, router_cfg['host'], router_cfg['port'], router_cfg['jid'], router_cfg['secret'])
         self.config = config
         self.logTraffic = config['debug']
         self.network = config['network']
@@ -346,20 +346,20 @@ class C2SComponent(XMPPHandler):
         ring = keyring.Keyring(database.servers(self.db), self.config['fingerprint'])
         authportal = portal.Portal(authrealm, [auth.AuthKontalkToken(self.config['fingerprint'], ring)])
 
-        self.factory = XMPPServerFactory(authportal, self.parent, self.network, self.servername)
-        self.factory.logTraffic = self.config['debug']
+        self.sfactory = XMPPServerFactory(authportal, self, self.network, self.servername)
+        self.sfactory.logTraffic = self.config['debug']
 
         return strports.service('tcp:' + str(self.config['bind'][1]) +
-            ':interface=' + str(self.config['bind'][0]), self.factory)
+            ':interface=' + str(self.config['bind'][0]), self.sfactory)
 
     """ Connection with router """
 
     def connectionInitialized(self):
         XMPPHandler.connectionInitialized(self)
         log.debug("connected to router.")
-        self.xmlstream.addObserver('/error', self.onError)
-        self.xmlstream.addObserver('/presence', self.dispatch)
-        self.xmlstream.addObserver('/iq', self.dispatch)
+        self.xmlstream.addObserver("/error", self.onError)
+        self.xmlstream.addObserver("/presence", self.dispatch)
+        self.xmlstream.addObserver("/iq[@to='']" % (self.servername), self.localIQ)
 
     def connectionLost(self, reason):
         XMPPHandler.connectionLost(self, reason)
@@ -377,7 +377,7 @@ class C2SComponent(XMPPHandler):
             # process only username JIDs
             if to.host == self.servername:
                 if to.user:
-                    self.factory.dispatch(stanza, jid.JID(tuple=(to.user, self.network, to.resource)))
+                    self.sfactory.dispatch(stanza, jid.JID(tuple=(to.user, self.network, to.resource)))
                 else:
                     self.local(stanza)
             else:
