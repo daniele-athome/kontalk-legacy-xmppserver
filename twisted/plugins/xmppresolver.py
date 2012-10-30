@@ -25,7 +25,7 @@ from zope.interface import implements
 
 from twisted.python import usage
 from twisted.plugin import IPlugin
-from twisted.application.service import IServiceMaker, MultiService
+from twisted.application.service import IServiceMaker
 
 class Options(usage.Options):
     optParameters = [["config", "c", "resolver.conf", "Configuration file."]]
@@ -38,8 +38,7 @@ class KontalkResolverServiceMaker(object):
     options = Options
 
     def makeService(self, options):
-        from wokkel import component
-        from kontalk.xmppserver.component.resolver import ResolverService
+        from kontalk.xmppserver.component.resolver import Resolver
         from kontalk.xmppserver import log
 
         # load configuration
@@ -49,17 +48,6 @@ class KontalkResolverServiceMaker(object):
 
         log.init(config)
 
-        # services container (Component, C2S service)
-        appl = MultiService()
-
-        router_cfg = config['router']
-        comp = component.Component(router_cfg['host'], router_cfg['port'], router_cfg['jid'], router_cfg['secret'])
-        comp.logTraffic = config['debug']
-
-        resolver = ResolverService(config, comp)
-        resolver.setServiceParent(appl)
-
-        comp.setServiceParent(appl)
-        return appl
+        return Resolver(config)
 
 serviceMaker = KontalkResolverServiceMaker()

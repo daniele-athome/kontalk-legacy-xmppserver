@@ -19,17 +19,81 @@
 '''
 
 
+import base64
+
 from twisted.application import service
 from twisted.words.protocols.jabber.xmlstream import XMPPHandler
 from twisted.words.xish import domish
-from twisted.words.protocols.jabber import jid
+from twisted.words.protocols.jabber import jid, xmlstream
 
-from wokkel import xmppim
+from wokkel import xmppim, component
 
 from kontalk.xmppserver import log, database, util, xmlstream2
 
 
-class Resolver(XMPPHandler):
+class PresenceHandler(XMPPHandler):
+    """Handles presence stanzas."""
+
+    def connectionInitialized(self):
+        self.xmlstream.addObserver("/presence[not(@type)]", self.onPresenceAvailable)
+        self.xmlstream.addObserver("/presence[@type='unavailable']", self.onPresenceUnavailable)
+        self.xmlstream.addObserver("/presence[@type='subscribe']", self.onSubscribe)
+
+    def onPresenceAvailable(self, stanza):
+        """Handle availability presence stanzas."""
+        log.debug("presence: %s" % (stanza.toXml().encode('utf-8'), ))
+
+        # update usercache with last seen and status
+        user = jid.JID(stanza['from'])
+        if user.user:
+            userid = util.jid_to_userid(user)
+
+            # TODO handle multiple statuses with xml:lang
+            if stanza.status:
+                status = base64.b64encode(stanza.status.__str__().encode('utf-8'))
+            else:
+                status = None
+
+            # TODO handle push notifications ID as capability
+            # http://xmpp.org/extensions/xep-0115.html
+
+            self.parent.usercache.update(userid, status=status)
+
+        self.parent.broadcastSubscribers(stanza)
+
+    def onPresenceUnavailable(self, stanza):
+        """Handle unavailable presence stanzas."""
+        log.debug("user unavailable: %s" % (stanza.toXml(), ))
+        user = jid.JID(stanza['from'])
+        # forget any subscription requested by this user
+        self.parent.cancelSubscriptions(user)
+
+        if user.user:
+            userid = util.jid_to_userid(user)
+
+            # update usercache with last seen
+            self.parent.usercache.update(userid)
+
+        self.parent.broadcastSubscribers(stanza)
+
+    def onSubscribe(self, stanza):
+        """Handle subscription requests."""
+        log.debug("subscription request: %s" % (stanza.toXml(), ))
+
+        # extract jid the user wants to subscribe to
+        jid_to = jid.JID(stanza['to'])
+        jid_from = jid.JID(stanza['from'])
+
+        self.parent.subscribe(jid_to, jid_from)
+
+class IQQueryHandler(XMPPHandler):
+    """Handles IQ query stanzas."""
+
+    def connectionInitialized(self):
+        pass
+
+
+class Resolver(component.Component):
     """
     Kontalk resolver XMPP handler.
     This component resolves network JIDs in <route> stanzas (kontalk.net) into
@@ -43,10 +107,11 @@ class Resolver(XMPPHandler):
     """
 
     def __init__(self, config):
-        XMPPHandler.__init__(self)
+        router_cfg = config['router']
+        component.Component.__init__(self, router_cfg['host'], router_cfg['port'], router_cfg['jid'], router_cfg['secret'])
         self.config = config
-        self.logTraffic = config['debug']
 
+        self.logTraffic = config['debug']
         self.network = config['network']
         self.servername = config['host']
 
@@ -54,12 +119,13 @@ class Resolver(XMPPHandler):
         self.usercache = database.usercache(self.db)
         self.subscriptions = {}
 
+        # protocol handlers here!!
+        PresenceHandler().setHandlerParent(self)
+        IQQueryHandler().setHandlerParent(self)
+
     def connectionInitialized(self):
         log.debug("connected to router")
         self.xmlstream.addObserver("/error", self.onError)
-        self.xmlstream.addObserver("/presence[not(@type)]", self.routePresenceAvailable)
-        self.xmlstream.addObserver("/presence[@type='unavailable']", self.routePresenceUnavailable)
-        self.xmlstream.addObserver("/presence[@type='subscribe']", self.routeSubscribe)
 
     def connectionLost(self, reason):
         XMPPHandler.connectionLost(self, reason)
@@ -68,42 +134,44 @@ class Resolver(XMPPHandler):
     def onError(self, stanza):
         log.debug("routing error: %s" % (stanza.toXml(), ))
 
-    def routePresenceAvailable(self, stanza):
-        """Handle availability presence stanzas from clients."""
-        log.debug("presence: %s" % (stanza.toXml(), ))
-
-        # update usercache with last seen and status
-        user = jid.JID(stanza['from'])
-        if user.user:
-            userid = util.jid_to_userid(user)
-
-            # TODO handle multiple statuses with xml:lang
-            if stanza.status:
-                status = str(stanza.status)
+    def send(self, stanza, to=None):
+        """Resolves stanza recipient and send the route to the stanza."""
+        if to is None:
+            to = jid.JID(stanza['to'])
+        if to.host == self.network:
+            rcpts = self.lookupJID(to)
+            if type(rcpts) == list:
+                # TODO
+                log.debug("multiple routing is not supported yet.")
             else:
-                status = None
+                to = rcpts
+                stanza['to'] = to.full()
 
-            # TODO handle push notifications ID as capability
-            # http://xmpp.org/extensions/xep-0115.html
+        XMPPHandler.send(self, stanza)
 
-            self.usercache.update(userid, status=status)
+    def cancelSubscriptions(self, user):
+        """Cancel all subscriptions requested by the given user."""
+        for rlist in self.subscriptions.itervalues():
+            for sub in rlist:
+                if sub == user:
+                    rlist.remove(sub)
 
-        self.broadcastSubscribers(stanza)
+    def subscribe(self, to, subscriber):
+        """Subscribe a given user to events from another one."""
+        try:
+            if subscriber not in self.subscriptions[to]:
+                self.subscriptions[to].append(subscriber)
+        except:
+            self.subscriptions[to] = [subscriber]
 
-    def routePresenceUnavailable(self, stanza):
-        """Handle unavailable presence stanzas from C2S."""
-        log.debug("user unavailable: %s" % (stanza.toXml(), ))
-        user = jid.JID(stanza['from'])
-        # forget any subscription requested by this user
-        self.cancelSubscriptions(user)
+        log.debug("subscriptions: %r" % (self.subscriptions, ))
 
-        if user.user:
-            userid = util.jid_to_userid(user)
-
-            # update usercache with last seen
-            self.usercache.update(userid)
-
-        self.broadcastSubscribers(stanza)
+        # send subscription accepted immediately
+        pres = domish.Element((None, "presence"))
+        pres['to'] = subscriber.userhost()
+        pres['from'] = to.userhost()
+        pres['type'] = 'subscribed'
+        self.send(pres, subscriber.full())
 
     def broadcastSubscribers(self, stanza):
         """Broadcast stanza to JID subscribers."""
@@ -126,57 +194,7 @@ class Resolver(XMPPHandler):
             for sub in self.subscriptions[bareWatched]:
                 log.debug("notifying subscriber %s" % (sub, ))
                 stanza['to'] = sub.userhost()
-                self.xmlstream.send(stanza)
-
-
-    def routeSubscribe(self, stanza):
-        """Handle subscription requests from clients."""
-        log.debug("subscription request: %s" % (stanza.toXml(), ))
-
-        # extract jid the user wants to subscribe to
-        jid_to = jid.JID(stanza['to'])
-        jid_from = jid.JID(stanza['from'])
-
-        try:
-            if jid_from not in self.subscriptions[jid_to]:
-                self.subscriptions[jid_to].append(jid_from)
-        except:
-            self.subscriptions[jid_to] = [jid_from]
-
-        log.debug("subscriptions: %r" % (self.subscriptions, ))
-
-        # send subscription accepted immediately
-        pres = domish.Element((None, "presence"))
-        pres['to'] = jid_from.userhost()
-        pres['from'] = jid_to.userhost()
-        pres['type'] = 'subscribed'
-        self.resolveSend(pres, stanza['from'])
-
-    def resolveSend(self, stanza, to=None):
-        """Resolves stanza recipient and send the route to the stanza."""
-        to = jid.JID(stanza['to'])
-        if to.host == self.network:
-            rcpts = self.lookupJID(to)
-            if type(rcpts) == list:
-                # TODO
-                log.debug("multiple routing is not supported yet.")
-            else:
-                to = rcpts
-                stanza['to'] = to.full()
-
-        self.xmlstream.send(stanza)
-
-    def cancelSubscriptions(self, user):
-        """Cancel all subscriptions requested by the given user."""
-        for rlist in self.subscriptions.itervalues():
-            for sub in rlist:
-                if sub == user:
-                    rlist.remove(sub)
-
-    def subscribe(self, to, subscriber):
-        """Subscribe a given user to events from another one."""
-        # TODO
-        pass
+                self.send(stanza)
 
     def lookupJID(self, _jid):
         """
@@ -205,7 +223,7 @@ class ResolverService(service.Service):
         self.component = comp
 
     def startService(self):
-        self.resolver = Resolver(self.config)
+        self.resolver = Resolver(self.config, self.component)
         self.resolver.setHandlerParent(self.component)
 
     def stopService(self):

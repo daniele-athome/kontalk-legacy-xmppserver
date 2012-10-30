@@ -1,7 +1,7 @@
 
 from twisted.cred import error as cred_error
 from twisted.internet import defer
-from twisted.words.protocols.jabber import ijabber, sasl, xmlstream, error
+from twisted.words.protocols.jabber import client, ijabber, sasl, xmlstream, error
 from twisted.words.protocols.jabber.error import NS_XMPP_STANZAS
 from twisted.words.xish import domish
 
@@ -11,6 +11,16 @@ from zope.interface.interface import Attribute, Interface
 import auth, log
 
 INIT_SUCCESS_EVENT = intern("//event/xmpp/initsuccess")
+
+NS_DISCO_INFO = 'http://jabber.org/protocol/disco#info'
+NS_DISCO_ITEMS = 'http://jabber.org/protocol/disco#items'
+
+NS_IQ_REGISTER = 'jabber:iq:register'
+NS_IQ_VERSION = 'jabber:iq:version'
+NS_IQ_ROSTER = 'jabber:iq:roster'
+NS_IQ_LAST = 'jabber:iq:last'
+
+NS_XMPP_PING = 'urn:xmpp:ping'
 
 
 class IXMPPUser(Interface):
@@ -86,8 +96,6 @@ class BaseFeatureReceivingInitializer(object):
         self.canInitialize = canInitialize
 
 
-NS_XMPP_BIND = 'urn:ietf:params:xml:ns:xmpp-bind'
-
 class BindInitializer(BaseFeatureReceivingInitializer):
     """
     Initializer that implements Resource Binding for the receiving entity.
@@ -98,13 +106,13 @@ class BindInitializer(BaseFeatureReceivingInitializer):
 
     def feature(self):
         if self.required:
-            return domish.Element((NS_XMPP_BIND, 'bind'))
+            return domish.Element((client.NS_XMPP_BIND, 'bind'))
 
     def initialize(self):
-        self.xmlstream.addOnetimeObserver('/iq', self.onBind)
+        self.xmlstream.addOnetimeObserver('/iq/bind', self.onBind)
 
     def deinitialize(self):
-        self.xmlstream.removeObserver('/iq', self.onBind)
+        self.xmlstream.removeObserver('/iq/bind', self.onBind)
 
     def _sendError(self, stanza, error_type, error_condition, error_message=None):
         """ Send an error in response to a stanza
@@ -127,9 +135,37 @@ class BindInitializer(BaseFeatureReceivingInitializer):
 
         # resource has already been extracted by realm (avatarId)
         response = xmlstream.toResponse(stanza, 'result')
-        bind = response.addElement((NS_XMPP_BIND, 'bind'))
+        bind = response.addElement((client.NS_XMPP_BIND, 'bind'))
         bind.addElement((None, 'jid'), content=self.xmlstream.otherEntity.full().encode('UTF-8'))
         self.xmlstream.send(response)
+        self.xmlstream.dispatch(self, INIT_SUCCESS_EVENT)
+
+
+class SessionInitializer(BaseFeatureReceivingInitializer):
+    """
+    Initializer that implements session establishment for the receiving entity.
+
+    This protocol is defined in U{RFC 3921, section
+    3<http://www.xmpp.org/specs/rfc3921.html#session>}.
+    """
+
+    def feature(self):
+        if self.required:
+            return domish.Element((client.NS_XMPP_SESSION, 'session'))
+
+    def initialize(self):
+        self.xmlstream.addOnetimeObserver('/iq/session', self.onSession)
+
+    def deinitialize(self):
+        self.xmlstream.removeObserver('/iq/session', self.onSession)
+
+    def onSession(self, stanza):
+        if not self.canInitialize(self):
+            return
+
+        iq = xmlstream.toResponse(stanza, 'result')
+        iq.addElement((client.NS_XMPP_SESSION, 'session'))
+        self.xmlstream.send(iq)
         self.xmlstream.dispatch(self, INIT_SUCCESS_EVENT)
 
 
@@ -161,6 +197,41 @@ class ISASLServerMechanism(Interface):
         that should be used as a subsequent challenge to be sent to the client.
         Raises SASLAuthError as errback on failure
         """
+
+
+class PlainMechanism(object):
+    """
+    Implements the PLAIN SASL authentication mechanism.
+    
+    The PLAIN SASL authentication mechanism is defined in RFC 2595.
+    This should be folded into twisted.words.protocols.jabber.sasl_mechanisms.Plain
+    @type portal: L{Portal}
+    """
+    implements(ISASLServerMechanism)
+    
+    def __init__(self, portal=None):
+        self.portal = portal
+    
+    def getInitialChallenge(self):
+        return defer.Deferred().errback(SASLMechanismError())
+    
+    def parseInitialResponse(self, response):
+        self.deferred = defer.Deferred()
+        authzid, authcid, password = response.split('\x00')
+        log.debug("using password %s" % (password, ))
+        login = self.portal.login(auth.KontalkToken(password, True), None, IXMPPUser)
+        login.addCallbacks(self.onSuccess, self.onFailure)
+        return self.deferred
+    
+    def parseResponse(self, response):
+        return defer.Deferred().errback(SASLMechanismError())
+
+    def onSuccess(self, (interface, avatar, logout)):
+        self.deferred.callback(avatar)
+    
+    def onFailure(self, failure):
+        failure.trap(cred_error.UnauthorizedLogin)
+        self.deferred.errback(sasl.SASLAuthError())
 
 
 class KontalkTokenMechanism(object):
@@ -202,6 +273,7 @@ class SASLReceivingInitializer(BaseFeatureReceivingInitializer):
     def feature(self):
         feature = domish.Element((sasl.NS_XMPP_SASL, 'mechanisms'), defaultUri=sasl.NS_XMPP_SASL)
         feature.addElement('mechanism', content='KONTALK-TOKEN')
+        feature.addElement('mechanism', content='PLAIN')
         return feature
 
     def initialize(self):
@@ -229,6 +301,8 @@ class SASLReceivingInitializer(BaseFeatureReceivingInitializer):
         mechanism = element.getAttribute('mechanism')
         if mechanism == 'KONTALK-TOKEN':
             self.mechanism = KontalkTokenMechanism(self.xmlstream.portal)
+        elif mechanism == 'PLAIN':
+            self.mechanism = PlainMechanism(self.xmlstream.portal)
         else:
             self._sendFailure('invalid-mechanism')
             return
@@ -237,16 +311,16 @@ class SASLReceivingInitializer(BaseFeatureReceivingInitializer):
 
         if response:
             deferred = self.mechanism.parseInitialResponse(sasl.fromBase64(response))
-            deferred.addCallbacks(self.onSucces, self.onFailure)
+            deferred.addCallbacks(self.onSuccess, self.onFailure)
         else:
             self._sendChallenge(self.mechanism.getInitialChallenge())
 
     def onResponse(self, element):
         response = sasl.fromBase64(str(element))
         deferred = self.mechanism.parseResponse(response)
-        deferred.addCallbacks(self.onSucces, self.onFailure)
+        deferred.addCallbacks(self.onSuccess, self.onFailure)
 
-    def onSucces(self, result):
+    def onSuccess(self, result):
         if IXMPPUser.providedBy(result):
             self.xmlstream.otherEntity = result.jid
             self.xmlstream.otherEntity.host = self.xmlstream.thisEntity.host

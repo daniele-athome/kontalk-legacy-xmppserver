@@ -24,7 +24,7 @@ from zope.interface import implements
 from twisted.cred import credentials, checkers, error, portal
 from twisted.python import failure
 from twisted.internet import defer
-from twisted.words.protocols.jabber import jid
+from twisted.words.protocols.jabber import jid, sasl
 
 # pyme
 from pyme import core
@@ -41,13 +41,18 @@ class IKontalkToken(credentials.ICredentials):
 class KontalkToken(object):
     implements(IKontalkToken)
 
-    def __init__(self, token):
+    def __init__(self, token, decode_b64=False):
         self.token = token
+        self.decode_b64 = decode_b64
 
     def checkToken(self, fingerprint, keyring):
         try:
             # setup pyme
-            cipher = core.Data(self.token)
+            if self.decode_b64:
+                data = sasl.fromBase64(self.token)
+            else:
+                data = self.token
+            cipher = core.Data(data)
             plain = core.Data()
             ctx = core.Context()
             ctx.set_armor(0)

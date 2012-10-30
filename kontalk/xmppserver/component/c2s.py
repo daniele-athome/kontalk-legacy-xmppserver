@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 '''Kontalk XMPP c2s component.'''
+from bzrlib import initialize
 '''
   Kontalk XMPP server
   Copyright (C) 2011 Kontalk Devteam <devteam@kontalk.org>
@@ -22,61 +23,138 @@
 from twisted.application import strports
 from twisted.cred import portal
 from twisted.internet.protocol import ServerFactory
-from twisted.words.protocols.jabber import xmlstream, error, jid
+
+from twisted.words.protocols.jabber import xmlstream, error, jid, error
 from twisted.words.protocols.jabber.xmlstream import XMPPHandler
 from twisted.words.xish import domish, xmlstream as xish_xmlstream
+
 from wokkel.xmppim import UnavailablePresence
 
 from kontalk.xmppserver import log, auth, keyring, database, util
 from kontalk.xmppserver import xmlstream2
 
 
-class C2SHandler(XMPPHandler):
+class PresenceHandler(XMPPHandler):
     """
-    Handles communication with a client. Note that this is the L{XMPPHandler}
+    Handle presence stanzas and client disconnection.
+    @type parent: L{C2SManager}
+    """
+
+    def connectionLost(self, reason):
+        if self.xmlstream.otherEntity is not None:
+            stanza = UnavailablePresence()
+            stanza['from'] = self.xmlstream.otherEntity.full()
+            self.parent.forward(stanza, True)
+
+
+class PingHandler(XMPPHandler):
+    """
+    XEP-0199: XMPP Ping
+    http://xmpp.org/extensions/xep-0199.html
+    """
+
+    def connectionInitialized(self):
+        self.xmlstream.addObserver("/iq[@type='get']/ping[@xmlns='%s']" % (xmlstream2.NS_XMPP_PING, ), self.parent.bounce, 1)
+
+class IQQueryHandler(XMPPHandler):
+    """Handle various iq/query stanzas."""
+
+    def onDiscoItems(self, stanza):
+        if not stanza.consumed:
+            stanza.consumed = True
+            response = xmlstream.toResponse(stanza, 'result')
+            response.addElement((xmlstream2.NS_DISCO_ITEMS, 'query'))
+            self.send(response)
+
+    def onDiscoInfo(self, stanza):
+        if not stanza.consumed:
+            stanza.consumed = True
+            response = xmlstream.toResponse(stanza, 'result')
+            query = response.addElement((xmlstream2.NS_DISCO_INFO, 'query'))
+            query.addChild(domish.Element((None, 'feature'), attribs={'var': xmlstream2.NS_IQ_REGISTER }))
+            query.addChild(domish.Element((None, 'feature'), attribs={'var': xmlstream2.NS_IQ_VERSION }))
+            self.send(response)
+
+    def connectionInitialized(self):
+        self.xmlstream.addObserver("/iq[@type='get'][@to='%s']/query[@xmlns='%s']" % (self.parent.network, xmlstream2.NS_DISCO_ITEMS), self.onDiscoItems, 100)
+        self.xmlstream.addObserver("/iq[@type='get'][@to='%s']/query[@xmlns='%s']" % (self.parent.network, xmlstream2.NS_DISCO_INFO), self.onDiscoInfo, 100)
+        self.xmlstream.addObserver("/iq[@type='get']/query[@xmlns='%s']" % (xmlstream2.NS_IQ_ROSTER), self.parent.bounce, 100)
+        self.xmlstream.addObserver("/iq[@type='get']/query[@xmlns='%s']" % (xmlstream2.NS_IQ_LAST), self.parent.forward, 100)
+
+        # fallback: service unavailable
+        self.xmlstream.addObserver("/iq", self.parent.error, 80)
+
+
+class C2SManager(xmlstream2.StreamManager):
+    """
+    Handles communication with a client. Note that this is the L{StreamManager}
     towards the client, not the router!!
 
     @param router: the connection with the router
     @type router: L{xmlstream.StreamManager}
     """
 
-    def __init__(self, factory, router, servername):
-        XMPPHandler.__init__(self)
+    def __init__(self, xs, factory, router, network, servername):
+        xmlstream2.StreamManager.__init__(self, xs)
         self.factory = factory
         self.router = router
+        self.network = network
         self.servername = servername
 
-    def connectionInitialized(self):
-        #log.debug("[c2s] xml stream authenticated")
-        self.factory.connectionInitialized(self.xmlstream)
-        self.xmlstream.addObserver('/presence', self.onPresence)
+        PresenceHandler().setHandlerParent(self)
+        PingHandler().setHandlerParent(self)
+        IQQueryHandler().setHandlerParent(self)
 
-    def onPresence(self, iq):
-        """Process incoming presence stanzas from client."""
-        log.debug("[c2s] presence: %s" % (iq.toXml(), ))
+    def _authd(self, xs):
+        xmlstream2.StreamManager._authd(self, xs)
+        self.factory.connectionInitialized(xs)
 
-        iq.defaultUri = iq.uri = None
-        iq['from'] = self.resolveJID(self.xmlstream.otherEntity).full()
-        self.router.send(iq)
+        # forward everything that is not handled
+        xs.addObserver('/*', self.forward)
 
-    def connectionLost(self, reason):
-        #log.debug("[c2s] xml stream disconnected (%s)" % (reason, ))
+    def _disconnected(self, reason):
         self.factory.connectionLost(self.xmlstream, reason)
+        xmlstream2.StreamManager._disconnected(self, reason)
 
-        if self.xmlstream.otherEntity:
-            stanza = UnavailablePresence()
-            stanza['from'] = self.xmlstream.otherEntity.full()
-            self.onPresence(stanza)
+    def error(self, stanza):
+        if not stanza.consumed:
+            log.debug("error %s" % (stanza.toXml(), ))
+            stanza.consumed = True
+            e = error.StanzaError('service-unavailable', 'cancel')
+            self.send(e.toResponse(stanza))
+
+    def bounce(self, stanza):
+        """Bounce stanzas as results."""
+        if not stanza.consumed:
+            log.debug("bouncing %s" % (stanza.toXml(), ))
+            stanza.consumed = True
+            self.send(xmlstream.toResponse(stanza, 'result'))
+
+    def forward(self, stanza, useFrom=False):
+        """
+        Forward incoming stanza from clients to the router, setting the from
+        attribute to the sender entity."""
+        if not stanza.consumed:
+            log.debug("forwarding %s" % (stanza.toXml(), ))
+            stanza.consumed = True
+            stanza.defaultUri = stanza.uri = None
+            stanza['from'] = self.resolveJID(stanza['from'] if useFrom else self.xmlstream.otherEntity).full()
+            self.router.send(stanza)
 
     def resolveJID(self, _jid):
         """Transform host attribute of JID from network name to server name."""
-        return jid.JID(tuple=(_jid.user, self.servername, _jid.resource))
+        if isinstance(_jid, jid.JID):
+            return jid.JID(tuple=(_jid.user, self.servername, _jid.resource))
+        else:
+            _jid = jid.JID(_jid)
+            _jid.host = self.servername
+            return _jid
 
 
 class XMPPServerFactory(xish_xmlstream.XmlStreamFactoryMixin, ServerFactory):
 
     protocol = xmlstream.XmlStream
-    handler = C2SHandler
+    manager = C2SManager
 
     def __init__(self, portal, router, network, servername):
         xish_xmlstream.XmlStreamFactoryMixin.__init__(self)
@@ -90,9 +168,8 @@ class XMPPServerFactory(xish_xmlstream.XmlStreamFactoryMixin, ServerFactory):
         xs = self.protocol(XMPPListenAuthenticator(self.network))
         xs.factory = self
         xs.portal = self.portal
-        xs.manager = xmlstream2.StreamManager(xs)
+        xs.manager = self.manager(xs, self, self.router, self.network, self.servername)
         xs.manager.logTraffic = self.logTraffic
-        xs.manager.addHandler(self.handler(self, self.router, self.servername))
 
         # install bootstrap handlers
         self.installBootstraps(xs)
@@ -100,6 +177,7 @@ class XMPPServerFactory(xish_xmlstream.XmlStreamFactoryMixin, ServerFactory):
         return xs
 
     def connectionInitialized(self, xs):
+        """Called from the handler when a client has authenticated."""
         userid, resource = util.jid_to_userid(xs.otherEntity, True)
         if userid not in self.streams:
             self.streams[userid] = {}
@@ -169,13 +247,14 @@ class XMPPListenAuthenticator(xmlstream.ListenAuthenticator):
         xs.initializers = []
         inits = [
             #(xmlstream.TLSInitiatingInitializer, False),
-            (xmlstream2.SASLReceivingInitializer, True),
-            (xmlstream2.BindInitializer, True),
-            #(SessionInitializer, False),
+            (xmlstream2.SASLReceivingInitializer, True, True),
+            (xmlstream2.BindInitializer, True, False),
+            (xmlstream2.SessionInitializer, True, False),
         ]
-        for initClass, required in inits:
+        for initClass, required, exclusive in inits:
             init = initClass(xs, self.canInitialize)
             init.required = required
+            init.exclusive = exclusive
             xs.initializers.append(init)
             init.initialize()
 
@@ -201,7 +280,8 @@ class XMPPListenAuthenticator(xmlstream.ListenAuthenticator):
                 feature = initializer.feature()
                 if feature is not None:
                     features.addChild(feature)
-                if hasattr(initializer, 'required') and initializer.required:
+                if hasattr(initializer, 'required') and initializer.required and \
+                    hasattr(initializer, 'exclusive') and initializer.exclusive:
                     break
 
             self.xmlstream.send(features)
@@ -229,6 +309,7 @@ class XMPPListenAuthenticator(xmlstream.ListenAuthenticator):
             if hasattr(init, 'required') and init.required:
                 required = True
 
+        log.debug("initializer %r done (required=%r, list=%r)" % (initializer, required, self.xmlstream.initializers))
         if not required:
             self.xmlstream.dispatch(self.xmlstream, xmlstream.STREAM_AUTHD_EVENT)
 
@@ -265,14 +346,15 @@ class C2SComponent(XMPPHandler):
     def connectionInitialized(self):
         XMPPHandler.connectionInitialized(self)
         log.debug("connected to router.")
-        self.xmlstream.addObserver('/presence', self.onPresence)
         self.xmlstream.addObserver('/error', self.onError)
+        self.xmlstream.addObserver('/presence', self.dispatch)
+        self.xmlstream.addObserver('/iq', self.dispatch)
 
     def connectionLost(self, reason):
         XMPPHandler.connectionLost(self, reason)
         log.debug("lost connection to router (%s)" % (reason, ))
 
-    def onPresence(self, stanza):
+    def dispatch(self, stanza):
         log.debug("incoming stanza: %s" % (stanza.toXml()))
         """
         incoming stanzas must be intended to a server JID (e.g.
