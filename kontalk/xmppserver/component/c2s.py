@@ -73,6 +73,7 @@ class IQQueryHandler(XMPPHandler):
             query = response.addElement((xmlstream2.NS_DISCO_INFO, 'query'))
             query.addChild(domish.Element((None, 'feature'), attribs={'var': xmlstream2.NS_IQ_REGISTER }))
             query.addChild(domish.Element((None, 'feature'), attribs={'var': xmlstream2.NS_IQ_VERSION }))
+            query.addChild(domish.Element((None, 'feature'), attribs={'var': xmlstream2.NS_IQ_LAST }))
             self.send(response)
 
     def connectionInitialized(self):
