@@ -1,10 +1,11 @@
 #!/usr/bin/env python
 
-from kontalk.xmppserver import util
+
 from twisted.internet import reactor, defer
 from twisted.internet.task import LoopingCall
-from twisted.words.protocols.jabber import xmlstream, sasl, sasl_mechanisms, jid
-from twisted.words.protocols.jabber.client import CheckVersionInitializer, BindInitializer
+from twisted.words.protocols.jabber import xmlstream, sasl, sasl_mechanisms, jid, client
+from twisted.words.protocols.jabber.client import CheckVersionInitializer, BindInitializer,\
+    SessionInitializer
 from twisted.words.xish import domish
 
 from wokkel import xmppim
@@ -16,6 +17,8 @@ from pyme import core
 from pyme.constants.sig import mode
 
 import sys, base64
+
+from kontalk.xmppserver import util, xmlstream2
 
 
 class KontalkTokenMechanism(object):
@@ -119,7 +122,8 @@ class KontalkXMPPAuthenticator(xmlstream.ConnectAuthenticator):
         xs.initializers = [CheckVersionInitializer(xs)]
         inits = [
             (KontalkSASLInitiatingInitializer, True),
-            (BindInitializer, False)
+            (BindInitializer, True),
+            (SessionInitializer, True),
         ]
 
         for initClass, required in inits:
@@ -167,6 +171,10 @@ class Client(object):
 
         presence = xmppim.AvailablePresence(statuses={None: 'status message'})
         xs.send(presence)
+
+        ver = client.IQ(xs, 'get')
+        ver.addElement((xmlstream2.NS_IQ_VERSION, 'query'))
+        ver.send(self.network)
 
         # subscription request
         self.index = 0

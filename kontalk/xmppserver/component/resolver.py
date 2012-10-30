@@ -21,14 +21,13 @@
 
 import base64
 
-from twisted.application import service
 from twisted.words.protocols.jabber.xmlstream import XMPPHandler
 from twisted.words.xish import domish
 from twisted.words.protocols.jabber import jid, xmlstream, error
 
 from wokkel import xmppim, component
 
-from kontalk.xmppserver import log, database, util, xmlstream2
+from kontalk.xmppserver import log, database, util, xmlstream2, version
 
 
 class PresenceHandler(XMPPHandler):
@@ -58,6 +57,7 @@ class PresenceHandler(XMPPHandler):
             # http://xmpp.org/extensions/xep-0115.html
 
             self.parent.usercache.update(userid, status=status)
+            self.parent.local_user_available(user)
 
         self.parent.broadcastSubscribers(stanza)
 
@@ -73,6 +73,7 @@ class PresenceHandler(XMPPHandler):
 
             # update usercache with last seen
             self.parent.usercache.update(userid)
+            self.parent.local_user_unavailable(user)
 
         self.parent.broadcastSubscribers(stanza)
 
@@ -86,6 +87,7 @@ class PresenceHandler(XMPPHandler):
 
         self.parent.subscribe(jid_to, jid_from)
 
+
 class IQQueryHandler(XMPPHandler):
     """
     Handle IQ query stanzas.
@@ -93,10 +95,27 @@ class IQQueryHandler(XMPPHandler):
     """
 
     def connectionInitialized(self):
-        self.xmlstream.addObserver("/iq[@type='get']/query[@xmlns='%s']" % (xmlstream2.NS_IQ_LAST), self.lastActivity, 100)
+        self.xmlstream.addObserver("/iq[@type='get']/query[@xmlns='%s']" % (xmlstream2.NS_IQ_LAST, ), self.last_activity, 100)
+        self.xmlstream.addObserver("/iq[@type='get']/query[@xmlns='%s']" % (xmlstream2.NS_IQ_VERSION, ), self.version, 100)
+        self.xmlstream.addObserver("/iq[@type='result']", self.parent.bounce, 100)
         self.xmlstream.addObserver("/iq/query", self.parent.error, 80)
 
-    def lastActivity(self, stanza):
+    def version(self, stanza):
+        if not stanza.consumed:
+            stanza.consumed = True
+
+            if stanza['to'] == self.parent.network:
+                response = xmlstream.toResponse(stanza, 'result')
+                query = domish.Element((xmlstream2.NS_IQ_VERSION, 'query'))
+                query.addElement((None, 'name'), content=version.NAME)
+                query.addElement((None, 'version'), content=version.VERSION)
+                response.addChild(query)
+                self.send(response)
+            else:
+                # send resolved stanza to router
+                self.send(stanza)
+
+    def last_activity(self, stanza):
         if not stanza.consumed:
             stanza.consumed = True
             response = xmlstream.toResponse(stanza, 'result')
@@ -111,6 +130,21 @@ class IQQueryHandler(XMPPHandler):
             response.addChild(domish.Element((xmlstream2.NS_IQ_LAST, 'query'), attribs={'seconds': str(seconds)}))
             self.send(response)
 
+
+class MessageHandler(XMPPHandler):
+    """
+    Handle message stanzas.
+    @type parent: L{Resolver}
+    """
+
+    def connectionInitialized(self):
+        self.xmlstream.addObserver("/message", self.parent.bounce, 100)
+
+    def message(self, stanza):
+        if not stanza.consumed:
+            stanza.consumed = True
+
+
 class Resolver(component.Component):
     """
     Kontalk resolver XMPP handler.
@@ -124,6 +158,12 @@ class Resolver(component.Component):
     @type subscriptions: C{dict}
     """
 
+    protocolHandlers = (
+        PresenceHandler,
+        IQQueryHandler,
+        MessageHandler,
+    )
+
     def __init__(self, config):
         router_cfg = config['router']
         component.Component.__init__(self, router_cfg['host'], router_cfg['port'], router_cfg['jid'], router_cfg['secret'])
@@ -136,41 +176,50 @@ class Resolver(component.Component):
         self.db = database.connect_config(self.config)
         self.usercache = database.usercache(self.db)
         self.subscriptions = {}
+        self.local_users = {}
 
         # protocol handlers here!!
-        PresenceHandler().setHandlerParent(self)
-        IQQueryHandler().setHandlerParent(self)
+        for handler in self.protocolHandlers:
+            handler().setHandlerParent(self)
 
     def connectionInitialized(self):
         log.debug("connected to router")
         self.xmlstream.addObserver("/error", self.onError)
 
     def connectionLost(self, reason):
-        XMPPHandler.connectionLost(self, reason)
         log.debug("lost connection to router (%s)" % (reason, ))
 
     def onError(self, stanza):
         log.debug("routing error: %s" % (stanza.toXml(), ))
 
-    def error(self, stanza):
+    def error(self, stanza, condition='service-unavailable'):
         if not stanza.consumed:
             log.debug("error %s" % (stanza.toXml(), ))
             stanza.consumed = True
-            e = error.StanzaError('service-unavailable', 'cancel')
+            e = error.StanzaError(condition, 'cancel')
             self.send(e.toResponse(stanza))
+
+    def bounce(self, stanza):
+        if not stanza.consumed:
+            stanza.consumed = True
+            self.send(stanza)
 
     def send(self, stanza, to=None):
         """Resolves stanza recipient and send the route to the stanza."""
+
+        stanza['from'] = self.translateJID(jid.JID(stanza['from'])).full()
+
         if to is None:
             to = jid.JID(stanza['to'])
         if to.host == self.network:
             rcpts = self.lookupJID(to)
             if type(rcpts) == list:
-                # TODO
-                log.debug("multiple routing is not supported yet.")
+                for to in rcpts:
+                    stanza['to'] = to.full()
+                    component.Component.send(self, stanza)
+                    return
             else:
-                to = rcpts
-                stanza['to'] = to.full()
+                stanza['to'] = rcpts.full()
 
         component.Component.send(self, stanza)
 
@@ -214,12 +263,37 @@ class Resolver(component.Component):
         bareWatched = watched.userhostJID()
         if bareWatched in self.subscriptions:
             stanza.defaultUri = stanza.uri = None
-            stanza['from'] = watched.full()
+            #stanza['from'] = watched.full()
 
             for sub in self.subscriptions[bareWatched]:
                 log.debug("notifying subscriber %s" % (sub, ))
                 stanza['to'] = sub.userhost()
                 self.send(stanza)
+
+    def local_user_available(self, _jid):
+        """Called when a user locally connects to this server."""
+        userid, resource = util.jid_to_userid(_jid, True)
+        if userid not in self.local_users:
+            self.local_users[userid] = []
+        self.local_users[userid].append(resource)
+
+    def local_user_unavailable(self, _jid):
+        """Called when a local user disconnects from this server."""
+        userid, resource = util.jid_to_userid(_jid, True)
+        if userid in self.local_users:
+            self.local_users[userid].remove(resource)
+            if len(self.local_users[userid]) == 0:
+                del self.local_users[userid]
+
+    def translateJID(self, _jid):
+        """
+        Translate a server JID (user@prime.kontalk.net) into a network JID
+        (user@kontalk.net).
+        """
+        # TODO ehm :D
+        if _jid.host == self.servername:
+            return jid.JID(tuple=(_jid.user, self.network, _jid.resource))
+        return _jid
 
     def lookupJID(self, _jid):
         """
@@ -231,25 +305,19 @@ class Resolver(component.Component):
 
         # FIXME we are not really looking up the user yet
         if _jid.host == self.network:
+            log.debug("[%s] network JID" % (_jid.full(), ))
             if _jid.resource is not None:
-                return jid.JID(tuple=(_jid.user, self.servername, _jid.resource))
+                log.debug("[%s] full JID" % (_jid.full(), ))
+                if _jid.user in self.local_users and _jid.resource in self.local_users[_jid.user]:
+                    return jid.JID(tuple=(_jid.user, self.servername, _jid.resource))
             else:
-                # TODO don't know how to handle this right now
-                return []
+                log.debug("[%s] bare JID" % (_jid.full(), ))
+                if _jid.user in self.local_users:
+                    return [jid.JID(tuple=(_jid.user, self.servername, x)) for x in self.local_users[_jid.user]]
+
+            log.debug("[%s] unknown JID" % (_jid.full(), ))
+            return None
 
         # not our network, return unchanged
+        log.debug("[%s] not our network" % (_jid.full(), ))
         return _jid
-
-
-class ResolverService(service.Service):
-    def __init__(self, config, comp):
-        self.config = config
-        self.logTraffic = config['debug']
-        self.component = comp
-
-    def startService(self):
-        self.resolver = Resolver(self.config, self.component)
-        self.resolver.setHandlerParent(self.component)
-
-    def stopService(self):
-        pass

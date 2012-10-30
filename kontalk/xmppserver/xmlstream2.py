@@ -109,7 +109,7 @@ class BindInitializer(BaseFeatureReceivingInitializer):
             return domish.Element((client.NS_XMPP_BIND, 'bind'))
 
     def initialize(self):
-        self.xmlstream.addOnetimeObserver('/iq/bind', self.onBind)
+        self.xmlstream.addOnetimeObserver('/iq/bind', self.onBind, 100)
 
     def deinitialize(self):
         self.xmlstream.removeObserver('/iq/bind', self.onBind)
@@ -133,6 +133,7 @@ class BindInitializer(BaseFeatureReceivingInitializer):
         if not self.canInitialize(self):
             return
 
+        stanza.consumed = True
         # resource has already been extracted by realm (avatarId)
         response = xmlstream.toResponse(stanza, 'result')
         bind = response.addElement((client.NS_XMPP_BIND, 'bind'))
@@ -154,7 +155,7 @@ class SessionInitializer(BaseFeatureReceivingInitializer):
             return domish.Element((client.NS_XMPP_SESSION, 'session'))
 
     def initialize(self):
-        self.xmlstream.addOnetimeObserver('/iq/session', self.onSession)
+        self.xmlstream.addOnetimeObserver('/iq/session', self.onSession, 100)
 
     def deinitialize(self):
         self.xmlstream.removeObserver('/iq/session', self.onSession)
@@ -163,6 +164,7 @@ class SessionInitializer(BaseFeatureReceivingInitializer):
         if not self.canInitialize(self):
             return
 
+        stanza.consumed = True
         iq = xmlstream.toResponse(stanza, 'result')
         iq.addElement((client.NS_XMPP_SESSION, 'session'))
         self.xmlstream.send(iq)
@@ -202,19 +204,19 @@ class ISASLServerMechanism(Interface):
 class PlainMechanism(object):
     """
     Implements the PLAIN SASL authentication mechanism.
-    
+
     The PLAIN SASL authentication mechanism is defined in RFC 2595.
     This should be folded into twisted.words.protocols.jabber.sasl_mechanisms.Plain
     @type portal: L{Portal}
     """
     implements(ISASLServerMechanism)
-    
+
     def __init__(self, portal=None):
         self.portal = portal
-    
+
     def getInitialChallenge(self):
         return defer.Deferred().errback(SASLMechanismError())
-    
+
     def parseInitialResponse(self, response):
         self.deferred = defer.Deferred()
         authzid, authcid, password = response.split('\x00')
@@ -222,13 +224,13 @@ class PlainMechanism(object):
         login = self.portal.login(auth.KontalkToken(password, True), None, IXMPPUser)
         login.addCallbacks(self.onSuccess, self.onFailure)
         return self.deferred
-    
+
     def parseResponse(self, response):
         return defer.Deferred().errback(SASLMechanismError())
 
     def onSuccess(self, (interface, avatar, logout)):
         self.deferred.callback(avatar)
-    
+
     def onFailure(self, failure):
         failure.trap(cred_error.UnauthorizedLogin)
         self.deferred.errback(sasl.SASLAuthError())
@@ -372,6 +374,7 @@ class StreamManager(xmlstream.XMPPHandlerCollection):
     """
 
     logTraffic = False
+    namespace = 'jabber:client'
 
     def __init__(self, xs):
         xmlstream.XMPPHandlerCollection.__init__(self)
@@ -396,7 +399,6 @@ class StreamManager(xmlstream.XMPPHandlerCollection):
 
         # get protocol handler up to speed when a connection has already
         # been established
-        log.debug("adding handler: %r" % (handler, ))
         if self.xmlstream and self._initialized:
             handler.makeConnection(self.xmlstream)
             handler.connectionInitialized()
@@ -421,6 +423,7 @@ class StreamManager(xmlstream.XMPPHandlerCollection):
             xs.rawDataOutFn = logDataOut
 
         self.xmlstream = xs
+        self.xmlstream.namespace = self.namespace
 
         for e in self:
             e.makeConnection(xs)
@@ -476,7 +479,7 @@ class StreamManager(xmlstream.XMPPHandlerCollection):
             e.connectionLost(reason)
 
 
-    def send(self, obj):
+    def send(self, obj, force=False):
         """
         Send data over the XML stream.
 
@@ -486,7 +489,7 @@ class StreamManager(xmlstream.XMPPHandlerCollection):
         @param obj: data to be sent over the XML stream. See
                     L{xmlstream.XmlStream.send} for details.
         """
-        if self._initialized:
+        if self._initialized or (force and self.xmlstream is not None):
             self.xmlstream.send(obj)
         else:
             self._packetQueue.append(obj)
