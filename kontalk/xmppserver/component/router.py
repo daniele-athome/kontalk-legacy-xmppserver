@@ -112,7 +112,10 @@ class Router(component.Router):
                 xs.send(error)
 
     def broadcast(self, stanza, same=False):
-        """Broadcast a stanza to every component."""
+        """
+        Broadcast a stanza to every component.
+        This alters the to attribute in outgoing stanza for each component.
+        """
         stanza = deepcopy(stanza)
         jid_from = jid.JID(stanza['from'])
         for host, xs in self.routes.iteritems():

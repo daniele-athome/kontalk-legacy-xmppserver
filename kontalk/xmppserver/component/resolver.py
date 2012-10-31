@@ -140,11 +140,15 @@ class MessageHandler(XMPPHandler):
     def connectionInitialized(self):
         # messages for the network
         self.xmlstream.addObserver("/message[@to='%s']" % (self.parent.network), self.parent.error, 100)
-        self.xmlstream.addObserver("/message", self.parent.bounce, 90)
+        self.xmlstream.addObserver("/message", self.message, 90)
 
     def message(self, stanza):
         if not stanza.consumed:
-            stanza.consumed = True
+            # no destination - use sender bare JID
+            if not stanza.hasAttribute('to'):
+                stanza['to'] = jid.JID(stanza['from']).userhost()
+
+            self.parent.bounce(stanza)
 
 
 class Resolver(component.Component):
@@ -202,6 +206,7 @@ class Resolver(component.Component):
             self.send(e.toResponse(stanza))
 
     def bounce(self, stanza):
+        """Send the stanza to the router."""
         if not stanza.consumed:
             stanza.consumed = True
             self.send(stanza)
@@ -255,7 +260,8 @@ class Resolver(component.Component):
         pres['from'] = to.userhost()
         pres['type'] = 'subscribed'
         self.send(pres, subscriber)
-        
+
+        """
         # send a fake roster entry
         roster = domish.Element((None, 'iq'))
         roster['type'] = 'set'
@@ -267,6 +273,7 @@ class Resolver(component.Component):
         }))
         roster.addChild(query)
         self.send(roster)
+        """
 
     def broadcastSubscribers(self, stanza):
         """Broadcast stanza to JID subscribers."""

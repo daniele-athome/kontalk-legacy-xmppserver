@@ -45,6 +45,9 @@ class PresenceHandler(XMPPHandler):
             stanza['from'] = self.xmlstream.otherEntity.full()
             self.parent.forward(stanza, True)
 
+    def features(self):
+        return tuple()
+
 
 class PingHandler(XMPPHandler):
     """
@@ -60,17 +63,54 @@ class PingHandler(XMPPHandler):
             self.parent.bounce(stanza)
         else:
             self.parent.forward(stanza)
+    
+    def features(self):
+        return (xmlstream2.NS_XMPP_PING, )
+
 
 class IQQueryHandler(XMPPHandler):
     """Handle various iq/query stanzas."""
 
-    supportedFeatures = (
-        xmlstream2.NS_IQ_REGISTER,
-        xmlstream2.NS_IQ_VERSION,
-        xmlstream2.NS_IQ_ROSTER,
-        xmlstream2.NS_IQ_LAST,
-        xmlstream2.NS_XMPP_PING,
-    )
+    def connectionInitialized(self):
+        self.xmlstream.addObserver("/iq[@type='get']/query[@xmlns='%s']" % (xmlstream2.NS_IQ_ROSTER), self.parent.bounce, 100)
+        self.xmlstream.addObserver("/iq/query[@xmlns='%s']" % (xmlstream2.NS_IQ_LAST), self.parent.forward, 100)
+        self.xmlstream.addObserver("/iq/query[@xmlns='%s']" % (xmlstream2.NS_IQ_VERSION), self.parent.forward, 100)
+        self.xmlstream.addObserver("/iq[@type='result']", self.parent.forward, 100)
+
+        # fallback: service unavailable
+        self.xmlstream.addObserver("/iq", self.parent.error, 50)
+
+    def features(self):
+        return (
+            xmlstream2.NS_IQ_REGISTER,
+            xmlstream2.NS_IQ_VERSION,
+            xmlstream2.NS_IQ_ROSTER,
+            xmlstream2.NS_IQ_LAST,
+        )
+
+
+class MessageHandler(XMPPHandler):
+    """Message stanzas handler."""
+
+    def connectionInitialized(self):
+        # messages for the server
+        log.debug("MessageHandler: handlers (%s)" % (self.parent.servername))
+        self.xmlstream.addObserver("/message[@to='%s']" % (self.parent.servername), self.parent.error, 100)
+        self.xmlstream.addObserver("/message", self.parent.forward, 90)
+
+    def features(self):
+        return tuple()
+
+
+class DiscoveryHandler(XMPPHandler):
+    """Handle iq stanzas for discovery."""
+
+    def __init__(self):
+        self.supportedFeatures = []
+
+    def connectionInitialized(self):
+        self.xmlstream.addObserver("/iq[@type='get'][@to='%s']/query[@xmlns='%s']" % (self.parent.network, xmlstream2.NS_DISCO_ITEMS), self.onDiscoItems, 100)
+        self.xmlstream.addObserver("/iq[@type='get'][@to='%s']/query[@xmlns='%s']" % (self.parent.network, xmlstream2.NS_DISCO_INFO), self.onDiscoInfo, 100)
 
     def onDiscoItems(self, stanza):
         if not stanza.consumed:
@@ -88,26 +128,6 @@ class IQQueryHandler(XMPPHandler):
                 query.addChild(domish.Element((None, 'feature'), attribs={'var': feature }))
             self.send(response)
 
-    def connectionInitialized(self):
-        self.xmlstream.addObserver("/iq[@type='get'][@to='%s']/query[@xmlns='%s']" % (self.parent.network, xmlstream2.NS_DISCO_ITEMS), self.onDiscoItems, 100)
-        self.xmlstream.addObserver("/iq[@type='get'][@to='%s']/query[@xmlns='%s']" % (self.parent.network, xmlstream2.NS_DISCO_INFO), self.onDiscoInfo, 100)
-        self.xmlstream.addObserver("/iq[@type='get']/query[@xmlns='%s']" % (xmlstream2.NS_IQ_ROSTER), self.parent.bounce, 100)
-        self.xmlstream.addObserver("/iq/query[@xmlns='%s']" % (xmlstream2.NS_IQ_LAST), self.parent.forward, 100)
-        self.xmlstream.addObserver("/iq/query[@xmlns='%s']" % (xmlstream2.NS_IQ_VERSION), self.parent.forward, 100)
-        self.xmlstream.addObserver("/iq[@type='result']", self.parent.forward, 100)
-
-        # fallback: service unavailable
-        self.xmlstream.addObserver("/iq", self.parent.error, 50)
-
-
-class MessageHandler(XMPPHandler):
-    """Message stanzas handler."""
-
-    def connectionInitialized(self):
-        # messages for the server
-        log.debug("MessageHandler: handlers (%s)" % (self.parent.servername))
-        self.xmlstream.addObserver("/message[@to='%s']" % (self.parent.servername), self.parent.error, 100)
-        self.xmlstream.addObserver("/message", self.parent.forward, 90)
 
 
 class C2SManager(xmlstream2.StreamManager):
@@ -119,6 +139,7 @@ class C2SManager(xmlstream2.StreamManager):
     @type router: L{xmlstream.StreamManager}
     """
 
+    disco_handler = DiscoveryHandler
     init_handlers = (
         PresenceHandler,
         PingHandler,
@@ -133,8 +154,17 @@ class C2SManager(xmlstream2.StreamManager):
         self.servername = servername
         xmlstream2.StreamManager.__init__(self, xs)
 
+        """
+        Register the discovery handler first so it can process features from
+        the other handlers.
+        """
+        disco = self.disco_handler()
+        disco.setHandlerParent(self)
+
         for handler in self.init_handlers:
-            handler().setHandlerParent(self)
+            h = handler()
+            h.setHandlerParent(self)
+            disco.supportedFeatures.extend(h.features())
 
     def _connected(self, xs):
         xmlstream2.StreamManager._connected(self, xs)
@@ -177,6 +207,14 @@ class C2SManager(xmlstream2.StreamManager):
             log.debug("bouncing %s" % (stanza.toXml(), ))
             stanza.consumed = True
             self.send(xmlstream.toResponse(stanza, 'result'))
+
+    def send(self, stanza, force=False):
+        """Send stanza to client, setting to and id attributes if not present."""
+        if not stanza.hasAttribute('to'):
+            stanza['to'] = self.xmlstream.otherEntity.full()
+        if not stanza.hasAttribute('id'):
+            stanza['id'] = util.rand_str(8, util.CHARSBOX_AZN_LOWERCASE)
+        xmlstream2.StreamManager.send(self, stanza, force)
 
     def forward(self, stanza, useFrom=False):
         """
@@ -233,7 +271,7 @@ class XMPPServerFactory(xish_xmlstream.XmlStreamFactoryMixin, ServerFactory):
         userid, resource = util.jid_to_userid(xs.otherEntity, True)
         if userid not in self.streams:
             self.streams[userid] = {}
-        self.streams[userid][resource] = xs
+        self.streams[userid][resource] = xs.manager
 
     def connectionLost(self, xs, reason):
         """Called from the handler when connection to a client is lost."""
@@ -242,25 +280,26 @@ class XMPPServerFactory(xish_xmlstream.XmlStreamFactoryMixin, ServerFactory):
             if userid in self.streams and resource in self.streams[userid]:
                 del self.streams[userid][resource]
 
-    def dispatch(self, stanza, to):
+    def dispatch(self, stanza, to=None):
         """
         Dispatch a stanza to a JID all to all available resources found locally.
         @raise L{KeyError}: if a destination route is not found
         """
-        userid, resource = util.jid_to_userid(to, True)
-        # deliver to the request jid
-        stanza['to'] = to.full()
+        # deliver to the requested jid
+        if to:
+            stanza['to'] = to.full()
+        else:
+            to = jid.JID(stanza['to'])
 
-        # generate id if not found
-        if not stanza.hasAttribute('id'):
-            stanza['id'] = util.rand_str(8, util.CHARSBOX_AZN_LOWERCASE)
+        userid, resource = util.jid_to_userid(to, True)
+
         stanza.defaultUri = stanza.uri = None
 
         if to.resource is not None:
                 self.streams[userid][resource].send(stanza)
         else:
-            for xs in self.streams[userid].itervalues():
-                xs.send(stanza)
+            for manager in self.streams[userid].itervalues():
+                manager.send(stanza)
 
     def local(self, stanza, to):
         """Handle stanzas delivered to this component."""
@@ -441,3 +480,8 @@ class C2SComponent(component.Component):
 
     def onError(self, stanza):
         log.debug("routing error: %s" % (stanza.toXml()))
+
+        # unroutable stanza :(
+        if stanza['type'] == 'unroutable':
+            e = error.StanzaError('service-unavailable', 'cancel')
+            self.sfactory.dispatch(e.toResponse(stanza.firstChildElement()), jid.JID(stanza['to']))
