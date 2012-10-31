@@ -53,8 +53,13 @@ class PingHandler(XMPPHandler):
     """
 
     def connectionInitialized(self):
-        self.xmlstream.addObserver("/iq[@type='get']/ping[@xmlns='%s']" % (xmlstream2.NS_XMPP_PING, ), self.parent.bounce, 100)
+        self.xmlstream.addObserver("/iq[@type='get']/ping[@xmlns='%s']" % (xmlstream2.NS_XMPP_PING, ), self.ping, 100)
 
+    def ping(self, stanza):
+        if not stanza.hasAttribute('to') or stanza['to'] == self.parent.network:
+            self.parent.bounce(stanza)
+        else:
+            self.parent.forward(stanza)
 
 class IQQueryHandler(XMPPHandler):
     """Handle various iq/query stanzas."""
@@ -89,16 +94,20 @@ class IQQueryHandler(XMPPHandler):
         self.xmlstream.addObserver("/iq[@type='get']/query[@xmlns='%s']" % (xmlstream2.NS_IQ_ROSTER), self.parent.bounce, 100)
         self.xmlstream.addObserver("/iq/query[@xmlns='%s']" % (xmlstream2.NS_IQ_LAST), self.parent.forward, 100)
         self.xmlstream.addObserver("/iq/query[@xmlns='%s']" % (xmlstream2.NS_IQ_VERSION), self.parent.forward, 100)
+        self.xmlstream.addObserver("/iq[@type='result']", self.parent.forward, 100)
 
-        # fallback: feature not implemented
-        self.xmlstream.addObserver("/iq", self.parent.error, 20, condition='feature-not-implemented')
+        # fallback: service unavailable
+        self.xmlstream.addObserver("/iq", self.parent.error, 50)
 
 
 class MessageHandler(XMPPHandler):
     """Message stanzas handler."""
 
     def connectionInitialized(self):
-        self.xmlstream.addObserver("/message", self.parent.forward, 100)
+        # messages for the server
+        log.debug("MessageHandler: handlers (%s)" % (self.parent.servername))
+        self.xmlstream.addObserver("/message[@to='%s']" % (self.parent.servername), self.parent.error, 100)
+        self.xmlstream.addObserver("/message", self.parent.forward, 90)
 
 
 class C2SManager(xmlstream2.StreamManager):
@@ -114,6 +123,7 @@ class C2SManager(xmlstream2.StreamManager):
         PresenceHandler,
         PingHandler,
         IQQueryHandler,
+        MessageHandler,
     )
 
     def __init__(self, xs, factory, router, network, servername):
@@ -227,9 +237,10 @@ class XMPPServerFactory(xish_xmlstream.XmlStreamFactoryMixin, ServerFactory):
 
     def connectionLost(self, xs, reason):
         """Called from the handler when connection to a client is lost."""
-        userid, resource = util.jid_to_userid(xs.otherEntity, True)
-        if userid in self.streams and resource in self.streams[userid]:
-            del self.streams[userid][resource]
+        if xs.otherEntity is not None:
+            userid, resource = util.jid_to_userid(xs.otherEntity, True)
+            if userid in self.streams and resource in self.streams[userid]:
+                del self.streams[userid][resource]
 
     def dispatch(self, stanza, to):
         """
@@ -240,8 +251,11 @@ class XMPPServerFactory(xish_xmlstream.XmlStreamFactoryMixin, ServerFactory):
         # deliver to the request jid
         stanza['to'] = to.full()
 
+        # generate id if not found
+        if not stanza.hasAttribute('id'):
+            stanza['id'] = util.rand_str(8, util.CHARSBOX_AZN_LOWERCASE)
         stanza.defaultUri = stanza.uri = None
-        #stanza.defaultUri = stanza.uri = 'jabber:client'
+
         if to.resource is not None:
                 self.streams[userid][resource].send(stanza)
         else:
@@ -366,7 +380,7 @@ class XMPPListenAuthenticator(xmlstream.ListenAuthenticator):
 class C2SComponent(component.Component):
     """
     Kontalk c2s component.
-    L{XMPPHandler} is for the connection with the router.
+    L{StreamManager} is for the connection with the router.
     """
 
     def __init__(self, config):

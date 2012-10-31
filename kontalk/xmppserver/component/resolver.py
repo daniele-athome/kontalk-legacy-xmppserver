@@ -138,7 +138,9 @@ class MessageHandler(XMPPHandler):
     """
 
     def connectionInitialized(self):
-        self.xmlstream.addObserver("/message", self.parent.bounce, 100)
+        # messages for the network
+        self.xmlstream.addObserver("/message[@to='%s']" % (self.parent.network), self.parent.error, 100)
+        self.xmlstream.addObserver("/message", self.parent.bounce, 90)
 
     def message(self, stanza):
         if not stanza.consumed:
@@ -207,11 +209,18 @@ class Resolver(component.Component):
     def send(self, stanza, to=None):
         """Resolves stanza recipient and send the route to the stanza."""
 
-        stanza['from'] = self.translateJID(jid.JID(stanza['from'])).full()
+        if stanza.hasAttribute('from'):
+            stanza['from'] = self.translateJID(jid.JID(stanza['from'])).full()
 
         if to is None:
             to = jid.JID(stanza['to'])
-        if to.host == self.network:
+        # stanza is intended to the network
+        if to.full() == self.network:
+            # TODO
+            log.debug("stanza for the network: %s" % (stanza.toXml(), ))
+            return
+
+        elif to.host == self.network:
             rcpts = self.lookupJID(to)
             if type(rcpts) == list:
                 for to in rcpts:
@@ -242,10 +251,22 @@ class Resolver(component.Component):
 
         # send subscription accepted immediately
         pres = domish.Element((None, "presence"))
-        pres['to'] = subscriber.userhost()
+        pres['to'] = subscriber.full()
         pres['from'] = to.userhost()
         pres['type'] = 'subscribed'
-        self.send(pres, subscriber.full())
+        self.send(pres, subscriber)
+        
+        # send a fake roster entry
+        roster = domish.Element((None, 'iq'))
+        roster['type'] = 'set'
+        roster['to'] = subscriber.full()
+        query = domish.Element((xmlstream2.NS_IQ_ROSTER, 'query'))
+        query.addChild(domish.Element((None, 'item'), attribs={
+            'jid'           : to.userhost(),
+            'subscription'  : 'both',
+        }))
+        roster.addChild(query)
+        self.send(roster)
 
     def broadcastSubscribers(self, stanza):
         """Broadcast stanza to JID subscribers."""
@@ -303,6 +324,7 @@ class Resolver(component.Component):
         FIXME one day this will return a deferred
         """
 
+        log.debug("looking up JIDs %r" % (self.local_users, ))
         # FIXME we are not really looking up the user yet
         if _jid.host == self.network:
             log.debug("[%s] network JID" % (_jid.full(), ))
