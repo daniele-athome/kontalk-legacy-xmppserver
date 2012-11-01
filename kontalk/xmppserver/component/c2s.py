@@ -63,7 +63,7 @@ class PingHandler(XMPPHandler):
             self.parent.bounce(stanza)
         else:
             self.parent.forward(stanza)
-    
+
     def features(self):
         return (xmlstream2.NS_XMPP_PING, )
 
@@ -431,7 +431,6 @@ class C2SComponent(component.Component):
         self.servername = config['host']
 
     def setup(self):
-        # TODO transform into C2SService/Component like in resolver.py
         self.db = database.connect_config(self.config)
 
         authrealm = auth.SASLRealm("Kontalk")

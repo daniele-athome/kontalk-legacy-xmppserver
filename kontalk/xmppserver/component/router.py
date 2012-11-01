@@ -59,14 +59,15 @@ class Router(component.Router):
 
         # advertise this component about the others
         for host in self.routes.iterkeys():
-            stanza = Presence()
-            stanza['from'] = host
-            xs.send(stanza)
+            if host is not None:
+                stanza = Presence()
+                stanza['from'] = host
+                xs.send(stanza)
 
         # add route and observers
         self.routes[destination] = xs
-        xs.addObserver('/bind', self.onBind, xs = xs)
-        xs.addObserver('/unbind', self.onUnbind, xs = xs)
+        xs.addObserver('/bind', self.onBind, 100, xs = xs)
+        xs.addObserver('/unbind', self.onUnbind, 100, xs = xs)
         xs.addObserver('/*', self.route, xs = xs)
 
     def removeRoute(self, destination, xs):
@@ -86,6 +87,9 @@ class Router(component.Router):
         @param stanza: The stanza to be routed.
         @type stanza: L{domish.Element}.
         """
+
+        if stanza.consumed:
+            return
 
         # reset namespace
         stanza.defaultUri = stanza.uri = component.NS_COMPONENT_ACCEPT
@@ -120,14 +124,26 @@ class Router(component.Router):
         jid_from = jid.JID(stanza['from'])
         for host, xs in self.routes.iteritems():
             # do not send to the original sender
-            if host != jid_from.host or same:
+            if host is not None and (host != jid_from.host or same):
                 log.debug("sending to %s" % (host, ))
                 stanza['to'] = host
                 xs.send(stanza)
 
     def onBind(self, stanza, xs):
         log.debug("binding component %s" % (stanza.toXml(), ))
-        # TODO
+        stanza.consumed = True
+
+        if stanza['name'] == '*':
+            route = None
+        else:
+            route = stanza['name']
+
+        if route not in self.routes:
+            self.routes[route] = xs
+            xs.send(domish.Element((None, 'bind')))
+        else:
+            xs.send(domish.Element((None, 'bind'), attribs={'error': 'conflict'}))
+            xs.transport.loseConnection()
 
     def onUnbind(self, stanza, xs):
         log.debug("unbinding component %s" % (stanza.toXml(), ))
