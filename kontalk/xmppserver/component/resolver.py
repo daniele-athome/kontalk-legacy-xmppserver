@@ -214,6 +214,7 @@ class Resolver(component.Component):
     def send(self, stanza, to=None):
         """Resolves stanza recipient and send the route to the stanza."""
 
+        util.resetNamespace(stanza, component.NS_COMPONENT_ACCEPT)
         if stanza.hasAttribute('from'):
             stanza['from'] = self.translateJID(jid.JID(stanza['from'])).full()
 
@@ -294,7 +295,6 @@ class Resolver(component.Component):
         log.debug("checking subscriptions to %s" % (watched.full(), ))
         bareWatched = watched.userhostJID()
         if bareWatched in self.subscriptions:
-            stanza.defaultUri = stanza.uri = None
             #stanza['from'] = watched.full()
 
             for sub in self.subscriptions[bareWatched]:

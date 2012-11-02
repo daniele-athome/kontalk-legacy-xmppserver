@@ -27,7 +27,7 @@ from twisted.words.xish import domish
 from wokkel import component
 from wokkel.xmppim import Presence, UnavailablePresence
 
-from kontalk.xmppserver import log
+from kontalk.xmppserver import log, util
 
 
 class Router(component.Router):
@@ -97,7 +97,7 @@ class Router(component.Router):
             return
 
         # reset namespace
-        stanza.defaultUri = stanza.uri = component.NS_COMPONENT_ACCEPT
+        util.resetNamespace(stanza, component.NS_COMPONENT_ACCEPT)
 
         if not stanza.hasAttribute('to'):
             log.debug("broadcasting stanza %s" % (stanza.toXml()))

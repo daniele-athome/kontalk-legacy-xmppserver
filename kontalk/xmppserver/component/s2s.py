@@ -28,7 +28,7 @@ from wokkel import component, server
 
 from zope.interface import Interface, implements
 
-from kontalk.xmppserver import log
+from kontalk.xmppserver import log, util
 
 
 class IS2SService(Interface):
@@ -45,23 +45,18 @@ class S2SService(object):
 
     implements(IS2SService)
 
-    def __init__(self, config):
+    def __init__(self, config, router):
         self.config = config
         self.defaultDomain = config['network']
         self.domains = set()
         self.domains.add(self.defaultDomain)
         self.secret = randbytes.secureRandom(16).encode('hex')
+        self.router = router
 
         self._outgoingStreams = {}
         self._outgoingQueues = {}
         self._outgoingConnecting = set()
         self.serial = 0
-
-    def routerConnectionInitialized(self, xs):
-        self.xmlstream = xs
-
-    def routerConnectionLost(self, reason):
-        self.xmlstream = None
 
     def outgoingInitialized(self, xs):
         thisHost = xs.thisEntity.host
@@ -171,8 +166,11 @@ class S2SService(object):
 
     def dispatch(self, xs, stanza):
         """
-        Send on element to be routed within the server.
+        Send a stanza to the router, checking some stuff first.
         """
+
+        # TODO take this from the stream?
+        util.resetNamespace(stanza, 'jabber:server')
         stanzaFrom = stanza.getAttribute('from')
         stanzaTo = stanza.getAttribute('to')
 
@@ -189,7 +187,7 @@ class S2SService(object):
             if sender.host != xs.otherEntity.host:
                 xs.sendStreamError(error.StreamError('invalid-from'))
             else:
-                self.xmlstream.send(stanza)
+                self.router.send(stanza)
 
 
 class S2SComponent(component.Component):
@@ -207,7 +205,7 @@ class S2SComponent(component.Component):
         self.servername = config['host']
 
     def setup(self):
-        self.service = S2SService(self.config)
+        self.service = S2SService(self.config, self)
         self.service.logTraffic = self.logTraffic
         self.sfactory = server.XMPPS2SServerFactory(self.service)
         self.sfactory.logTraffic = self.logTraffic
@@ -225,7 +223,7 @@ class S2SComponent(component.Component):
         bind = domish.Element((None, 'bind'), attribs={'name': '*'})
         self.send(bind)
 
-        self.service.routerConnectionInitialized(self)
+        self.xmlstream.addObserver("/error", self.onError)
         self.xmlstream.addObserver("/bind", self.consume)
         self.xmlstream.addObserver("/presence", self.dispatch)
         self.xmlstream.addObserver("/iq", self.dispatch)
@@ -235,18 +233,35 @@ class S2SComponent(component.Component):
         stanza.consumed = True
         log.debug("consuming stanza %s" % (stanza.toXml(), ))
 
+    def onError(self, stanza):
+        stanza.consmued = True
+        log.debug("routing error %s" % (stanza.toXml(), ))
+
     def dispatch(self, stanza):
+        """Handle incoming stanza from router to the proper server stream."""
         if not stanza.consumed:
             stanza.consumed = True
             log.debug("incoming stanza from router %s" % (stanza.toXml(), ))
+            util.resetNamespace(stanza, component.NS_COMPONENT_ACCEPT)
+            stanza['from'] = self.resolveJID(stanza['from']).full()
             to = stanza.getAttribute('to')
+
             if to is not None:
-                if to in (self.network, self.servername):
-                    log.debug("stanza is for %s - resolver is down?" % (stanza['to'], ))
+                sender = jid.JID(to)
+                if sender.host in (self.network, self.servername):
+                    log.debug("stanza is for %s - resolver is down?" % (sender.host, ))
                 else:
                     self.service.send(stanza)
 
     def _disconnected(self, reason):
         component.Component._disconnected(self, reason)
         log.debug("lost connection to router (%s)" % (reason, ))
-        self.service.routerConnectionLost(reason)
+
+    def resolveJID(self, _jid):
+        """Transform host attribute of JID from server name to network name."""
+        if isinstance(_jid, jid.JID):
+            return jid.JID(tuple=(_jid.user, self.network, _jid.resource))
+        else:
+            _jid = jid.JID(_jid)
+            _jid.host = self.network
+            return _jid

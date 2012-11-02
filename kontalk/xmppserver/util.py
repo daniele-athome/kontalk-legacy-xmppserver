@@ -20,6 +20,8 @@
 
 import random
 
+from wokkel import generic
+
 USERID_LENGTH = 40
 USERID_LENGTH_RESOURCE = 48
 
@@ -66,3 +68,11 @@ def rand_str(length = 32, chars = CHARSBOX_AZN_CASEINS):
 
     # Return the string
     return string
+
+def resetNamespace(node, fromUri = None, toUri = None):
+    """
+    Reset namespace of the given node and all of its children
+    """
+    node.defaultUri = node.uri = fromUri
+    generic.stripNamespace(node)
+    node.defaultUri = node.uri = toUri

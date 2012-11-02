@@ -374,7 +374,6 @@ class StreamManager(xmlstream.XMPPHandlerCollection):
     """
 
     logTraffic = False
-    namespace = 'jabber:client'
 
     def __init__(self, xs):
         xmlstream.XMPPHandlerCollection.__init__(self)

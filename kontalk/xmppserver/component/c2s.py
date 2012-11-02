@@ -139,6 +139,8 @@ class C2SManager(xmlstream2.StreamManager):
     @type router: L{xmlstream.StreamManager}
     """
 
+    namespace = 'jabber:client'
+
     disco_handler = DiscoveryHandler
     init_handlers = (
         PresenceHandler,
@@ -210,6 +212,7 @@ class C2SManager(xmlstream2.StreamManager):
 
     def send(self, stanza, force=False):
         """Send stanza to client, setting to and id attributes if not present."""
+        util.resetNamespace(stanza, component.NS_COMPONENT_ACCEPT, self.namespace)
         if not stanza.hasAttribute('to'):
             stanza['to'] = self.xmlstream.otherEntity.full()
         if not stanza.hasAttribute('id'):
@@ -219,11 +222,12 @@ class C2SManager(xmlstream2.StreamManager):
     def forward(self, stanza, useFrom=False):
         """
         Forward incoming stanza from clients to the router, setting the from
-        attribute to the sender entity."""
+        attribute to the sender entity.
+        """
         if not stanza.consumed:
             log.debug("forwarding %s" % (stanza.toXml(), ))
             stanza.consumed = True
-            stanza.defaultUri = stanza.uri = None
+            util.resetNamespace(stanza, component.NS_COMPONENT_ACCEPT)
             stanza['from'] = self.resolveJID(stanza['from'] if useFrom else self.xmlstream.otherEntity).full()
             self.router.send(stanza)
 

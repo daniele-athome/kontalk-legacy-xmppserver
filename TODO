@@ -1,7 +1,1 @@
-[ ] c2s: what if router is unreachable
-   [ ] 1. drop active client connections/refuse client connections
-   [ ] 2. reject stanzas immediately (stream error)
-   [x] 3. queue stanzas for future sending
-[x] what if default route has not been assigned
-   [ ] 1. drop stanza
-   [x] 2. send error back to component
+[ ] resolver has inconsinstent presence states when restarted
