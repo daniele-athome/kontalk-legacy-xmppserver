@@ -227,13 +227,17 @@ class Resolver(component.Component):
 
         elif to.host == self.network:
             rcpts = self.lookupJID(to)
-            if type(rcpts) == list:
-                for to in rcpts:
-                    stanza['to'] = to.full()
-                    component.Component.send(self, stanza)
-                    return
+            if rcpts is None:
+                e = error.StanzaError('item-not-found', 'cancel')
+                stanza = e.toResponse(stanza)
             else:
-                stanza['to'] = rcpts.full()
+                if type(rcpts) == list:
+                    for to in rcpts:
+                        stanza['to'] = to.full()
+                        component.Component.send(self, stanza)
+                        return
+                else:
+                    stanza['to'] = rcpts.full()
 
         component.Component.send(self, stanza)
 

@@ -75,6 +75,11 @@ class Router(component.Router):
         # we assume component is disconnecting so we don't remove observers
         component.Router.removeRoute(self, destination, xs)
 
+        # remove other bound names
+        for host in list(self.routes.keys()):
+            if self.routes[host] == xs:
+                del self.routes[host]
+
         stanza = UnavailablePresence()
         stanza['from'] = destination
         log.debug("unadvertising component %s" % (stanza['from'],))

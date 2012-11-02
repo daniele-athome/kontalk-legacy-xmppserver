@@ -52,6 +52,11 @@ class S2SService(object):
         self.domains.add(self.defaultDomain)
         self.secret = randbytes.secureRandom(16).encode('hex')
 
+        self._outgoingStreams = {}
+        self._outgoingQueues = {}
+        self._outgoingConnecting = set()
+        self.serial = 0
+
     def routerConnectionInitialized(self, xs):
         self.xmlstream = xs
 
@@ -104,9 +109,17 @@ class S2SService(object):
 
         self._outgoingConnecting.add((thisHost, otherHost))
 
+        """
         d = server.initiateS2S(factory)
         d.addBoth(resetConnecting)
         return d
+        """
+        # TEST with no SRV
+        #return server.initiateS2S(factory)
+        from twisted.internet import reactor
+        reactor.connectTCP(factory.authenticator.otherHost, 5269, factory)
+        factory.deferred.addBoth(resetConnecting)
+        return factory.deferred
 
     def validateConnection(self, thisHost, otherHost, sid, key):
         """
@@ -172,6 +185,7 @@ class S2SService(object):
             except jid.InvalidFormat:
                 log.debug("Dropping error stanza with malformed JID")
 
+            log.debug("sender = %s, otherEntity = %s" % (sender.full(), xs.otherEntity.full()))
             if sender.host != xs.otherEntity.host:
                 xs.sendStreamError(error.StreamError('invalid-from'))
             else:
@@ -191,11 +205,6 @@ class S2SComponent(component.Component):
         self.logTraffic = config['debug']
         self.network = config['network']
         self.servername = config['host']
-
-        self._outgoingStreams = {}
-        self._outgoingQueues = {}
-        self._outgoingConnecting = set()
-        self.serial = 0
 
     def setup(self):
         self.service = S2SService(self.config)
@@ -230,7 +239,12 @@ class S2SComponent(component.Component):
         if not stanza.consumed:
             stanza.consumed = True
             log.debug("incoming stanza from router %s" % (stanza.toXml(), ))
-            # TODO dispatch stanza
+            to = stanza.getAttribute('to')
+            if to is not None:
+                if to in (self.network, self.servername):
+                    log.debug("stanza is for %s - resolver is down?" % (stanza['to'], ))
+                else:
+                    self.service.send(stanza)
 
     def _disconnected(self, reason):
         component.Component._disconnected(self, reason)
