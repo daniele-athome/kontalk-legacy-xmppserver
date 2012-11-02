@@ -29,7 +29,7 @@ from twisted.words.xish import domish, xmlstream as xish_xmlstream
 
 from wokkel import xmppim, component
 
-from kontalk.xmppserver import log, auth, keyring, database, util
+from kontalk.xmppserver import log, auth, keyring, database, util, storage
 from kontalk.xmppserver import xmlstream2
 
 
@@ -435,10 +435,11 @@ class C2SComponent(component.Component):
         self.servername = config['host']
 
     def setup(self):
-        self.db = database.connect_config(self.config)
+        storage.init(self.config['database'])
+        self.stanzadb = storage.MySQLStanzaStorage()
 
         authrealm = auth.SASLRealm("Kontalk")
-        ring = keyring.Keyring(database.servers(self.db), self.config['fingerprint'])
+        ring = keyring.Keyring(storage.MySQLNetworkStorage(), self.config['fingerprint'])
         authportal = portal.Portal(authrealm, [auth.AuthKontalkToken(self.config['fingerprint'], ring)])
 
         self.sfactory = XMPPServerFactory(authportal, self, self.network, self.servername)

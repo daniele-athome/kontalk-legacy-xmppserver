@@ -18,7 +18,6 @@
  along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
-from copy import deepcopy
 
 from twisted.words.protocols.jabber.component import XMPPComponentServerFactory
 from twisted.words.protocols.jabber import jid
@@ -125,7 +124,6 @@ class Router(component.Router):
         Broadcast a stanza to every component.
         This alters the to attribute in outgoing stanza for each component.
         """
-        stanza = deepcopy(stanza)
         jid_from = jid.JID(stanza['from'])
         for host, xs in self.routes.iteritems():
             # do not send to the original sender

@@ -23,6 +23,8 @@ from pyme import core
 from pyme.constants.sig import mode as sigmode
 from pyme.constants.keylist import mode as keymode
 
+from twisted.internet import defer
+
 
 class Keyring:
     '''Handles all keyring releated functions.'''
@@ -34,19 +36,22 @@ class Keyring:
         'messages' : (0, 100)
     }
 
-    def __init__(self, serversdb, fingerprint):
-        self._db = serversdb
+    def __init__(self, db, fingerprint):
+        self._db = db
         self.fingerprint = fingerprint
-        self.reload()
+        self._list = []
+        self._reload()
 
     def itervalues(self):
         '''Wrapper for itervalues() of internal server list.'''
         return self._list.itervalues()
 
-    def reload(self):
-        self._list = self._db.get_list()
-        self._keyring = [x for x in self._list.iterkeys()]
-        self._keyring.insert(0, self.fingerprint)
+    def _reload(self):
+        def done(data):
+            self._list = data
+            self._keyring = [x for x in self._list.iterkeys()]
+            self._keyring.insert(0, self.fingerprint)
+        self._db.get_list().addCallback(done)
 
     def s2s_addr(self, fingerprint):
         d = self._list[fingerprint]

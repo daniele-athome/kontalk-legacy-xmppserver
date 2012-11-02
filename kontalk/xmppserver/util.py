@@ -76,3 +76,9 @@ def resetNamespace(node, fromUri = None, toUri = None):
     node.defaultUri = node.uri = fromUri
     generic.stripNamespace(node)
     node.defaultUri = node.uri = toUri
+
+def str_none(obj):
+    if obj is not None:
+        return str(obj)
+    else:
+        return None

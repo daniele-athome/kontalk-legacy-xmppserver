@@ -27,7 +27,7 @@ from twisted.words.protocols.jabber import jid, xmlstream, error
 
 from wokkel import xmppim, component
 
-from kontalk.xmppserver import log, database, util, xmlstream2, version
+from kontalk.xmppserver import log, storage, util, xmlstream2, version
 
 
 class PresenceHandler(XMPPHandler):
@@ -56,7 +56,7 @@ class PresenceHandler(XMPPHandler):
             # TODO handle push notifications ID as capability
             # http://xmpp.org/extensions/xep-0115.html
 
-            self.parent.usercache.update(userid, status=status)
+            self.parent.presencedb.presence(stanza)
             self.parent.local_user_available(user)
 
         self.parent.broadcastSubscribers(stanza)
@@ -69,10 +69,8 @@ class PresenceHandler(XMPPHandler):
         self.parent.cancelSubscriptions(user)
 
         if user.user:
-            userid = util.jid_to_userid(user)
-
             # update usercache with last seen
-            self.parent.usercache.update(userid)
+            self.parent.presencedb.touch(user)
             self.parent.local_user_unavailable(user)
 
         self.parent.broadcastSubscribers(stanza)
@@ -158,8 +156,8 @@ class Resolver(component.Component):
     server JIDs (prime.kontalk.net), altering the "to" attribute and bouncing
     the stanza back to the router.
 
-    @ivar usercache: database connection to the usercache table
-    @type usercache: L{UsercacheDb}
+    @ivar presencedb: database connection to the usercache table
+    @type presencedb: L{PresenceStorage}
     @ivar subscriptions: a map of user subscriptions (key=watched, value=subscribers)
     @type subscriptions: C{dict}
     """
@@ -179,8 +177,8 @@ class Resolver(component.Component):
         self.network = config['network']
         self.servername = config['host']
 
-        self.db = database.connect_config(self.config)
-        self.usercache = database.usercache(self.db)
+        storage.init(config['database'])
+        self.presencedb = storage.MySQLPresenceStorage()
         self.subscriptions = {}
         self.local_users = {}
 
