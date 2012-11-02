@@ -200,12 +200,14 @@ class C2SManager(xmlstream2.StreamManager):
         if not stanza.consumed:
             log.debug("error %s" % (stanza.toXml(), ))
             stanza.consumed = True
+            util.resetNamespace(stanza, self.namespace)
             e = error.StanzaError(condition, 'cancel')
             self.send(e.toResponse(stanza), True)
 
     def bounce(self, stanza):
         """Bounce stanzas as results."""
         if not stanza.consumed:
+            util.resetNamespace(stanza, self.namespace)
             log.debug("bouncing %s" % (stanza.toXml(), ))
             stanza.consumed = True
             self.send(xmlstream.toResponse(stanza, 'result'))
@@ -225,6 +227,7 @@ class C2SManager(xmlstream2.StreamManager):
         attribute to the sender entity.
         """
         if not stanza.consumed:
+            util.resetNamespace(stanza, self.namespace)
             log.debug("forwarding %s" % (stanza.toXml(), ))
             stanza.consumed = True
             util.resetNamespace(stanza, component.NS_COMPONENT_ACCEPT)

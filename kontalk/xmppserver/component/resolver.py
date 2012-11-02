@@ -19,13 +19,13 @@
 '''
 
 
-import base64
+import datetime
 
 from twisted.words.protocols.jabber.xmlstream import XMPPHandler
 from twisted.words.xish import domish
 from twisted.words.protocols.jabber import jid, xmlstream, error
 
-from wokkel import xmppim, component
+from wokkel import component
 
 from kontalk.xmppserver import log, storage, util, xmlstream2, version
 
@@ -45,14 +45,6 @@ class PresenceHandler(XMPPHandler):
         # update usercache with last seen and status
         user = jid.JID(stanza['from'])
         if user.user:
-            userid = util.jid_to_userid(user)
-
-            # TODO handle multiple statuses with xml:lang
-            if stanza.status:
-                status = base64.b64encode(stanza.status.__str__().encode('utf-8'))
-            else:
-                status = None
-
             # TODO handle push notifications ID as capability
             # http://xmpp.org/extensions/xep-0115.html
 
@@ -116,17 +108,26 @@ class IQQueryHandler(XMPPHandler):
     def last_activity(self, stanza):
         if not stanza.consumed:
             stanza.consumed = True
-            response = xmlstream.toResponse(stanza, 'result')
 
             if stanza['to'] == self.parent.network:
                 # TODO server uptime
                 seconds = 123456
+                response = xmlstream.toResponse(stanza, 'result')
+                response.addChild(domish.Element((xmlstream2.NS_IQ_LAST, 'query'), attribs={'seconds': str(seconds)}))
+                self.send(response)
             else:
-                # TODO seconds ago user was last seen
-                seconds = 10
+                # seconds ago user was last seen
+                # FIXME this should use L{lookupJID}
+                def userdata(data, stanza):
+                    log.debug("data: %r" % (data, ))
+                    now = datetime.datetime.today()
+                    delta = now - data['timestamp']
+                    response = xmlstream.toResponse(stanza, 'result')
+                    response.addChild(domish.Element((xmlstream2.NS_IQ_LAST, 'query'), attribs={'seconds': str(delta.total_seconds())}))
+                    self.send(response)
 
-            response.addChild(domish.Element((xmlstream2.NS_IQ_LAST, 'query'), attribs={'seconds': str(seconds)}))
-            self.send(response)
+                d = self.parent.presencedb.get(jid.JID(stanza['to']))
+                d.addCallback(userdata, stanza)
 
 
 class MessageHandler(XMPPHandler):

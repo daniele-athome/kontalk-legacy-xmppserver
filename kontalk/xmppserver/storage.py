@@ -59,6 +59,10 @@ class StanzaStorage():
 class PresenceStorage():
     """Presence cache storage."""
 
+    def get(self, user_jid):
+        """Retrieve info about a user."""
+        pass
+
     def presence(self, stanza):
         """Persist a presence."""
         pass
@@ -88,15 +92,15 @@ class MySQLStanzaStorage(StanzaStorage):
     def get_by_id(self, stanzaId):
         global dbpool
         def _translate(tx, stanzaId):
-            tx.execute('SELECT * FROM stanzas WHERE id = ?', (stanzaId, ))
-            data = tx.fetchone()
-            # return content and timestamp
-            return (data[3], data[4])
+            tx.execute('SELECT content, timestamp FROM stanzas WHERE id = ?', (stanzaId, ))
+            return tx.fetchone()
         return dbpool.runInteraction(_translate, stanzaId)
 
     def get_by_sender(self, sender):
-        global dbpool
-        return dbpool.runQuery('SELECT * FROM stanzas WHERE sender = ?', sender)
+        # TODO
+        #global dbpool
+        #return dbpool.runQuery('SELECT id, recipient, content, timestamp FROM stanzas WHERE sender = ?', sender)
+        pass
 
     def get_by_recipient(self, recipient):
         pass
@@ -107,7 +111,7 @@ class MySQLNetworkStorage(NetworkStorage):
         global dbpool
         def _translate(tx):
             out = {}
-            tx.execute('SELECT * FROM servers')
+            tx.execute('SELECT fingerprint, host, s2s_port FROM servers')
             data = tx.fetchall()
             for row in data:
                 fp = str(row[0])
@@ -120,10 +124,44 @@ class MySQLNetworkStorage(NetworkStorage):
 
 class MySQLPresenceStorage(PresenceStorage):
 
+    def get(self, user_jid):
+        def _fetchone(tx, query, args):
+            tx.execute(query, args)
+            data = tx.fetchone()
+            return {
+                'timestamp': data[0],
+                'status': data[1],
+                'show': data[2]
+            }
+        def _fetchall(tx, query, args):
+            tx.execute(query, args)
+            data = tx.fetchall()
+            out = []
+            for d in data:
+                out.append({
+                    'timestamp': d[0],
+                    'status': d[1],
+                    'show': d[2]
+                })
+            return out
+
+        userid = util.jid_to_userid(user_jid)
+        if user_jid.resource:
+            interaction = _fetchone
+            query = 'SELECT `timestamp`, `status`, `show` FROM presence WHERE userid = ?'
+            args = (userid, )
+        else:
+            interaction = _fetchall
+            query = 'SELECT `timestamp`, `status`, `show` FROM presence WHERE SUBSTR(userid, 1, 40) = ? AND `timestamp` = (SELECT MAX(`timestamp`) FROM presence WHERE SUBSTR(userid, 1, 40) = ?)'
+            args = (userid, userid)
+
+        return dbpool.runInteraction(interaction, query, args)
+
     def presence(self, stanza):
         global dbpool
         sender = jid.JID(stanza['from'])
         userid = util.jid_to_userid(sender)
+        # TODO base64.b64encode(stanza.status.__str__().encode('utf-8'))
         values = (userid, util.str_none(stanza.status), util.str_none(stanza.show))
         dbpool.runOperation('REPLACE INTO presence VALUES(?, NOW(), ?, ?)', values)
 
