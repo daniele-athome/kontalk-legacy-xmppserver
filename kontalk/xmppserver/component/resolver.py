@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
-'''Kontalk XMPP resolver component.'''
-'''
+"""Kontalk XMPP resolver component."""
+"""
   Kontalk XMPP server
   Copyright (C) 2011 Kontalk Devteam <devteam@kontalk.org>
 
@@ -16,7 +16,7 @@
 
  You should have received a copy of the GNU General Public License
  along with this program.  If not, see <http://www.gnu.org/licenses/>.
-'''
+"""
 
 
 import datetime
@@ -226,6 +226,10 @@ class Resolver(component.Component):
             return
 
         elif to.host == self.network:
+            # no local users - drop silently to avoid loops
+            if len(self.local_users) == 0:
+                return
+
             rcpts = self.lookupJID(to)
             if rcpts is None:
                 e = error.StanzaError('item-not-found', 'cancel')

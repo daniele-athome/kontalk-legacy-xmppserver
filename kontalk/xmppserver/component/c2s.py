@@ -308,10 +308,6 @@ class XMPPServerFactory(xish_xmlstream.XmlStreamFactoryMixin, ServerFactory):
             for manager in self.streams[userid].itervalues():
                 manager.send(stanza)
 
-    def local(self, stanza, to):
-        """Handle stanzas delivered to this component."""
-        pass
-
 
 class XMPPListenAuthenticator(xmlstream.ListenAuthenticator):
     """
@@ -481,7 +477,7 @@ class C2SComponent(component.Component):
                 if to.user is not None:
                     self.sfactory.dispatch(stanza, jid.JID(tuple=(to.user, self.network, to.resource)))
                 else:
-                    self.sfactory.local(stanza, to)
+                    self.local(stanza)
             else:
                 log.debug("stanza is not our concern or is an error")
 
@@ -492,3 +488,16 @@ class C2SComponent(component.Component):
         if stanza['type'] == 'unroutable':
             e = error.StanzaError('service-unavailable', 'cancel')
             self.sfactory.dispatch(e.toResponse(stanza.firstChildElement()), jid.JID(stanza['to']))
+
+    def local(self, stanza):
+        """Handle stanzas delivered to this component."""
+
+        # resolver is up! Broadcast all of our local presence data
+        if stanza.name == 'presence' and stanza['from'] == self.network:
+            log.debug("resolver is online - restoring presence state")
+
+            presence = domish.Element((None, 'presence'))
+            for userid, resources in self.sfactory.streams.iteritems():
+                for resource in resources:
+                    presence['from'] = jid.JID(tuple=(userid, self.servername, resource)).full()
+                    self.send(presence)
