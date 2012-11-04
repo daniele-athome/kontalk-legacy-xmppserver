@@ -28,7 +28,7 @@ from twisted.words.protocols.jabber import jid, xmlstream, error
 
 from wokkel import component
 
-from kontalk.xmppserver import log, storage, util, xmlstream2, version
+from kontalk.xmppserver import log, storage, util, xmlstream2, version, keyring
 
 
 class PresenceHandler(XMPPHandler):
@@ -200,6 +200,8 @@ class Resolver(component.Component):
 
         storage.init(config['database'])
         self.presencedb = storage.MySQLPresenceStorage()
+        self.keyring = keyring.Keyring(storage.MySQLNetworkStorage(), config['fingerprint'])
+
         self.subscriptions = {}
         self.local_users = {}
 
@@ -248,7 +250,7 @@ class Resolver(component.Component):
             self.send(stanza)
 
     def send(self, stanza, to=None):
-        """Resolves stanza recipient and send the route to the stanza."""
+        """Resolves stanza recipient and send the stanza to the router."""
 
         util.resetNamespace(stanza, component.NS_COMPONENT_ACCEPT)
         if stanza.hasAttribute('from'):
@@ -286,8 +288,8 @@ class Resolver(component.Component):
             d = self.lookupJID(to)
             d.addCallback(_lookup, stanza=stanza)
 
-        # already resolved JID - send to router
-        elif to.host == self.servername:
+        # otherwise send to router
+        else:
             component.Component.send(self, stanza)
 
     def cancelSubscriptions(self, user):
@@ -375,6 +377,38 @@ class Resolver(component.Component):
             return jid.JID(tuple=(_jid.user, self.network, _jid.resource))
         return _jid
 
+    def network_presence_probe(self, to):
+        """
+        Broadcast a presence probe to find the given jid.
+        @return: a list of JID attempts to the network that can be watched to
+        for responses
+        """
+        presence = domish.Element((None, 'presence'))
+        presence['type'] = 'probe'
+        presence['from'] = self.network
+        toList = []
+        for server in self.keyring.itervalues():
+            to.host = server['host']
+            presence['to'] = to.full()
+            presence['id'] = util.rand_str(8, util.CHARSBOX_AZN_LOWERCASE)
+            self.send(presence)
+            toList.append(to)
+
+        return toList
+
+    def find_jid(self, _jid):
+        """
+        Send a presence probe to the network and wait for the first response.
+        """
+        toList = self.network_presence_probe(_jid)
+        def presence(stanza, probes):
+            # check if stanza is for the requested user
+            sender = jid.JID(stanza['from'])
+            # TODO AAAAHHHHHH
+            self.xmlstream.removeObserver("/presence[to='%s']" % (self.network, ), presence)
+
+        self.xmlstream.addObserver("/presence[to='%s']" % (self.network, ), presence, 1000, probes=toList)
+
     def lookupJID(self, _jid):
         """
         Lookup a jid in the network.
@@ -391,10 +425,14 @@ class Resolver(component.Component):
                 log.debug("[%s] full JID" % (_jid.full(), ))
                 if _jid.user in self.local_users and _jid.resource in self.local_users[_jid.user]:
                     result = jid.JID(tuple=(_jid.user, self.servername, _jid.resource))
+                else:
+                    self.network_presence_probe(_jid)
             else:
                 log.debug("[%s] bare JID" % (_jid.full(), ))
                 if _jid.user in self.local_users:
                     result = [jid.JID(tuple=(_jid.user, self.servername, x)) for x in self.local_users[_jid.user]]
+                # lookup in the network too
+                self.network_presence_probe(_jid)
 
             if result is None:
                 log.debug("[%s] unknown JID" % (_jid.full(), ))

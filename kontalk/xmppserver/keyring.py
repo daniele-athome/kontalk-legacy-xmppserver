@@ -20,10 +20,7 @@
 
 # pyme
 from pyme import core
-from pyme.constants.sig import mode as sigmode
 from pyme.constants.keylist import mode as keymode
-
-from twisted.internet import defer
 
 
 class Keyring:

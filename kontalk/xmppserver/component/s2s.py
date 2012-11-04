@@ -50,6 +50,7 @@ class S2SService(object):
         self.defaultDomain = config['network']
         self.domains = set()
         self.domains.add(self.defaultDomain)
+        self.domains.add(config['host'])
         self.secret = randbytes.secureRandom(16).encode('hex')
         self.router = router
 
@@ -112,7 +113,10 @@ class S2SService(object):
         # TEST with no SRV
         #return server.initiateS2S(factory)
         from twisted.internet import reactor
-        reactor.connectTCP(factory.authenticator.otherHost, 5269, factory)
+        if factory.authenticator.otherHost == 'beta.kontalk.net':
+            reactor.connectTCP(factory.authenticator.otherHost, 6827, factory)
+        else:
+            reactor.connectTCP(factory.authenticator.otherHost, 5269, factory)
         factory.deferred.addBoth(resetConnecting)
         return factory.deferred
 
@@ -138,7 +142,10 @@ class S2SService(object):
         # TEST with no SRV
         #return server.initiateS2S(factory)
         from twisted.internet import reactor
-        reactor.connectTCP(factory.authenticator.otherHost, 5269, factory)
+        if factory.authenticator.otherHost == 'beta.kontalk.net':
+            reactor.connectTCP(factory.authenticator.otherHost, 6827, factory)
+        else:
+            reactor.connectTCP(factory.authenticator.otherHost, 5269, factory)
         return factory.deferred
 
     def send(self, stanza):
