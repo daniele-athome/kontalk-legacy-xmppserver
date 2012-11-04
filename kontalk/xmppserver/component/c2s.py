@@ -19,6 +19,8 @@
 """
 
 
+import time
+
 from twisted.application import strports
 from twisted.cred import portal
 from twisted.internet.protocol import ServerFactory
@@ -30,7 +32,7 @@ from twisted.words.xish import domish, xmlstream as xish_xmlstream
 from wokkel import xmppim, component
 
 from kontalk.xmppserver import log, auth, keyring, util, storage
-from kontalk.xmppserver import xmlstream2
+from kontalk.xmppserver import xmlstream2, version
 
 
 class PresenceHandler(XMPPHandler):
@@ -73,12 +75,37 @@ class IQHandler(XMPPHandler):
 
     def connectionInitialized(self):
         self.xmlstream.addObserver("/iq[@type='get']/query[@xmlns='%s']" % (xmlstream2.NS_IQ_ROSTER), self.parent.bounce, 100)
-        self.xmlstream.addObserver("/iq/query[@xmlns='%s']" % (xmlstream2.NS_IQ_LAST), self.parent.forward, 100)
-        self.xmlstream.addObserver("/iq/query[@xmlns='%s']" % (xmlstream2.NS_IQ_VERSION), self.parent.forward, 100)
+        self.xmlstream.addObserver("/iq/query[@xmlns='%s']" % (xmlstream2.NS_IQ_LAST), self.forward_check, 100,
+            fn=self.parent.forward, componentfn=self.last_activity)
+        self.xmlstream.addObserver("/iq/query[@xmlns='%s']" % (xmlstream2.NS_IQ_VERSION), self.forward_check, 100,
+            fn=self.parent.forward, componentfn=self.version)
         self.xmlstream.addObserver("/iq[@type='result']", self.parent.forward, 100)
 
         # fallback: service unavailable
         self.xmlstream.addObserver("/iq", self.parent.error, 50)
+
+    def forward_check(self, stanza, fn, componentfn):
+        if not stanza.consumed:
+            if stanza['to'] == self.parent.servername:
+                return componentfn(stanza)
+            else:
+                return fn(stanza)
+
+    def last_activity(self, stanza):
+        stanza.consumed = True
+        seconds = self.parent.router.uptime()
+        response = xmlstream.toResponse(stanza, 'result')
+        response.addChild(domish.Element((xmlstream2.NS_IQ_LAST, 'query'), attribs={'seconds': str(int(seconds))}))
+        self.send(response)
+
+    def version(self, stanza):
+        stanza.consumed = True
+        response = xmlstream.toResponse(stanza, 'result')
+        query = domish.Element((xmlstream2.NS_IQ_VERSION, 'query'))
+        query.addElement((None, 'name'), content=version.NAME + '-c2s')
+        query.addElement((None, 'version'), content=version.VERSION)
+        response.addChild(query)
+        self.send(response)
 
     def features(self):
         return (
@@ -94,8 +121,8 @@ class MessageHandler(XMPPHandler):
 
     def connectionInitialized(self):
         # messages for the server
-        log.debug("MessageHandler: handlers (%s)" % (self.parent.servername))
-        self.xmlstream.addObserver("/message[@to='%s']" % (self.parent.servername), self.parent.error, 100)
+        #self.xmlstream.addObserver("/message[@to='%s']" % (self.parent.servername), self.parent.error, 100)
+        pass
 
     def features(self):
         return tuple()
@@ -123,6 +150,8 @@ class DiscoveryHandler(XMPPHandler):
             stanza.consumed = True
             response = xmlstream.toResponse(stanza, 'result')
             query = response.addElement((xmlstream2.NS_DISCO_INFO, 'query'))
+            query.addChild(domish.Element((None, 'identity'), attribs={'category': 'server', 'type' : 'im', 'name': version.IDENTITY}))
+
             for feature in self.supportedFeatures:
                 query.addChild(domish.Element((None, 'feature'), attribs={'var': feature }))
             self.send(response)
@@ -206,12 +235,11 @@ class C2SManager(xmlstream2.StreamManager):
                 if to.user is not None and to.resource is not None:
                     self.forward(stanza)
 
-                # everythign else is handled by handlers
-
-            # stanza is not for us, forward to router
-            else:
+            # stanza is not intended to component either
+            elif to.host != self.servername:
                 self.forward(stanza)
 
+            # everything else is handled by handlers
 
     def iq(self, stanza):
         return self.handle(stanza)
@@ -477,10 +505,12 @@ class C2SComponent(component.Component):
         self.logTraffic = config['debug']
         self.network = config['network']
         self.servername = config['host']
+        self.start_time = time.time()
 
     def setup(self):
         storage.init(self.config['database'])
         self.stanzadb = storage.MySQLStanzaStorage()
+        self.presencedb = storage.MySQLPresenceStorage()
 
         authrealm = auth.SASLRealm("Kontalk")
         ring = keyring.Keyring(storage.MySQLNetworkStorage(), self.config['fingerprint'])
@@ -491,6 +521,9 @@ class C2SComponent(component.Component):
 
         return strports.service('tcp:' + str(self.config['bind'][1]) +
             ':interface=' + str(self.config['bind'][0]), self.sfactory)
+
+    def uptime(self):
+        return time.time() - self.start_time
 
     """ Connection with router """
 
@@ -552,8 +585,19 @@ class C2SComponent(component.Component):
         if stanza.name == 'presence' and stanza['from'] == self.network:
             log.debug("resolver is online - restoring presence state")
 
-            presence = domish.Element((None, 'presence'))
             for userid, resources in self.sfactory.streams.iteritems():
                 for resource in resources:
-                    presence['from'] = jid.JID(tuple=(userid, self.servername, resource)).full()
-                    self.send(presence)
+                    sender = jid.JID(tuple=(userid, self.servername, resource))
+                    def send_presence(data, sender):
+                        presence = domish.Element((None, 'presence'))
+                        presence['from'] = sender.full()
+
+                        if data['status'] is not None:
+                            presence.addElement((None, 'status'), content=data['status'])
+                        if data['show'] is not None:
+                            presence.addElement((None, 'show'), content=data['show'])
+
+                        self.send(presence)
+
+                    d = self.presencedb.get(sender)
+                    d.addCallback(send_presence, sender=sender)

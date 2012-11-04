@@ -1,4 +1,4 @@
-[ ] Service Discovery: http://xmpp.org/extensions/xep-0030.html
 
 [x] stanza server processing
 [x] leave "to" as was from the original sender stanza
+[x] Service Discovery: http://xmpp.org/extensions/xep-0030.html

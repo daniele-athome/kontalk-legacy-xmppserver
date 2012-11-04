@@ -19,8 +19,9 @@
 """
 
 
-import datetime
+import time, datetime
 
+from twisted.internet import defer
 from twisted.words.protocols.jabber.xmlstream import XMPPHandler
 from twisted.words.xish import domish
 from twisted.words.protocols.jabber import jid, xmlstream, error
@@ -110,26 +111,38 @@ class IQHandler(XMPPHandler):
             stanza.consumed = True
 
             if stanza['to'] == self.parent.network:
-                # TODO server uptime
-                seconds = 123456
+                # server uptime
+                seconds = self.parent.uptime()
                 response = xmlstream.toResponse(stanza, 'result')
-                response.addChild(domish.Element((xmlstream2.NS_IQ_LAST, 'query'), attribs={'seconds': str(seconds)}))
+                response.addChild(domish.Element((xmlstream2.NS_IQ_LAST, 'query'), attribs={'seconds': str(int(seconds))}))
                 self.send(response)
             else:
                 # seconds ago user was last seen
-                # FIXME this should use L{lookupJID}
                 def userdata(data, stanza):
-                    log.debug("data: %r" % (data, ))
-                    if type(data) == list:
-                        data = data[0]
+                    presence = data[0]
+                    lookup = data[1]
 
-                    now = datetime.datetime.today()
-                    delta = now - data['timestamp']
+                    log.debug("presence/lookup: %r/%r" % (presence, lookup))
+                    if type(presence) == list:
+                        presence = presence[0]
+
                     response = xmlstream.toResponse(stanza, 'result')
-                    response.addChild(domish.Element((xmlstream2.NS_IQ_LAST, 'query'), attribs={'seconds': str(int(delta.total_seconds()))}))
-                    self.send(response)
+                    if lookup is not None:
+                        seconds = 0
+                    else:
+                        now = datetime.datetime.today()
+                        delta = now - presence['timestamp']
+                        seconds = int(delta.total_seconds())
 
-                d = self.parent.presencedb.get(jid.JID(stanza['to']))
+                    query = domish.Element((xmlstream2.NS_IQ_LAST, 'query'), attribs={ 'seconds' : str(seconds) })
+                    response.addChild(query)
+                    self.send(response)
+                    log.debug("response sent: %s" % (response.toXml(), ))
+
+                to = jid.JID(stanza['to'])
+                d1 = self.parent.presencedb.get(to)
+                d2 = self.parent.lookupJID(to)
+                d = defer.gatherResults((d1, d2))
                 d.addCallback(userdata, stanza)
 
 
@@ -141,7 +154,7 @@ class MessageHandler(XMPPHandler):
 
     def connectionInitialized(self):
         # messages for the network
-        self.xmlstream.addObserver("/message[@to='%s']" % (self.parent.network), self.parent.error, 100)
+        #self.xmlstream.addObserver("/message[@to='%s']" % (self.parent.network), self.parent.error, 100)
         self.xmlstream.addObserver("/message", self.message, 90)
 
     def message(self, stanza):
@@ -183,6 +196,7 @@ class Resolver(component.Component):
         self.logTraffic = config['debug']
         self.network = config['network']
         self.servername = config['host']
+        self.start_time = time.time()
 
         storage.init(config['database'])
         self.presencedb = storage.MySQLPresenceStorage()
@@ -192,6 +206,9 @@ class Resolver(component.Component):
         # protocol handlers here!!
         for handler in self.protocolHandlers:
             handler().setHandlerParent(self)
+
+    def uptime(self):
+        return time.time() - self.start_time
 
     def _authd(self, xs):
         component.Component._authd(self, xs)
@@ -239,31 +256,39 @@ class Resolver(component.Component):
 
         if to is None:
             to = jid.JID(stanza['to'])
+
         # stanza is intended to the network
         if to.full() == self.network:
             # TODO
             log.debug("stanza for the network: %s" % (stanza.toXml(), ))
             return
 
+        # network JID - resolve and send to router
         elif to.host == self.network:
             # no local users - drop silently to avoid loops
             if len(self.local_users) == 0:
                 return
 
-            rcpts = self.lookupJID(to)
-            if rcpts is None:
-                e = error.StanzaError('item-not-found', 'cancel')
-                stanza = e.toResponse(stanza)
-            else:
-                if type(rcpts) == list:
-                    for to in rcpts:
-                        stanza['to'] = to.full()
-                        component.Component.send(self, stanza)
-                        return
+            def _lookup(rcpts, stanza):
+                if rcpts is None:
+                    e = error.StanzaError('item-not-found', 'cancel')
+                    stanza = e.toResponse(stanza)
                 else:
-                    stanza['to'] = rcpts.full()
+                    if type(rcpts) == list:
+                        for to in rcpts:
+                            stanza['to'] = to.full()
+                            component.Component.send(self, stanza)
+                            return
+                    else:
+                        stanza['to'] = rcpts.full()
+                component.Component.send(self, stanza)
 
-        component.Component.send(self, stanza)
+            d = self.lookupJID(to)
+            d.addCallback(_lookup, stanza=stanza)
+
+        # already resolved JID - send to router
+        elif to.host == self.servername:
+            component.Component.send(self, stanza)
 
     def cancelSubscriptions(self, user):
         """Cancel all subscriptions requested by the given user."""
@@ -329,14 +354,14 @@ class Resolver(component.Component):
         """Called when a user locally connects to this server."""
         userid, resource = util.jid_to_userid(_jid, True)
         if userid not in self.local_users:
-            self.local_users[userid] = []
-        self.local_users[userid].append(resource)
+            self.local_users[userid] = set()
+        self.local_users[userid].add(resource)
 
     def local_user_unavailable(self, _jid):
         """Called when a local user disconnects from this server."""
         userid, resource = util.jid_to_userid(_jid, True)
         if userid in self.local_users:
-            self.local_users[userid].remove(resource)
+            self.local_users[userid].discard(resource)
             if len(self.local_users[userid]) == 0:
                 del self.local_users[userid]
 
@@ -355,25 +380,27 @@ class Resolver(component.Component):
         Lookup a jid in the network.
         If jid is a bare JID, a list of matching server JIDs is returned.
         Otherwise single server JID is returned.
-        FIXME one day this will return a deferred
         """
 
-        log.debug("looking up JIDs %r" % (self.local_users, ))
+        log.debug("looking up JIDs (local=%r)" % (self.local_users, ))
         # FIXME we are not really looking up the user yet
         if _jid.host == self.network:
+            result = None
             log.debug("[%s] network JID" % (_jid.full(), ))
             if _jid.resource is not None:
                 log.debug("[%s] full JID" % (_jid.full(), ))
                 if _jid.user in self.local_users and _jid.resource in self.local_users[_jid.user]:
-                    return jid.JID(tuple=(_jid.user, self.servername, _jid.resource))
+                    result = jid.JID(tuple=(_jid.user, self.servername, _jid.resource))
             else:
                 log.debug("[%s] bare JID" % (_jid.full(), ))
                 if _jid.user in self.local_users:
-                    return [jid.JID(tuple=(_jid.user, self.servername, x)) for x in self.local_users[_jid.user]]
+                    result = [jid.JID(tuple=(_jid.user, self.servername, x)) for x in self.local_users[_jid.user]]
 
-            log.debug("[%s] unknown JID" % (_jid.full(), ))
-            return None
+            if result is None:
+                log.debug("[%s] unknown JID" % (_jid.full(), ))
+        else:
+            # not our network, return unchanged
+            log.debug("[%s] not our network" % (_jid.full(), ))
+            result = _jid
 
-        # not our network, return unchanged
-        log.debug("[%s] not our network" % (_jid.full(), ))
-        return _jid
+        return defer.succeed(result)

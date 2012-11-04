@@ -19,6 +19,7 @@
 '''
 
 NAME = "Kontalk XMPP server"
+IDENTITY = "kontalk"
 PACKAGE = "kontalk-xmppserver"
 VERSION = "1.0"
 AUTHORS = (
