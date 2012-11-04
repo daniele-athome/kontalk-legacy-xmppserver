@@ -29,7 +29,7 @@ from twisted.words.xish import domish, xmlstream as xish_xmlstream
 
 from wokkel import xmppim, component
 
-from kontalk.xmppserver import log, auth, keyring, database, util, storage
+from kontalk.xmppserver import log, auth, keyring, util, storage
 from kontalk.xmppserver import xmlstream2
 
 
@@ -68,8 +68,8 @@ class PingHandler(XMPPHandler):
         return (xmlstream2.NS_XMPP_PING, )
 
 
-class IQQueryHandler(XMPPHandler):
-    """Handle various iq/query stanzas."""
+class IQHandler(XMPPHandler):
+    """Handle various iq stanzas."""
 
     def connectionInitialized(self):
         self.xmlstream.addObserver("/iq[@type='get']/query[@xmlns='%s']" % (xmlstream2.NS_IQ_ROSTER), self.parent.bounce, 100)
@@ -96,7 +96,6 @@ class MessageHandler(XMPPHandler):
         # messages for the server
         log.debug("MessageHandler: handlers (%s)" % (self.parent.servername))
         self.xmlstream.addObserver("/message[@to='%s']" % (self.parent.servername), self.parent.error, 100)
-        self.xmlstream.addObserver("/message", self.parent.forward, 90)
 
     def features(self):
         return tuple()
@@ -145,7 +144,7 @@ class C2SManager(xmlstream2.StreamManager):
     init_handlers = (
         PresenceHandler,
         PingHandler,
-        IQQueryHandler,
+        IQHandler,
         MessageHandler,
     )
 
@@ -189,8 +188,45 @@ class C2SManager(xmlstream2.StreamManager):
         xs.removeObserver("/message", self._unauthorized)
         self.factory.connectionInitialized(xs)
 
+        # stanza server processing rules - before they are sent to handlers
+        xs.addObserver('/iq', self.iq, 500)
+        xs.addObserver('/presence', self.presence, 500)
+        xs.addObserver('/message', self.message, 500)
+
         # forward everything that is not handled
         xs.addObserver('/*', self.forward)
+
+    def handle(self, stanza):
+        to = stanza.getAttribute('to')
+        if to is not None:
+            to = jid.JID(to)
+            # stanza is for us
+            if to.host == self.network:
+                # sending to full JID, forward to router
+                if to.user is not None and to.resource is not None:
+                    self.forward(stanza)
+
+                # everythign else is handled by handlers
+
+            # stanza is not for us, forward to router
+            else:
+                self.forward(stanza)
+
+
+    def iq(self, stanza):
+        return self.handle(stanza)
+
+    def presence(self, stanza):
+        return self.handle(stanza)
+
+    def message(self, stanza):
+        # no to address, presume sender bare JID
+        if not stanza.hasAttribute('to'):
+            stanza['to'] = self.xmlstream.otherEntity.full()
+            # try again
+            self.message(stanza)
+        else:
+            self.handle(stanza)
 
     def _disconnected(self, reason):
         self.factory.connectionLost(self.xmlstream, reason)
@@ -293,6 +329,8 @@ class XMPPServerFactory(xish_xmlstream.XmlStreamFactoryMixin, ServerFactory):
             userid, resource = util.jid_to_userid(xs.otherEntity, True)
             if userid in self.streams and resource in self.streams[userid]:
                 del self.streams[userid][resource]
+                if len(self.streams[userid]) == 0:
+                    del self.streams[userid]
 
     def dispatch(self, stanza, to=None):
         """
@@ -482,7 +520,18 @@ class C2SComponent(component.Component):
             # process only our JIDs
             if to.host == self.servername:
                 if to.user is not None:
-                    self.sfactory.dispatch(stanza, jid.JID(tuple=(to.user, self.network, to.resource)))
+                    try:
+                        self.sfactory.dispatch(stanza, jid.JID(tuple=(to.user, self.network, to.resource)))
+                    except:
+                        # full JID doesn't exist, send to bare JID
+                        if to.resource is not None:
+                            # remove resource to avoid loops
+                            to.resource = None
+                            self.sfactory.dispatch(stanza, jid.JID(tuple=(to.user, self.network, None)))
+
+                        # bare JID doesn't exist, send back to resolver
+                        else:
+                            self.send(stanza)
                 else:
                     self.local(stanza)
             else:

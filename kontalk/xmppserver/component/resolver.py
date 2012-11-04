@@ -78,9 +78,9 @@ class PresenceHandler(XMPPHandler):
         self.parent.subscribe(jid_to, jid_from)
 
 
-class IQQueryHandler(XMPPHandler):
+class IQHandler(XMPPHandler):
     """
-    Handle IQ query stanzas.
+    Handle IQ stanzas.
     @type parent: L{Resolver}
     """
 
@@ -120,10 +120,13 @@ class IQQueryHandler(XMPPHandler):
                 # FIXME this should use L{lookupJID}
                 def userdata(data, stanza):
                     log.debug("data: %r" % (data, ))
+                    if type(data) == list:
+                        data = data[0]
+
                     now = datetime.datetime.today()
                     delta = now - data['timestamp']
                     response = xmlstream.toResponse(stanza, 'result')
-                    response.addChild(domish.Element((xmlstream2.NS_IQ_LAST, 'query'), attribs={'seconds': str(delta.total_seconds())}))
+                    response.addChild(domish.Element((xmlstream2.NS_IQ_LAST, 'query'), attribs={'seconds': str(int(delta.total_seconds()))}))
                     self.send(response)
 
                 d = self.parent.presencedb.get(jid.JID(stanza['to']))
@@ -168,7 +171,7 @@ class Resolver(component.Component):
 
     protocolHandlers = (
         PresenceHandler,
-        IQQueryHandler,
+        IQHandler,
         MessageHandler,
     )
 
@@ -190,12 +193,26 @@ class Resolver(component.Component):
         for handler in self.protocolHandlers:
             handler().setHandlerParent(self)
 
-    def connectionInitialized(self):
+    def _authd(self, xs):
+        component.Component._authd(self, xs)
         log.debug("connected to router")
-        self.xmlstream.addObserver("/error", self.onError)
+        xs.addObserver("/error", self.onError)
+        xs.addObserver("/iq", self.iq, 500)
 
-    def connectionLost(self, reason):
+    def _disconnected(self, reason):
+        component.Component._disconnected(self, reason)
         log.debug("lost connection to router (%s)" % (reason, ))
+
+    def iq(self, stanza):
+        to = stanza.getAttribute('to')
+
+        if to is not None:
+            to = jid.JID(to)
+            # sending to full JID, forward to router
+            if to.resource is not None:
+                self.bounce(stanza)
+
+            # sending to bare JID: handled by handlers
 
     def onError(self, stanza):
         log.debug("routing error: %s" % (stanza.toXml(), ))
