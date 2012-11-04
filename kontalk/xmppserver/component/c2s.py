@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
-'''Kontalk XMPP c2s component.'''
-'''
+"""Kontalk XMPP c2s component."""
+"""
   Kontalk XMPP server
   Copyright (C) 2011 Kontalk Devteam <devteam@kontalk.org>
 
@@ -16,7 +16,7 @@
 
  You should have received a copy of the GNU General Public License
  along with this program.  If not, see <http://www.gnu.org/licenses/>.
-'''
+"""
 
 
 from twisted.application import strports
@@ -215,8 +215,15 @@ class C2SManager(xmlstream2.StreamManager):
     def send(self, stanza, force=False):
         """Send stanza to client, setting to and id attributes if not present."""
         util.resetNamespace(stanza, component.NS_COMPONENT_ACCEPT, self.namespace)
+
+        # handle original to address
+        if stanza.hasAttribute('origTo'):
+            stanza['to'] = stanza['origTo']
+            del stanza['origTo']
+
         if not stanza.hasAttribute('to'):
             stanza['to'] = self.xmlstream.otherEntity.full()
+
         if not stanza.hasAttribute('id'):
             stanza['id'] = util.rand_str(8, util.CHARSBOX_AZN_LOWERCASE)
         xmlstream2.StreamManager.send(self, stanza, force)

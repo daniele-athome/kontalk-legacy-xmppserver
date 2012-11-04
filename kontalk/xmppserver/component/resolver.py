@@ -146,6 +146,9 @@ class MessageHandler(XMPPHandler):
             # no destination - use sender bare JID
             if not stanza.hasAttribute('to'):
                 stanza['to'] = jid.JID(stanza['from']).userhost()
+                stanza['origTo'] = ''
+            else:
+                stanza['origTo'] = stanza['to']
 
             self.parent.bounce(stanza)
 
