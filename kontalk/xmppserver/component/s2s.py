@@ -227,7 +227,8 @@ class S2SComponent(component.Component):
         log.debug("connected to router.")
 
         # bind to the default route
-        bind = domish.Element((None, 'bind'), attribs={'name': '*'})
+        bind = domish.Element((None, 'bind'))
+        bind.addElement((None, 'default'))
         self.send(bind)
 
         self.xmlstream.addObserver("/error", self.onError)

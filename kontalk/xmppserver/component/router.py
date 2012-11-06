@@ -34,6 +34,7 @@ class Router(component.Router):
 
     def __init__(self):
         component.Router.__init__(self)
+        self.logs = set()
 
     def addRoute(self, destination, xs):
         """
@@ -65,8 +66,8 @@ class Router(component.Router):
 
         # add route and observers
         self.routes[destination] = xs
-        xs.addObserver('/bind', self.onBind, 100, xs = xs)
-        xs.addObserver('/unbind', self.onUnbind, 100, xs = xs)
+        xs.addObserver('/bind', self.bind, 100, xs = xs)
+        xs.addObserver('/unbind', self.unbind, 100, xs = xs)
         xs.addObserver('/*', self.route, xs = xs)
 
     def removeRoute(self, destination, xs):
@@ -78,6 +79,9 @@ class Router(component.Router):
         for host in list(self.routes.keys()):
             if self.routes[host] == xs:
                 del self.routes[host]
+
+        # remove log route if any
+        self.logs.discard(xs)
 
         stanza = UnavailablePresence()
         stanza['from'] = destination
@@ -97,6 +101,10 @@ class Router(component.Router):
 
         # reset namespace
         util.resetNamespace(stanza, component.NS_COMPONENT_ACCEPT)
+
+        # send stanza to logging entities
+        for lg in self.logs:
+            lg.send(stanza)
 
         if not stanza.hasAttribute('to'):
             log.debug("broadcasting stanza %s" % (stanza.toXml()))
@@ -132,23 +140,30 @@ class Router(component.Router):
                 stanza['to'] = host
                 xs.send(stanza)
 
-    def onBind(self, stanza, xs):
+    def bind(self, stanza, xs):
         log.debug("binding component %s" % (stanza.toXml(), ))
         stanza.consumed = True
 
-        if stanza['name'] == '*':
+        if stanza.default:
             route = None
         else:
-            route = stanza['name']
+            try:
+                route = stanza['name']
+            except:
+                xs.send(domish.Element((None, 'bind'), attribs={'error': 'bad-request'}))
+                xs.transport.loseConnection()
 
         if route not in self.routes:
             self.routes[route] = xs
             xs.send(domish.Element((None, 'bind')))
+
+            if stanza.log:
+                self.logs.add(xs)
         else:
             xs.send(domish.Element((None, 'bind'), attribs={'error': 'conflict'}))
             xs.transport.loseConnection()
 
-    def onUnbind(self, stanza, xs):
+    def unbind(self, stanza, xs):
         log.debug("unbinding component %s" % (stanza.toXml(), ))
         # TODO
 
