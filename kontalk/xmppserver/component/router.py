@@ -107,10 +107,10 @@ class Router(component.Router):
             lg.send(stanza)
 
         if not stanza.hasAttribute('to'):
-            log.debug("broadcasting stanza %s" % (stanza.toXml()))
+            log.debug("broadcasting stanza %s" % (stanza.toXml().encode('utf-8'), ))
             self.broadcast(stanza)
         else:
-            log.debug("routing stanza %s" % (stanza.toXml()))
+            log.debug("routing stanza %s" % (stanza.toXml().encode('utf-8'), ))
             try:
                 destination = jid.JID(stanza['to'])
 
@@ -141,7 +141,7 @@ class Router(component.Router):
                 xs.send(stanza)
 
     def bind(self, stanza, xs):
-        log.debug("binding component %s" % (stanza.toXml(), ))
+        log.debug("binding component %s" % (stanza.toXml().encode('utf-8'), ))
         stanza.consumed = True
 
         if stanza.default:
@@ -164,7 +164,7 @@ class Router(component.Router):
             xs.transport.loseConnection()
 
     def unbind(self, stanza, xs):
-        log.debug("unbinding component %s" % (stanza.toXml(), ))
+        log.debug("unbinding component %s" % (stanza.toXml().encode('utf-8'), ))
         # TODO
 
 

@@ -28,7 +28,7 @@ from wokkel import component, server
 
 from zope.interface import Interface, implements
 
-from kontalk.xmppserver import log, util
+from kontalk.xmppserver import log, util, keyring, storage
 
 
 class IS2SService(Interface):
@@ -45,14 +45,16 @@ class S2SService(object):
 
     implements(IS2SService)
 
-    def __init__(self, config, router):
+    def __init__(self, config, router, keyring):
         self.config = config
         self.defaultDomain = config['network']
+        self.serverDomain = config['host']
         self.domains = set()
         self.domains.add(self.defaultDomain)
-        self.domains.add(config['host'])
+        self.domains.add(self.serverDomain)
         self.secret = randbytes.secureRandom(16).encode('hex')
         self.router = router
+        self.keyring = keyring
 
         self._outgoingStreams = {}
         self._outgoingQueues = {}
@@ -114,7 +116,7 @@ class S2SService(object):
         #return server.initiateS2S(factory)
         from twisted.internet import reactor
         if factory.authenticator.otherHost == 'beta.kontalk.net':
-            reactor.connectTCP(factory.authenticator.otherHost, 6827, factory)
+            reactor.connectTCP(factory.authenticator.otherHost, 6269, factory)
         else:
             reactor.connectTCP(factory.authenticator.otherHost, 5269, factory)
         factory.deferred.addBoth(resetConnecting)
@@ -143,7 +145,7 @@ class S2SService(object):
         #return server.initiateS2S(factory)
         from twisted.internet import reactor
         if factory.authenticator.otherHost == 'beta.kontalk.net':
-            reactor.connectTCP(factory.authenticator.otherHost, 6827, factory)
+            reactor.connectTCP(factory.authenticator.otherHost, 6269, factory)
         else:
             reactor.connectTCP(factory.authenticator.otherHost, 5269, factory)
         return factory.deferred
@@ -158,6 +160,10 @@ class S2SService(object):
 
         otherHost = jid.internJID(stanza["to"]).host
         thisHost = jid.internJID(stanza["from"]).host
+
+        # we are sending to our network, change from address
+        if otherHost in self.keyring.hostlist():
+            thisHost = self.serverDomain
 
         if (thisHost, otherHost) not in self._outgoingStreams:
             # There is no connection with the destination (yet). Cache the
@@ -191,7 +197,7 @@ class S2SService(object):
                 log.debug("Dropping error stanza with malformed JID")
 
             log.debug("sender = %s, otherEntity = %s" % (sender.full(), xs.otherEntity.full()))
-            if sender.host != xs.otherEntity.host:
+            if sender.host != xs.otherEntity.host and sender.host != self.defaultDomain:
                 xs.sendStreamError(error.StreamError('invalid-from'))
             else:
                 self.router.send(stanza)
@@ -212,7 +218,10 @@ class S2SComponent(component.Component):
         self.servername = config['host']
 
     def setup(self):
-        self.service = S2SService(self.config, self)
+        storage.init(self.config['database'])
+        ring = keyring.Keyring(storage.MySQLNetworkStorage(), self.config['fingerprint'], self.servername)
+
+        self.service = S2SService(self.config, self, ring)
         self.service.logTraffic = self.logTraffic
         self.sfactory = server.XMPPS2SServerFactory(self.service)
         self.sfactory.logTraffic = self.logTraffic
@@ -249,7 +258,7 @@ class S2SComponent(component.Component):
         """Handle incoming stanza from router to the proper server stream."""
         if not stanza.consumed:
             stanza.consumed = True
-            log.debug("incoming stanza from router %s" % (stanza.toXml(), ))
+            log.debug("incoming stanza from router %s" % (stanza.toXml().encode('utf-8'), ))
             util.resetNamespace(stanza, component.NS_COMPONENT_ACCEPT)
             stanza['from'] = self.resolveJID(stanza['from']).full()
             to = stanza.getAttribute('to')

@@ -111,14 +111,11 @@ class MySQLNetworkStorage(NetworkStorage):
         global dbpool
         def _translate(tx):
             out = {}
-            tx.execute('SELECT fingerprint, host, s2s_port FROM servers')
+            tx.execute('SELECT fingerprint, host FROM servers')
             data = tx.fetchall()
             for row in data:
-                fp = str(row[0])
-                out[fp] = {
-                    'host' : str(row[1]),
-                    's2s' : int(row[2]),
-                }
+                # { fingerprint: host }
+                out[str(row[0])] = str(row[1])
             return out
         return dbpool.runInteraction(_translate)
 
@@ -130,7 +127,7 @@ class MySQLPresenceStorage(PresenceStorage):
             data = tx.fetchone()
             return {
                 'timestamp': data[0],
-                'status': data[1],
+                'status': base64.b64decode(data[1]).decode('utf-8'),
                 'show': data[2]
             }
         def _fetchall(tx, query, args):
@@ -140,7 +137,7 @@ class MySQLPresenceStorage(PresenceStorage):
             for d in data:
                 out.append({
                     'timestamp': d[0],
-                    'status': d[1],
+                    'status': base64.b64decode(d[1]).decode('utf-8'),
                     'show': d[2]
                 })
             return out

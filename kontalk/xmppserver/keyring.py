@@ -33,9 +33,10 @@ class Keyring:
         'messages' : (0, 100)
     }
 
-    def __init__(self, db, fingerprint):
+    def __init__(self, db, fingerprint, servername):
         self._db = db
         self.fingerprint = fingerprint
+        self.servername = servername
         self._list = []
         self._reload()
 
@@ -48,11 +49,12 @@ class Keyring:
             self._list = data
             self._keyring = [x for x in self._list.iterkeys()]
             self._keyring.insert(0, self.fingerprint)
+            self._hostlist = self._list.values()
+            self._hostlist.insert(0, self.servername)
         self._db.get_list().addCallback(done)
 
-    def s2s_addr(self, fingerprint):
-        d = self._list[fingerprint]
-        return d['host'], d['s2s']
+    def host(self, fingerprint):
+        return self._list[fingerprint]
 
     def get_server_trust(self, fingerprint):
         '''Returns the trust level (ie how many servers trust another) of a given server.'''
@@ -120,3 +122,6 @@ class Keyring:
     def __iter__(self):
         '''Wrapper for keyring iterator.'''
         return iter(self._keyring)
+
+    def hostlist(self):
+        return self._hostlist

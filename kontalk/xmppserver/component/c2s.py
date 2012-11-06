@@ -513,7 +513,7 @@ class C2SComponent(component.Component):
         self.presencedb = storage.MySQLPresenceStorage()
 
         authrealm = auth.SASLRealm("Kontalk")
-        ring = keyring.Keyring(storage.MySQLNetworkStorage(), self.config['fingerprint'])
+        ring = keyring.Keyring(storage.MySQLNetworkStorage(), self.config['fingerprint'], self.servername)
         authportal = portal.Portal(authrealm, [auth.AuthKontalkToken(self.config['fingerprint'], ring)])
 
         self.sfactory = XMPPServerFactory(authportal, self, self.network, self.servername)
