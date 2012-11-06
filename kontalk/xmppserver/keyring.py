@@ -48,9 +48,7 @@ class Keyring:
         def done(data):
             self._list = data
             self._keyring = [x for x in self._list.iterkeys()]
-            self._keyring.insert(0, self.fingerprint)
             self._hostlist = self._list.values()
-            self._hostlist.insert(0, self.servername)
         self._db.get_list().addCallback(done)
 
     def host(self, fingerprint):
@@ -124,4 +122,9 @@ class Keyring:
         return iter(self._keyring)
 
     def hostlist(self):
+        """List of host servers."""
         return self._hostlist
+
+    def networklist(self):
+        """List of host servers without this local server."""
+        return self._hostlist[1:]

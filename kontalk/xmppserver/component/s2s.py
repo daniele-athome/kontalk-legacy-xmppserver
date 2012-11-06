@@ -182,8 +182,7 @@ class S2SService(object):
         Send a stanza to the router, checking some stuff first.
         """
 
-        # TODO take this from the stream?
-        util.resetNamespace(stanza, 'jabber:server')
+        util.resetNamespace(stanza, xs.namespace)
         stanzaFrom = stanza.getAttribute('from')
         stanzaTo = stanza.getAttribute('to')
 
@@ -266,7 +265,7 @@ class S2SComponent(component.Component):
             if to is not None:
                 sender = jid.JID(to)
                 if sender.host in (self.network, self.servername):
-                    log.debug("stanza is for %s - resolver is down?" % (sender.host, ))
+                    log.debug("stanza is for %s - resolver/c2s is down?" % (sender.host, ))
                 else:
                     self.service.send(stanza)
 

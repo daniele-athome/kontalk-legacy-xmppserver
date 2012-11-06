@@ -38,6 +38,7 @@ class PresenceHandler(XMPPHandler):
         self.xmlstream.addObserver("/presence[not(@type)]", self.onPresenceAvailable, 100)
         self.xmlstream.addObserver("/presence[@type='unavailable']", self.onPresenceUnavailable, 100)
         self.xmlstream.addObserver("/presence[@type='subscribe']", self.onSubscribe, 100)
+        self.xmlstream.addObserver("/presence[@type='probe']", self.onProbe, 100)
 
     def onPresenceAvailable(self, stanza):
         """Handle availability presence stanzas."""
@@ -77,6 +78,11 @@ class PresenceHandler(XMPPHandler):
         jid_from = jid.JID(stanza['from'])
 
         self.parent.subscribe(jid_to, jid_from)
+
+    def onProbe(self, stanza):
+        """Handle presence probes."""
+        log.debug("probe request: %s" % (stanza.toXml(), ))
+        # TODO
 
 
 class IQHandler(XMPPHandler):
@@ -222,12 +228,24 @@ class Resolver(component.Component):
         log.debug("connected to router")
         xs.addObserver("/error", self.onError)
         xs.addObserver("/iq", self.iq, 500)
+        xs.addObserver("/presence", self.presence, 500)
 
     def _disconnected(self, reason):
         component.Component._disconnected(self, reason)
         log.debug("lost connection to router (%s)" % (reason, ))
 
     def iq(self, stanza):
+        to = stanza.getAttribute('to')
+
+        if to is not None:
+            to = jid.JID(to)
+            # sending to full JID, forward to router
+            if to.resource is not None:
+                self.bounce(stanza)
+
+            # sending to bare JID: handled by handlers
+
+    def presence(self, stanza):
         to = stanza.getAttribute('to')
 
         if to is not None:
@@ -394,8 +412,8 @@ class Resolver(component.Component):
         presence['type'] = 'probe'
         presence['from'] = self.network
         toList = []
-        for server in self.keyring.itervalues():
-            to.host = server['host']
+        for server in self.keyring.networklist():
+            to.host = server
             presence['to'] = to.full()
             presence['id'] = util.rand_str(8, util.CHARSBOX_AZN_LOWERCASE)
             self.send(presence)
@@ -431,9 +449,8 @@ class Resolver(component.Component):
                 self.xmlstream.removeObserver("/presence[@to='%s']" % (self.network, ), _presence)
 
         def _abort(result, callback):
-            log.debug("request timed out!")
+            log.debug("presence broadcast request timed out!")
             if not callback.called:
-                log.debug("calling back %r" % (result, ))
                 callback.callback(result)
 
         d = defer.Deferred()
