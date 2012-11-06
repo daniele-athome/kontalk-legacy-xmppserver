@@ -123,7 +123,7 @@ class IQHandler(XMPPHandler):
                     lookup = data[1]
 
                     log.debug("presence/lookup: %r/%r" % (presence, lookup))
-                    if type(presence) == list:
+                    if type(presence) == list and len(presence) > 0:
                         presence = presence[0]
 
                     response = xmlstream.toResponse(stanza, 'result')
