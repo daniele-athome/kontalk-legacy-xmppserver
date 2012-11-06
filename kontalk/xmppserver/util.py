@@ -77,8 +77,11 @@ def resetNamespace(node, fromUri = None, toUri = None):
     generic.stripNamespace(node)
     node.defaultUri = node.uri = toUri
 
-def str_none(obj):
+def str_none(obj, encoding='utf-8'):
     if obj is not None:
-        return str(obj)
+        try:
+            return str(obj)
+        except:
+            return obj.__str__.encode(encoding)
     else:
         return None

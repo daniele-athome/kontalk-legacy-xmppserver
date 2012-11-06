@@ -22,7 +22,7 @@
 from twisted.enterprise import adbapi
 from twisted.words.protocols.jabber import jid
 
-import time
+import base64
 import util
 
 dbpool = None
@@ -161,8 +161,14 @@ class MySQLPresenceStorage(PresenceStorage):
         global dbpool
         sender = jid.JID(stanza['from'])
         userid = util.jid_to_userid(sender)
-        # TODO base64.b64encode(stanza.status.__str__().encode('utf-8'))
-        values = (userid, util.str_none(stanza.status), util.str_none(stanza.show))
+
+        def encode_not_null(val):
+            if val is not None:
+                return base64.b64encode(val.__str__().encode('utf-8'))
+            else:
+                return None
+
+        values = (userid, encode_not_null(stanza.status), util.str_none(stanza.show))
         dbpool.runOperation('REPLACE INTO presence VALUES(?, NOW(), ?, ?)', values)
 
     def touch(self, user_jid):
