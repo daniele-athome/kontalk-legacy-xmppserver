@@ -20,6 +20,7 @@
 
 import random
 
+from twisted.words.protocols.jabber import jid
 from wokkel import generic
 
 USERID_LENGTH = 40
@@ -46,6 +47,11 @@ def jid_to_userid(_jid, splitted=False):
         if splitted:
             return _jid.user, None
         return _jid.user
+
+def userid_to_jid(userid, host=None):
+    """Converts a user id to a L{JID}."""
+    h, r = split_userid(userid)
+    return jid.JID(tuple=(h, host, r))
 
 def rand_str(length = 32, chars = CHARSBOX_AZN_CASEINS):
     # Length of character list

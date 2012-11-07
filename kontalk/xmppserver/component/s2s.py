@@ -199,6 +199,10 @@ class S2SService(object):
             if sender.host != xs.otherEntity.host and sender.host != self.defaultDomain:
                 xs.sendStreamError(error.StreamError('invalid-from'))
             else:
+                if stanza.hasAttribute('origFrom'):
+                    # HELP!
+                    stanza['origFrom'] = stanza['from']
+                    del stanza['origFrom']
                 self.router.send(stanza)
 
 
@@ -267,6 +271,8 @@ class S2SComponent(component.Component):
                 if sender.host in (self.network, self.servername):
                     log.debug("stanza is for %s - resolver/c2s is down?" % (sender.host, ))
                 else:
+                    stanza['origFrom'] = stanza['from']
+                    stanza['from'] = self.servername
                     self.service.send(stanza)
 
     def _disconnected(self, reason):

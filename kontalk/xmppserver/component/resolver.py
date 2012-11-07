@@ -38,7 +38,8 @@ class PresenceHandler(XMPPHandler):
         self.xmlstream.addObserver("/presence[not(@type)]", self.onPresenceAvailable, 100)
         self.xmlstream.addObserver("/presence[@type='unavailable']", self.onPresenceUnavailable, 100)
         self.xmlstream.addObserver("/presence[@type='subscribe']", self.onSubscribe, 100)
-        self.xmlstream.addObserver("/presence[@type='probe']", self.onProbe, 100)
+        # presence probes MUST be handled by server so the high priority
+        self.xmlstream.addObserver("/presence[@type='probe']", self.onProbe, 600)
 
     def onPresenceAvailable(self, stanza):
         """Handle availability presence stanzas."""
@@ -82,7 +83,43 @@ class PresenceHandler(XMPPHandler):
     def onProbe(self, stanza):
         """Handle presence probes."""
         log.debug("probe request: %s" % (stanza.toXml(), ))
-        # TODO
+        stanza.consumed = True
+        sender = jid.JID(stanza['from'])
+        to = jid.JID(stanza['to'])
+        
+        # TODO for now we handle only requests from the network
+        if sender.full() == self.parent.network:
+            def userdata(presence, stanza):
+                log.debug("presence: %r" % (presence, ))
+                if type(presence) == list:
+                    response = domish.Element((None, 'presence'))
+                    response['to'] = sender.full()
+
+                    for user in presence:
+                        response['from'] = util.userid_to_jid(user['userid'], self.parent.servername).full()
+
+                        if presence['status'] is not None:
+                            response.addElement((None, 'status'), content=user['status'])
+                        if presence['show'] is not None:
+                            response.addElement((None, 'show'), content=user['show'])
+    
+                        self.send(response)
+                        log.debug("probe result sent: %s" % (response.toXml().encode('utf-8'), ))
+                else:
+                    response = domish.Element((None, 'presence'))
+                    response['to'] = sender.full()
+                    response['from'] = to.full()
+
+                    if presence['status'] is not None:
+                        response.addElement((None, 'status'), content=presence['status'])
+                    if presence['show'] is not None:
+                        response.addElement((None, 'show'), content=presence['show'])
+
+                    self.send(response)
+                    log.debug("probe result sent: %s" % (response.toXml().encode('utf-8'), ))
+
+            d = self.parent.presencedb.get(to)
+            d.addCallback(userdata, stanza)
 
 
 class IQHandler(XMPPHandler):
@@ -132,18 +169,19 @@ class IQHandler(XMPPHandler):
                     if type(presence) == list and len(presence) > 0:
                         presence = presence[0]
 
-                    response = xmlstream.toResponse(stanza, 'result')
-                    if lookup is not None:
-                        seconds = 0
-                    else:
-                        now = datetime.datetime.today()
-                        delta = now - presence['timestamp']
-                        seconds = int(delta.total_seconds())
-
-                    query = domish.Element((xmlstream2.NS_IQ_LAST, 'query'), attribs={ 'seconds' : str(seconds) })
-                    response.addChild(query)
-                    self.send(response)
-                    log.debug("response sent: %s" % (response.toXml(), ))
+                    if presence:
+                        response = xmlstream.toResponse(stanza, 'result')
+                        if lookup is not None:
+                            seconds = 0
+                        else:
+                            now = datetime.datetime.today()
+                            delta = now - presence['timestamp']
+                            seconds = int(delta.total_seconds())
+    
+                        query = domish.Element((xmlstream2.NS_IQ_LAST, 'query'), attribs={ 'seconds' : str(seconds) })
+                        response.addChild(query)
+                        self.send(response)
+                        log.debug("response sent: %s" % (response.toXml(), ))
 
                 to = jid.JID(stanza['to'])
                 d1 = self.parent.presencedb.get(to)

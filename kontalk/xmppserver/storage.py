@@ -125,20 +125,22 @@ class MySQLPresenceStorage(PresenceStorage):
         def _fetchone(tx, query, args):
             tx.execute(query, args)
             data = tx.fetchone()
-            return {
-                'timestamp': data[0],
-                'status': base64.b64decode(data[1]).decode('utf-8'),
-                'show': data[2]
-            }
+            if data:
+                return {
+                    'timestamp': data[0],
+                    'status': base64.b64decode(data[1]).decode('utf-8'),
+                    'show': data[2]
+                }
         def _fetchall(tx, query, args):
             tx.execute(query, args)
             data = tx.fetchall()
             out = []
             for d in data:
                 out.append({
-                    'timestamp': d[0],
-                    'status': base64.b64decode(d[1]).decode('utf-8'),
-                    'show': d[2]
+                    'userid': d[0],
+                    'timestamp': d[1],
+                    'status': base64.b64decode(d[2]).decode('utf-8'),
+                    'show': d[3]
                 })
             return out
 
@@ -149,7 +151,7 @@ class MySQLPresenceStorage(PresenceStorage):
             args = (userid, )
         else:
             interaction = _fetchall
-            query = 'SELECT `timestamp`, `status`, `show` FROM presence WHERE SUBSTR(userid, 1, 40) = ? AND `timestamp` = (SELECT MAX(`timestamp`) FROM presence WHERE SUBSTR(userid, 1, 40) = ?)'
+            query = 'SELECT `userid`, `timestamp`, `status`, `show` FROM presence WHERE SUBSTR(userid, 1, 40) = ? AND `timestamp` = (SELECT MAX(`timestamp`) FROM presence WHERE SUBSTR(userid, 1, 40) = ?)'
             args = (userid, userid)
 
         return dbpool.runInteraction(interaction, query, args)
