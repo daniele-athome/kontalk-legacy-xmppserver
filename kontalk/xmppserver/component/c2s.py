@@ -424,12 +424,12 @@ class XMPPListenAuthenticator(xmlstream.ListenAuthenticator):
         xs.addObserver(xmlstream2.INIT_SUCCESS_EVENT, self.onSuccess)
 
         xs.initializers = []
-        inits = [
+        inits = (
             #(xmlstream.TLSInitiatingInitializer, False),
             (xmlstream2.SASLReceivingInitializer, True, True),
             (xmlstream2.BindInitializer, True, False),
             (xmlstream2.SessionInitializer, True, False),
-        ]
+        )
         for initClass, required, exclusive in inits:
             init = initClass(xs, self.canInitialize)
             init.required = required

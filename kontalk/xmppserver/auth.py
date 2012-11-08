@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 '''Authentication utilities.'''
+import GnuPGInterface
 '''
   Kontalk Pyserver
   Copyright (C) 2011 Kontalk Devteam <devteam@kontalk.org>
@@ -23,7 +24,7 @@ from zope.interface import implements
 
 from twisted.cred import credentials, checkers, error, portal
 from twisted.python import failure
-from twisted.internet import defer
+from twisted.internet import defer, ssl
 from twisted.words.protocols.jabber import jid, sasl
 
 # pyme
@@ -138,3 +139,49 @@ class SASLRealm:
         # We put in example.com to keep the JID constructor from complaining
         userid, resource = util.split_userid(avatarId)
         return xmlstream2.XMPPUser(jid.JID(tuple=(userid, "example.com", resource)))
+
+
+class DefaultGnuPGContextFactory(ssl.ContextFactory):
+    """
+    L{DefaultGnuPGContextFactory} is a factory for server-side GnuPG context
+    objects.  These objects define certain parameters related to SSL
+    handshakes and the subsequent connection.
+
+    @ivar _contextFactory: A callable which will be used to create new
+        context objects.  This is typically L{SSL.Context}.
+    """
+    _context = None
+
+    def __init__(self, fingerprint):
+        self.fingerprint = str(fingerprint)
+        self._contextFactory = core.Context
+
+        # Create a context object right now.  This is to force validation of
+        # the given parameters so that errors are detected earlier rather
+        # than later.
+        self.cacheContext()
+
+
+    def cacheContext(self):
+        if self._context is None:
+            ctx = self._contextFactory()
+            ctx.set_armor(0)
+            ctx.signers_add(ctx.get_key(self.fingerprint, True))
+            self._context = ctx
+
+
+    def __getstate__(self):
+        d = self.__dict__.copy()
+        del d['_context']
+        return d
+
+
+    def __setstate__(self, state):
+        self.__dict__ = state
+
+
+    def getContext(self):
+        """
+        Return an SSL context.
+        """
+        return self._context
