@@ -48,10 +48,8 @@ class S2SService(object):
     def __init__(self, config, router, keyring):
         self.config = config
         self.defaultDomain = config['network']
-        self.serverDomain = config['host']
         self.domains = set()
         self.domains.add(self.defaultDomain)
-        self.domains.add(self.serverDomain)
         self.secret = randbytes.secureRandom(16).encode('hex')
         self.router = router
         self.keyring = keyring
@@ -107,20 +105,9 @@ class S2SService(object):
 
         self._outgoingConnecting.add((thisHost, otherHost))
 
-        """
         d = server.initiateS2S(factory)
         d.addBoth(resetConnecting)
         return d
-        """
-        # TEST with no SRV
-        #return server.initiateS2S(factory)
-        from twisted.internet import reactor
-        if factory.authenticator.otherHost == 'beta.kontalk.net':
-            reactor.connectTCP(factory.authenticator.otherHost, 6269, factory)
-        else:
-            reactor.connectTCP(factory.authenticator.otherHost, 5269, factory)
-        factory.deferred.addBoth(resetConnecting)
-        return factory.deferred
 
     def validateConnection(self, thisHost, otherHost, sid, key):
         """
@@ -141,14 +128,7 @@ class S2SService(object):
         factory.addBootstrap(xmlstream.STREAM_CONNECTED_EVENT, connected)
         factory.logTraffic = self.logTraffic
 
-        # TEST with no SRV
-        #return server.initiateS2S(factory)
-        from twisted.internet import reactor
-        if factory.authenticator.otherHost == 'beta.kontalk.net':
-            reactor.connectTCP(factory.authenticator.otherHost, 6269, factory)
-        else:
-            reactor.connectTCP(factory.authenticator.otherHost, 5269, factory)
-        return factory.deferred
+        return server.initiateS2S(factory)
 
     def send(self, stanza):
         """
@@ -160,10 +140,6 @@ class S2SService(object):
 
         otherHost = jid.internJID(stanza["to"]).host
         thisHost = jid.internJID(stanza["from"]).host
-
-        # we are sending to our network, change from address
-        if otherHost in self.keyring.hostlist():
-            thisHost = self.serverDomain
 
         if (thisHost, otherHost) not in self._outgoingStreams:
             # There is no connection with the destination (yet). Cache the
@@ -199,10 +175,6 @@ class S2SService(object):
             if sender.host != xs.otherEntity.host and sender.host != self.defaultDomain:
                 xs.sendStreamError(error.StreamError('invalid-from'))
             else:
-                if stanza.hasAttribute('origFrom'):
-                    # HELP!
-                    stanza['origFrom'] = stanza['from']
-                    del stanza['origFrom']
                 self.router.send(stanza)
 
 
@@ -269,10 +241,8 @@ class S2SComponent(component.Component):
             if to is not None:
                 sender = jid.JID(to)
                 if sender.host in (self.network, self.servername):
-                    log.debug("stanza is for %s - resolver/c2s is down?" % (sender.host, ))
+                    log.debug("stanza is for %s - resolver/c2s/net is down?" % (sender.host, ))
                 else:
-                    stanza['origFrom'] = stanza['from']
-                    stanza['from'] = self.servername
                     self.service.send(stanza)
 
     def _disconnected(self, reason):
