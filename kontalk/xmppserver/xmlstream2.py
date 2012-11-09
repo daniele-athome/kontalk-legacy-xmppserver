@@ -96,45 +96,6 @@ class BaseFeatureReceivingInitializer(object):
         self.canInitialize = canInitialize
 
 
-def gnupg_startTLS(ctx, normal=True):
-    pass
-
-class GnuPGTLSReceivingInitializer(BaseFeatureReceivingInitializer):
-    """
-    TLS (using GnuPG) stream initializer for the receiving entity.
-    """
-    
-    def feature(self):
-        if self.xmlstream.factory.tls_ctx is None:
-            log.warn("TLS not supported")
-            return
-
-        feature = domish.Element((xmlstream.NS_XMPP_TLS, 'starttls'), defaultUri=xmlstream.NS_XMPP_TLS)
-        if self.required:
-            feature.addElement((xmlstream.NS_XMPP_TLS, 'required'))
-        return feature
-    
-    def initialize(self):
-        self.xmlstream.addOnetimeObserver('/starttls', self.onStartTLS)
-    
-    def deinitialize(self):
-        self.xmlstream.removeObserver('/starttls', self.onStartTLS)
-
-    def onStartTLS(self, element):
-        if self.xmlstream.factory.tls_ctx is None:
-            failure = domish.Element((xmlstream.NS_XMPP_TLS, 'failure'), defaultUri=xmlstream.NS_XMPP_TLS)
-            self.xmlstream.send(failure)
-            self.xmlstream.sendFooter()
-
-        if self.canInitialize(self):
-            #self.xmlstream.dispatch(self, INIT_SUCCESS_EVENT)
-            self.xmlstream.send(domish.Element((xmlstream.NS_XMPP_TLS, 'proceed')))
-            # FIXME FIXME FIXME TODO TODO TODO
-            gnupg_startTLS(self.xmlstream.transport)
-            self.xmlstream.transport.startTLS(self.xmlstream.factory.tls_ctx)
-            self.xmlstream.reset()
-
-
 class BindInitializer(BaseFeatureReceivingInitializer):
     """
     Initializer that implements Resource Binding for the receiving entity.

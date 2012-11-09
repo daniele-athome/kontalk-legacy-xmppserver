@@ -18,7 +18,7 @@ class NetConnector(object):
         factory.addBootstrap(xmlstream.STREAM_AUTHD_EVENT, self.authenticated)
         factory.addBootstrap(xmlstream.INIT_FAILED_EVENT, self.init_failed)
 
-        factory.logTraffic = True
+        factory.logTraffic = False
 
         domain = factory.authenticator.otherHost
         c = net.XMPPNetConnector(reactor, domain, factory)
@@ -51,12 +51,19 @@ class NetConnector(object):
     def authenticated(self, xs):
         print "Authenticated."
 
-        xs.addOnetimeObserver('/proceed', self.startTLS)
+        xs.addObserver("/presence[@type='probe']", self.probe)
+        
+        presence = domish.Element((None, 'presence'))
+        presence['type'] = 'probe'
+        presence['origFrom'] = 'kontalk.net'
+        presence['from'] = 'beta.kontalk.net'
+        presence['to'] = 'e73ea3be23d0449597a82c62ed981f584a5c181b@prime.kontalk.net'
+        xs.send(presence)
 
-        starttls = domish.Element((xmlstream.NS_XMPP_TLS, 'starttls'))
-        xs.send(starttls)
+        #reactor.callLater(20, xs.sendFooter)
 
-        reactor.callLater(20, xs.sendFooter)
+    def probe(self, stanza):
+        print "presence probe for %s" % (stanza['to'], )
 
 
     def init_failed(self, failure):
@@ -65,9 +72,6 @@ class NetConnector(object):
 
         self.xmlstream.sendFooter()
 
-
-    def startTLS(self, stanza):
-        print "starting TLS"
 
 
 NetConnector('localhost', 5270)

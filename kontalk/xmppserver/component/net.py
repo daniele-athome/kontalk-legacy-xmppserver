@@ -78,6 +78,9 @@ class XMPPNetConnectAuthenticator(xmlstream.ConnectAuthenticator):
         self.otherHost = otherHost
         xmlstream.ConnectAuthenticator.__init__(self, otherHost)
 
+    def connectionMade(self):
+        self.xmlstream.thisEntity = jid.internJID(self.thisHost)
+        xmlstream.ConnectAuthenticator.connectionMade(self)
 
     def associateWithStream(self, xs):
         xmlstream.ConnectAuthenticator.associateWithStream(self, xs)
@@ -101,6 +104,7 @@ class XMPPNetListenAuthenticator(xmlstream.ListenAuthenticator):
         xs.addObserver(xmlstream2.INIT_SUCCESS_EVENT, self.onSuccess)
 
         xs.initializers = []
+        """
         inits = (
             (xmlstream2.GnuPGTLSReceivingInitializer, True, True),
         )
@@ -110,6 +114,7 @@ class XMPPNetListenAuthenticator(xmlstream.ListenAuthenticator):
             init.exclusive = exclusive
             xs.initializers.append(init)
             init.initialize()
+        """
 
     def streamStarted(self, rootElement):
         xmlstream.ListenAuthenticator.streamStarted(self, rootElement)
@@ -138,6 +143,10 @@ class XMPPNetListenAuthenticator(xmlstream.ListenAuthenticator):
                     break
 
             self.xmlstream.send(features)
+            
+            # TEST auto auth :)
+            self.xmlstream.otherEntity = jid.internJID(rootElement['from'])
+            self.xmlstream.dispatch(self.xmlstream, xmlstream.STREAM_AUTHD_EVENT)
 
     def canInitialize(self, initializer):
         inits = self.xmlstream.initializers[0:self.xmlstream.initializers.index(initializer)]
@@ -282,14 +291,14 @@ class NetService(object):
         log.debug("Outgoing connection %d from %r to %r established" %
                 (xs.serial, thisHost, otherHost))
 
-        self._outgoingStreams[thisHost, otherHost] = xs
+        self._outgoingStreams[otherHost] = xs
         xs.addObserver(xmlstream.STREAM_END_EVENT,
                        lambda _: self.outgoingDisconnected(xs))
 
-        if (thisHost, otherHost) in self._outgoingQueues:
-            for element in self._outgoingQueues[thisHost, otherHost]:
+        if otherHost in self._outgoingQueues:
+            for element in self._outgoingQueues[otherHost]:
                 xs.send(element)
-            del self._outgoingQueues[thisHost, otherHost]
+            del self._outgoingQueues[otherHost]
 
     def outgoingDisconnected(self, xs):
         thisHost = xs.thisEntity.host
@@ -298,7 +307,7 @@ class NetService(object):
         log.debug("Outgoing connection %d from %r to %r disconnected" %
                 (xs.serial, thisHost, otherHost))
 
-        del self._outgoingStreams[thisHost, otherHost]
+        del self._outgoingStreams[otherHost]
 
     def initiateOutgoingStream(self, thisHost, otherHost):
         """
@@ -306,9 +315,9 @@ class NetService(object):
         """
 
         def resetConnecting(_):
-            self._outgoingConnecting.remove((thisHost, otherHost))
+            self._outgoingConnecting.remove(otherHost)
 
-        if (thisHost, otherHost) in self._outgoingConnecting:
+        if otherHost in self._outgoingConnecting:
             return
 
         authenticator = XMPPNetConnectAuthenticator(thisHost, otherHost)
@@ -317,7 +326,7 @@ class NetService(object):
                              self.outgoingInitialized)
         factory.logTraffic = self.logTraffic
 
-        self._outgoingConnecting.add((thisHost, otherHost))
+        self._outgoingConnecting.add(otherHost)
 
         d = initiateNet(factory)
         d.addBoth(resetConnecting)
@@ -339,12 +348,12 @@ class NetService(object):
             # outgoing stanza until the connection has been established.
             # XXX: If the connection cannot be established, the queue should
             #      be emptied at some point.
-            if (thisHost, otherHost) not in self._outgoingQueues:
-                self._outgoingQueues[(thisHost, otherHost)] = []
-            self._outgoingQueues[(thisHost, otherHost)].append(stanza)
+            if otherHost not in self._outgoingQueues:
+                self._outgoingQueues[otherHost] = []
+            self._outgoingQueues[otherHost].append(stanza)
             self.initiateOutgoingStream(thisHost, otherHost)
         else:
-            self._outgoingStreams[(thisHost, otherHost)].send(stanza)
+            self._outgoingStreams[otherHost].send(stanza)
 
     def dispatch(self, xs, stanza):
         """

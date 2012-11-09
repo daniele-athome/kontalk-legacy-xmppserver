@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 '''Authentication utilities.'''
-import GnuPGInterface
 '''
   Kontalk Pyserver
   Copyright (C) 2011 Kontalk Devteam <devteam@kontalk.org>

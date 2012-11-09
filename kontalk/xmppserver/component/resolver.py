@@ -86,9 +86,9 @@ class PresenceHandler(XMPPHandler):
         stanza.consumed = True
         sender = jid.JID(stanza['from'])
         to = jid.JID(stanza['to'])
-        
+
         # TODO for now we handle only requests from the network
-        if sender.full() == self.parent.network:
+        if sender.full() in self.parent.keyring.hostlist():
             def userdata(presence, stanza):
                 log.debug("presence: %r" % (presence, ))
                 if type(presence) == list:
@@ -98,9 +98,9 @@ class PresenceHandler(XMPPHandler):
                     for user in presence:
                         response['from'] = util.userid_to_jid(user['userid'], self.parent.servername).full()
 
-                        if presence['status'] is not None:
+                        if user['status'] is not None:
                             response.addElement((None, 'status'), content=user['status'])
-                        if presence['show'] is not None:
+                        if user['show'] is not None:
                             response.addElement((None, 'show'), content=user['show'])
     
                         self.send(response)
