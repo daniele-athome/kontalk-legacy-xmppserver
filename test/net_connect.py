@@ -25,11 +25,10 @@ class NetConnector(object):
         c.connect()
 
     def rawDataIn(self, buf):
-        print "RECV: %s" % unicode(buf, 'utf-8').encode('ascii', 'replace')
-
+        print "RECV: %s" % unicode(buf, 'utf-8').encode('utf-8')
 
     def rawDataOut(self, buf):
-        print "SEND: %s" % unicode(buf, 'utf-8').encode('ascii', 'replace')
+        print "SEND: %s" % unicode(buf, 'utf-8').encode('utf-8')
 
 
     def connected(self, xs):
@@ -57,7 +56,8 @@ class NetConnector(object):
         presence['type'] = 'probe'
         presence['origFrom'] = 'kontalk.net'
         presence['from'] = 'beta.kontalk.net'
-        presence['to'] = 'e73ea3be23d0449597a82c62ed981f584a5c181b@prime.kontalk.net'
+        #presence['to'] = 'e73ea3be23d0449597a82c62ed981f584a5c181b@kontalk.net'
+        presence['to'] = '584fb3000e857d399b0c99fe14ba65df8663e697@kontalk.net'
         xs.send(presence)
 
         reactor.callLater(20, xs.sendFooter)

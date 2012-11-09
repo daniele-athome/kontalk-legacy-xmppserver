@@ -88,6 +88,6 @@ def str_none(obj, encoding='utf-8'):
         try:
             return str(obj)
         except:
-            return obj.__str__.encode(encoding)
+            return obj.__str__().encode(encoding)
     else:
         return None

@@ -89,12 +89,12 @@ class PresenceHandler(XMPPHandler):
 
         # TODO for now we handle only requests from the network
         if sender.full() in self.parent.keyring.hostlist():
-            def userdata(presence, stanza):
-                log.debug("presence: %r" % (presence, ))
+            def userdata(presence, stanza, found):
+                log.debug("presence: %r/%r" % (presence, found))
                 if type(presence) == list:
                     response = domish.Element((None, 'presence'))
                     response['to'] = sender.full()
-
+                    
                     for user in presence:
                         response['from'] = util.userid_to_jid(user['userid'], self.parent.servername).full()
 
@@ -102,7 +102,15 @@ class PresenceHandler(XMPPHandler):
                             response.addElement((None, 'status'), content=user['status'])
                         if user['show'] is not None:
                             response.addElement((None, 'show'), content=user['show'])
-    
+
+                        log.debug("found: %r (response[from]=%s)" % (found, response['from']))
+                        # TODO this check is true ?????
+                        if not found or response['from'] not in found:
+                            response['type'] = 'unavailable'
+                            delay = domish.Element(('urn:xmpp:delay', 'delay'))
+                            delay['stamp'] = user['timestamp'].strftime('%Y-%m-%dT%H:%M:%SZ')
+                            response.addChild(delay)
+
                         self.send(response)
                         log.debug("probe result sent: %s" % (response.toXml().encode('utf-8'), ))
                 else:
@@ -118,8 +126,9 @@ class PresenceHandler(XMPPHandler):
                     self.send(response)
                     log.debug("probe result sent: %s" % (response.toXml().encode('utf-8'), ))
 
+            found = self.parent.cacheLookupJID(to)
             d = self.parent.presencedb.get(to)
-            d.addCallback(userdata, stanza)
+            d.addCallback(userdata, stanza, found)
 
 
 class IQHandler(XMPPHandler):

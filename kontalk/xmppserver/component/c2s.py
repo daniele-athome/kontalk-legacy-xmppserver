@@ -299,7 +299,7 @@ class C2SManager(xmlstream2.StreamManager):
         """
         if not stanza.consumed:
             util.resetNamespace(stanza, self.namespace)
-            log.debug("forwarding %s" % (stanza.toXml(), ))
+            log.debug("forwarding %s" % (stanza.toXml().encode('utf-8'), ))
             stanza.consumed = True
             util.resetNamespace(stanza, component.NS_COMPONENT_ACCEPT)
             stanza['from'] = self.resolveJID(stanza['from'] if useFrom else self.xmlstream.otherEntity).full()
@@ -526,6 +526,29 @@ class C2SComponent(component.Component):
         return time.time() - self.start_time
 
     """ Connection with router """
+
+    def _connected(self, xs):
+        """
+        Called when the transport connection has been established.
+
+        Here we optionally set up traffic logging (depending on L{logTraffic})
+        and call each handler's C{makeConnection} method with the L{XmlStream}
+        instance.
+        """
+        def logDataIn(buf):
+            log.debug("RECV: %s" % unicode(buf, 'utf-8').encode('utf-8'))
+
+        def logDataOut(buf):
+            log.debug("SEND: %s" % unicode(buf, 'utf-8').encode('utf-8'))
+
+        if self.logTraffic:
+            xs.rawDataInFn = logDataIn
+            xs.rawDataOutFn = logDataOut
+
+        self.xmlstream = xs
+
+        for e in self:
+            e.makeConnection(xs)
 
     def _authd(self, xs):
         component.Component._authd(self, xs)

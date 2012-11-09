@@ -412,10 +412,10 @@ class StreamManager(xmlstream.XMPPHandlerCollection):
         instance.
         """
         def logDataIn(buf):
-            log.debug("RECV: %r" % buf)
+            log.debug("RECV: %s" % unicode(buf, 'utf-8').encode('utf-8'))
 
         def logDataOut(buf):
-            log.debug("SEND: %r" % buf)
+            log.debug("SEND: %s" % unicode(buf, 'utf-8').encode('utf-8'))
 
         if self.logTraffic:
             xs.rawDataInFn = logDataIn
