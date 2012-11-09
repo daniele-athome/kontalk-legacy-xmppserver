@@ -37,7 +37,7 @@ class Keyring:
         self._db = db
         self.fingerprint = fingerprint
         self.servername = servername
-        self._list = []
+        self._list = {}
         self._reload()
 
     def itervalues(self):
