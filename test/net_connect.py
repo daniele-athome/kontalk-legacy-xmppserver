@@ -60,7 +60,7 @@ class NetConnector(object):
         presence['to'] = 'e73ea3be23d0449597a82c62ed981f584a5c181b@prime.kontalk.net'
         xs.send(presence)
 
-        #reactor.callLater(20, xs.sendFooter)
+        reactor.callLater(20, xs.sendFooter)
 
     def probe(self, stanza):
         print "presence probe for %s" % (stanza['to'], )

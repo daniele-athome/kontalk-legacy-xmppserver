@@ -230,20 +230,23 @@ class XMPPNetServerFactory(xmlstream.XmlStreamServerFactory):
         thisHost = xs.thisEntity.host
         otherHost = xs.otherEntity.host
 
-        log.debug("Incoming connection %d from %r to %r established" %
+        log.debug("Incoming connection %d from %s to %s established" %
                 (xs.serial, otherHost, thisHost))
 
         xs.addObserver(xmlstream.STREAM_END_EVENT, self.onConnectionLost,
                                                    0, xs)
         xs.addObserver('/*', self.onElement, 0, xs)
 
+        self.service.validateConnection(xs)
+
 
     def onConnectionLost(self, xs, reason):
         thisHost = xs.thisEntity.host
         otherHost = xs.otherEntity.host
 
-        log.debug("Incoming connection %d from %r to %r disconnected" %
+        log.debug("Incoming connection %d from %s to %s disconnected" %
                 (xs.serial, otherHost, thisHost))
+        self.service.invalidateConnection(xs)
 
     def onError(self, reason):
         log.error("Stream Error: %r" % (reason, ))
@@ -260,6 +263,12 @@ class XMPPNetServerFactory(xmlstream.XmlStreamServerFactory):
 
 
 class IS2SService(Interface):
+
+    def validateConnection(xs):
+        pass
+
+    def invalidateConnection(xs):
+        pass
 
     def dispatch(xs, stanza):
         pass
@@ -288,7 +297,7 @@ class NetService(object):
         thisHost = xs.thisEntity.host
         otherHost = xs.otherEntity.host
 
-        log.debug("Outgoing connection %d from %r to %r established" %
+        log.debug("Outgoing connection %d from %s to %s established" %
                 (xs.serial, thisHost, otherHost))
 
         self._outgoingStreams[otherHost] = xs
@@ -304,12 +313,12 @@ class NetService(object):
         thisHost = xs.thisEntity.host
         otherHost = xs.otherEntity.host
 
-        log.debug("Outgoing connection %d from %r to %r disconnected" %
+        log.debug("Outgoing connection %d from %s to %s disconnected" %
                 (xs.serial, thisHost, otherHost))
 
         del self._outgoingStreams[otherHost]
 
-    def initiateOutgoingStream(self, thisHost, otherHost):
+    def initiateOutgoingStream(self, otherHost):
         """
         Initiate an outgoing XMPP server-to-server connection.
         """
@@ -320,7 +329,7 @@ class NetService(object):
         if otherHost in self._outgoingConnecting:
             return
 
-        authenticator = XMPPNetConnectAuthenticator(thisHost, otherHost)
+        authenticator = XMPPNetConnectAuthenticator(self.defaultDomain, otherHost)
         factory = server.DeferredS2SClientFactory(authenticator)
         factory.addBootstrap(xmlstream.STREAM_AUTHD_EVENT,
                              self.outgoingInitialized)
@@ -332,6 +341,17 @@ class NetService(object):
         d.addBoth(resetConnecting)
         return d
 
+    def validateConnection(self, xs):
+        otherHost = xs.otherEntity.host
+        if otherHost in self._outgoingStreams:
+            xs.sendStreamError(error.StreamError('conflict'))
+        self._outgoingStreams[otherHost] = xs
+    
+    def invalidateConnection(self, xs):
+        otherHost = xs.otherEntity.host
+        if otherHost in self._outgoingStreams:
+            del self._outgoingStreams[otherHost]
+
     def send(self, stanza):
         """
         Send stanza to the proper XML Stream.
@@ -341,9 +361,8 @@ class NetService(object):
         """
 
         otherHost = jid.internJID(stanza["to"]).host
-        thisHost = jid.internJID(stanza["from"]).host
 
-        if (thisHost, otherHost) not in self._outgoingStreams:
+        if otherHost not in self._outgoingStreams:
             # There is no connection with the destination (yet). Cache the
             # outgoing stanza until the connection has been established.
             # XXX: If the connection cannot be established, the queue should
@@ -351,7 +370,7 @@ class NetService(object):
             if otherHost not in self._outgoingQueues:
                 self._outgoingQueues[otherHost] = []
             self._outgoingQueues[otherHost].append(stanza)
-            self.initiateOutgoingStream(thisHost, otherHost)
+            self.initiateOutgoingStream(otherHost)
         else:
             self._outgoingStreams[otherHost].send(stanza)
 
