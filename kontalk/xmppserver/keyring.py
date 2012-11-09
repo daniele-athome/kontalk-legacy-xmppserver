@@ -47,8 +47,6 @@ class Keyring:
     def _reload(self):
         def done(data):
             self._list = data
-            self._keyring = [x for x in self._list.iterkeys()]
-            self._hostlist = self._list.values()
         self._db.get_list().addCallback(done)
 
     def host(self, fingerprint):
@@ -65,10 +63,10 @@ class Keyring:
                 skey = ctx.get_key(sign.keyid, False)
                 fpr = skey.subkeys[0].fpr
                 #print "found signature from %s" % fpr
-                #print str(fpr) in self._keyring
+                #print str(fpr) in self._list.keys()
                 #print str(fpr) != fingerprint
                 # make sure key is actually in the keyring and the sign is self-made
-                if str(fpr) in self._keyring and str(fpr) != fingerprint:
+                if str(fpr) in self._list.keys() and str(fpr) != fingerprint:
                     count += 1
 
         return count
@@ -87,7 +85,7 @@ class Keyring:
             return True
 
         # key is not in fingerprint
-        if fingerprint not in self._keyring:
+        if fingerprint not in self._list.keys():
             #print "fingerprint not in keyring"
             return False
 
@@ -115,16 +113,16 @@ class Keyring:
         return perc >= need
 
     def __len__(self):
-        return len(self._keyring)
+        return len(self._list)
 
     def __iter__(self):
         '''Wrapper for keyring iterator.'''
-        return iter(self._keyring)
+        return self._list.iterkeys()
 
     def hostlist(self):
         """List of host servers."""
-        return self._hostlist
+        return self._list.values()
 
     def networklist(self):
         """List of host servers without this local server."""
-        return self._hostlist[1:]
+        return self._list.values()[1:]
