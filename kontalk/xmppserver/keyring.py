@@ -122,7 +122,3 @@ class Keyring:
     def hostlist(self):
         """List of host servers."""
         return self._list.values()
-
-    def networklist(self):
-        """List of host servers without this local server."""
-        return self._list.values()[1:]

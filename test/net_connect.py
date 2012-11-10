@@ -20,8 +20,12 @@ class NetConnector(object):
 
         factory.logTraffic = False
 
+        """
+        TEST
         domain = factory.authenticator.otherHost
         c = net.XMPPNetConnector(reactor, domain, factory)
+        """
+        c = net.XMPPNetConnector(reactor, host, factory)
         c.connect()
 
     def rawDataIn(self, buf):
@@ -51,7 +55,7 @@ class NetConnector(object):
         print "Authenticated."
 
         xs.addObserver("/presence[@type='probe']", self.probe)
-        
+
         presence = domish.Element((None, 'presence'))
         presence['type'] = 'probe'
         presence['origFrom'] = 'kontalk.net'

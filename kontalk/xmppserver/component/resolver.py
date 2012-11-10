@@ -94,18 +94,17 @@ class PresenceHandler(XMPPHandler):
                 if type(presence) == list:
                     response = domish.Element((None, 'presence'))
                     response['to'] = sender.full()
-                    
+
                     for user in presence:
-                        response['from'] = util.userid_to_jid(user['userid'], self.parent.servername).full()
+                        response_from = util.userid_to_jid(user['userid'], self.parent.servername)
+                        response['from'] = response_from.full()
 
                         if user['status'] is not None:
                             response.addElement((None, 'status'), content=user['status'])
                         if user['show'] is not None:
                             response.addElement((None, 'show'), content=user['show'])
 
-                        log.debug("found: %r (response[from]=%s)" % (found, response['from']))
-                        # TODO this check is true ?????
-                        if not found or response['from'] not in found:
+                        if not found or response_from not in found:
                             response['type'] = 'unavailable'
                             delay = domish.Element(('urn:xmpp:delay', 'delay'))
                             delay['stamp'] = user['timestamp'].strftime('%Y-%m-%dT%H:%M:%SZ')
@@ -186,7 +185,7 @@ class IQHandler(XMPPHandler):
                             now = datetime.datetime.today()
                             delta = now - presence['timestamp']
                             seconds = int(delta.total_seconds())
-    
+
                         query = domish.Element((xmlstream2.NS_IQ_LAST, 'query'), attribs={ 'seconds' : str(seconds) })
                         response.addChild(query)
                         self.send(response)
@@ -235,7 +234,7 @@ class Resolver(component.Component):
     @type subscriptions: C{dict}
     @ivar local_users: locally connected users
     @type local_users: C{dict}
-    @ivar remote_users: cache of remote users 
+    @ivar remote_users: cache of remote users
     @type remote_users: C{dict}
     """
 
@@ -459,7 +458,7 @@ class Resolver(component.Component):
         presence['type'] = 'probe'
         presence['from'] = self.network
         toList = []
-        for server in self.keyring.networklist():
+        for server in self.keyring.hostlist():
             to.host = server
             presence['to'] = to.full()
             presence['id'] = util.rand_str(8, util.CHARSBOX_AZN_LOWERCASE)
@@ -471,7 +470,7 @@ class Resolver(component.Component):
     def find_jid(self, _jid, result=None):
         """
         Send a presence probe to the network and wait for the first response.
-        @param result: results from previous lookups - will be passed as-is 
+        @param result: results from previous lookups - will be passed as-is
         """
         toList = self.network_presence_probe(_jid)
         def _presence(stanza, probes, result, callback):

@@ -41,8 +41,16 @@ if ssl and not ssl.supported:
 
 def initiateNet(factory):
     domain = factory.authenticator.otherHost
+    """
+    TEST
     c = XMPPNetConnector(reactor, domain, factory)
     c.connect()
+    """
+    ports = {
+        'prime.kontalk.net': 5270,
+        'beta.kontalk.net': 6270,
+    }
+    c = reactor.connectTCP('localhost', ports[domain], factory)
     return factory.deferred
 
 
@@ -143,7 +151,7 @@ class XMPPNetListenAuthenticator(xmlstream.ListenAuthenticator):
                     break
 
             self.xmlstream.send(features)
-            
+
             # TEST auto auth :)
             self.xmlstream.otherEntity = jid.internJID(rootElement['from'])
             self.xmlstream.dispatch(self.xmlstream, xmlstream.STREAM_AUTHD_EVENT)
@@ -346,7 +354,7 @@ class NetService(object):
         if otherHost in self._outgoingStreams:
             xs.sendStreamError(error.StreamError('conflict'))
         self._outgoingStreams[otherHost] = xs
-    
+
     def invalidateConnection(self, xs):
         otherHost = xs.otherEntity.host
         if otherHost in self._outgoingStreams:
@@ -361,6 +369,10 @@ class NetService(object):
         """
 
         otherHost = jid.internJID(stanza["to"]).host
+
+        if stanza['from'] != self.defaultDomain:
+            stanza['origFrom'] = stanza['from']
+            stanza['from'] = self.defaultDomain
 
         if otherHost not in self._outgoingStreams:
             # There is no connection with the destination (yet). Cache the
@@ -404,7 +416,7 @@ class NetComponent(component.Component):
     Kontalk server-to-server component with other Kontalk servers on this network.
     L{StreamManager} is for the connection with the router.
     """
-    
+
     """
     TODO connection with other Kontalk servers should be SSL certificate authenticated
     """
@@ -419,7 +431,7 @@ class NetComponent(component.Component):
 
     def setup(self):
         storage.init(self.config['database'])
-        
+
         ring = keyring.Keyring(storage.MySQLNetworkStorage(), self.config['fingerprint'], self.servername)
         self.service = NetService(self.config, self, ring)
         self.service.logTraffic = self.logTraffic
@@ -465,8 +477,10 @@ class NetComponent(component.Component):
             to = stanza.getAttribute('to')
 
             if to is not None:
-                util.resetNamespace(stanza, component.NS_COMPONENT_ACCEPT)
-                self.service.send(stanza)
+                to = jid.JID(to)
+                if to.host != self.xmlstream.thisEntity.host:
+                    util.resetNamespace(stanza, component.NS_COMPONENT_ACCEPT)
+                    self.service.send(stanza)
 
     def _disconnected(self, reason):
         component.Component._disconnected(self, reason)
