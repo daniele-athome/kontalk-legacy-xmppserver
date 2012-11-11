@@ -1,0 +1,26 @@
+presence(probe)
+* from=kontalk.net [resolver]
+* to=test@beta.kontalk.net [->net]
+
+-> net:
+presence(probe)
+* from=prime.kontalk.net [net]
+* origin=kontalk.net [resolver]
+* to=test@beta.kontalk.net
+
+<- net (beta) -> router (beta):
+presence(probe)
+* from=prime.kontalk.net [net (prime)]
+* origin=kontalk.net [resolver (prime)]
+* to=test@beta.kontalk.net [->c2s] ???
+ * to=test@kontalk.net [->resolver] !!!
+
+maybe not...
+* c2s replies to presence probes from network only if user is locally available
+* resolver would not pull presence from usercache anymore, c2s will do it
+
+<- c2s (beta) -> router (beta):
+presence
+* from=test@beta.kontalk.net[/xxxxxxxx]
+* to=prime.kontalk.net
+* destination=kontalk.net (was: origin)

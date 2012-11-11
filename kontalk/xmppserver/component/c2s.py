@@ -281,9 +281,9 @@ class C2SManager(xmlstream2.StreamManager):
         util.resetNamespace(stanza, component.NS_COMPONENT_ACCEPT, self.namespace)
 
         # handle original to address
-        if stanza.hasAttribute('origTo'):
-            stanza['to'] = stanza['origTo']
-            del stanza['origTo']
+        if stanza.hasAttribute('destination'):
+            stanza['to'] = stanza['destination']
+            del stanza['destination']
 
         if not stanza.hasAttribute('to'):
             stanza['to'] = self.xmlstream.otherEntity.full()
@@ -360,6 +360,17 @@ class XMPPServerFactory(xish_xmlstream.XmlStreamFactoryMixin, ServerFactory):
                 if len(self.streams[userid]) == 0:
                     del self.streams[userid]
 
+    def client_connected(self, _jid):
+        """Return true if the given L{JID} is found connected locally."""
+        userid, resource = util.jid_to_userid(_jid, True)
+        if userid in self.streams:
+            if resource:
+                return resource in self.streams[userid]
+            else:
+                return len(self.streams[userid]) > 0
+
+        return False
+
     def dispatch(self, stanza, to=None):
         """
         Dispatch a stanza to a JID all to all available resources found locally.
@@ -376,9 +387,9 @@ class XMPPServerFactory(xish_xmlstream.XmlStreamFactoryMixin, ServerFactory):
         stanza.defaultUri = stanza.uri = None
 
         if to.resource is not None:
-                self.streams[userid][resource].send(stanza)
+            self.streams[userid][resource].send(stanza)
         else:
-            for manager in self.streams[userid].itervalues():
+            for resource, manager in self.streams[userid].iteritems():
                 manager.send(stanza)
 
 
@@ -571,19 +582,27 @@ class C2SComponent(component.Component):
         Sender host has already been translated to network JID by the resolver
         at this point - if it's from our network.
         """
+
         if stanza.hasAttribute('to'):
             to = jid.JID(stanza['to'])
             # process only our JIDs
             if to.host == self.servername:
                 if to.user is not None:
+                    sender = jid.JID(stanza['from'])
+                    sender.host = self.network
+                    stanza['from'] = sender.full()
+
+                    to.host = self.network
+                    stanza['to'] = to.full()
                     try:
-                        self.sfactory.dispatch(stanza, jid.JID(tuple=(to.user, self.network, to.resource)))
+                        self.sfactory.dispatch(stanza)
                     except:
                         # full JID doesn't exist, send to bare JID
                         if to.resource is not None:
                             # remove resource to avoid loops
                             to.resource = None
-                            self.sfactory.dispatch(stanza, jid.JID(tuple=(to.user, self.network, None)))
+                            stanza['to'] = to.full()
+                            self.sfactory.dispatch(stanza)
 
                         # bare JID doesn't exist, send back to resolver
                         else:
@@ -599,7 +618,7 @@ class C2SComponent(component.Component):
         # unroutable stanza :(
         if stanza['type'] == 'unroutable':
             e = error.StanzaError('service-unavailable', 'cancel')
-            self.sfactory.dispatch(e.toResponse(stanza.firstChildElement()), jid.JID(stanza['to']))
+            self.dispatch(e.toResponse(stanza.firstChildElement()))
 
     def local(self, stanza):
         """Handle stanzas delivered to this component."""

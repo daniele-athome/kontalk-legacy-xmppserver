@@ -95,6 +95,9 @@ class XMPPNetConnectAuthenticator(xmlstream.ConnectAuthenticator):
         # TODO initializers
         xs.initializers = []
 
+    def streamStarted(self, rootElement):
+        xmlstream.ConnectAuthenticator.streamStarted(self, rootElement)
+
 
 class XMPPNetListenAuthenticator(xmlstream.ListenAuthenticator):
     """
@@ -291,6 +294,7 @@ class NetService(object):
         self.config = config
         self.fingerprint = config['fingerprint']
         self.defaultDomain = config['host']
+        self.network = config['network']
         self.domains = set()
         self.domains.add(self.defaultDomain)
         self.router = router
@@ -311,6 +315,7 @@ class NetService(object):
         self._outgoingStreams[otherHost] = xs
         xs.addObserver(xmlstream.STREAM_END_EVENT,
                        lambda _: self.outgoingDisconnected(xs))
+        xs.addObserver('/*', self.onElement, 0, xs)
 
         if otherHost in self._outgoingQueues:
             for element in self._outgoingQueues[otherHost]:
@@ -360,6 +365,15 @@ class NetService(object):
         if otherHost in self._outgoingStreams:
             del self._outgoingStreams[otherHost]
 
+    def onElement(self, xs, element):
+        """
+        Called when an element was received from one of the connected streams.
+        """
+        if element.handled:
+            return
+        else:
+            self.dispatch(xs, element)
+
     def send(self, stanza):
         """
         Send stanza to the proper XML Stream.
@@ -371,7 +385,7 @@ class NetService(object):
         otherHost = jid.internJID(stanza["to"]).host
 
         if stanza['from'] != self.defaultDomain:
-            stanza['origFrom'] = stanza['from']
+            stanza['origin'] = stanza['from']
             stanza['from'] = self.defaultDomain
 
         if otherHost not in self._outgoingStreams:
@@ -391,6 +405,7 @@ class NetService(object):
         Send a stanza to the router, checking some stuff first.
         """
 
+        log.debug("stanza from %s: %s" % (xs.otherEntity.full(), stanza.toXml()))
         util.resetNamespace(stanza, xs.namespace)
         stanzaFrom = stanza.getAttribute('from')
         stanzaTo = stanza.getAttribute('to')
@@ -400,14 +415,22 @@ class NetService(object):
         else:
             try:
                 sender = jid.internJID(stanzaFrom)
-                jid.internJID(stanzaTo)
+                to = jid.internJID(stanzaTo)
             except jid.InvalidFormat:
-                log.debug("Dropping error stanza with malformed JID")
+                log.debug("dropping stanza with malformed JID")
 
             log.debug("sender = %s, otherEntity = %s" % (sender.full(), xs.otherEntity.full()))
             if sender.host != xs.otherEntity.host and sender.host != self.defaultDomain:
                 xs.sendStreamError(error.StreamError('invalid-from'))
             else:
+                # set destination host to network so it will be delivered to resolver
+                to.host = self.network
+                stanza['to'] = to.full()
+                # replace from with origin (if any)
+                origin = stanza.getAttribute('origin')
+                if origin:
+                    stanza['from'] = origin
+                    del stanza['origin']
                 self.router.send(stanza)
 
 

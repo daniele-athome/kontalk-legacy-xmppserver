@@ -134,6 +134,7 @@ class MySQLPresenceStorage(PresenceStorage):
         def _fetchall(tx, query, args):
             tx.execute(query, args)
             data = tx.fetchall()
+            print data
             out = []
             for d in data:
                 out.append({

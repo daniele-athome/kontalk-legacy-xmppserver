@@ -27,7 +27,7 @@ Resolver takes care of resolving network JIDs (user@kontalk.net) into server
 JIDs (user@prime.kontalk.net). Resolution is achieved by checking both SM and
 S2S components.
 Stanza are then modified with the resolved JID and sent back to the router.
-C2S component should bind to the network route (e.g. kontalk.net)
+Resolver component should bind to the network route (e.g. kontalk.net)
 
 C2S
 ========================================
@@ -35,9 +35,6 @@ C2S will listen on XMPP client ports (5222, etc.) and accept client
 connections. Obviously only Kontalk users will be allowed and special
 extensions to the protocol will be added to fit the Kontalk protocol needs,
 using existing XEPs if possible.
-A C2S channel instance, upon client connection, will request a route to be
-assigned to itself identified by the client JID. On client disconnection,
-route will be unassigned.
 C2S component should bind to the host route (e.g. prime.kontalk.net)
 
 SM
@@ -56,14 +53,13 @@ SM can send stanzas for some JID/domain to the router, then:
 
 S2S
 ========================================
-S2S will listen on XMPP s2s ports and accept connections from other Kontalk and
-non-Kontalk servers.
-S2S will handle presence notifications among the other servers and external
-message routing:
-1. a presence notification is received by another server, a route will be
-  requested to the router
-2. a user wants to send a message to another user on another server: stanza is
-   routed to the S2S component, which will deliver it to the server
-
+S2S will listen on XMPP s2s ports and accept connections from non-Kontalk
+servers.
 S2S component should bind to the default route, because all unknown routes (e.g.
 jabber.org, gmail.com, ...) are handled by interserver communication.
+
+Net
+========================================
+Net will listen on a special s2s port and accept connections from Kontalk
+servers.
+Net component should bind to every host name in the Kontalk network.

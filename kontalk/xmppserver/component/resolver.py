@@ -51,8 +51,10 @@ class PresenceHandler(XMPPHandler):
             # TODO handle push notifications ID as capability
             # http://xmpp.org/extensions/xep-0115.html
 
-            self.parent.presencedb.presence(stanza)
-            self.parent.local_user_available(user)
+            if user.host == self.parent.servername:
+                self.parent.presencedb.presence(stanza)
+
+            self.parent.user_available(user)
 
         self.parent.broadcastSubscribers(stanza)
 
@@ -64,9 +66,11 @@ class PresenceHandler(XMPPHandler):
         self.parent.cancelSubscriptions(user)
 
         if user.user:
-            # update usercache with last seen
-            self.parent.presencedb.touch(user)
-            self.parent.local_user_unavailable(user)
+            if user.host == self.parent.servername:
+                # update usercache with last seen
+                self.parent.presencedb.touch(user)
+
+            self.parent.user_unavailable(user)
 
         self.parent.broadcastSubscribers(stanza)
 
@@ -214,9 +218,9 @@ class MessageHandler(XMPPHandler):
             # no destination - use sender bare JID
             if not stanza.hasAttribute('to'):
                 stanza['to'] = jid.JID(stanza['from']).userhost()
-                stanza['origTo'] = ''
+                stanza['destination'] = ''
             else:
-                stanza['origTo'] = stanza['to']
+                stanza['destination'] = stanza['to']
 
             self.parent.bounce(stanza)
 
@@ -322,8 +326,8 @@ class Resolver(component.Component):
         """Resolves stanza recipient and send the stanza to the router."""
 
         util.resetNamespace(stanza, component.NS_COMPONENT_ACCEPT)
-        if stanza.hasAttribute('from'):
-            stanza['from'] = self.translateJID(jid.JID(stanza['from'])).full()
+        #if stanza.hasAttribute('from'):
+        #    stanza['from'] = self.translateJID(jid.JID(stanza['from'])).full()
 
         if to is None:
             to = jid.JID(stanza['to'])
@@ -423,20 +427,29 @@ class Resolver(component.Component):
                 stanza['to'] = sub.userhost()
                 self.send(stanza)
 
-    def local_user_available(self, _jid):
-        """Called when a user locally connects to this server."""
+    def user_available(self, _jid):
+        """Called when receiving a presence stanza."""
         userid, resource = util.jid_to_userid(_jid, True)
-        if userid not in self.local_users:
-            self.local_users[userid] = set()
-        self.local_users[userid].add(resource)
+        if _jid.host == self.servername:
+            if userid not in self.local_users:
+                self.local_users[userid] = set()
+            self.local_users[userid].add(resource)
+        else:
+            if userid not in self.remote_users:
+                self.remote_users[userid] = dict()
+            self.remote_users[userid][resource] = _jid.host
 
-    def local_user_unavailable(self, _jid):
-        """Called when a local user disconnects from this server."""
+    def user_unavailable(self, _jid):
+        """Called when receiving a presence unavailable stanza."""
         userid, resource = util.jid_to_userid(_jid, True)
-        if userid in self.local_users:
-            self.local_users[userid].discard(resource)
-            if len(self.local_users[userid]) == 0:
-                del self.local_users[userid]
+        if _jid.host == self.servername:
+            if userid in self.local_users:
+                self.local_users[userid].discard(resource)
+                if len(self.local_users[userid]) == 0:
+                    del self.local_users[userid]
+        else:
+            if userid in self.remote_users and resource in self.remote_users[userid]:
+                del self.remote_users[userid][resource]
 
     def translateJID(self, _jid):
         """
