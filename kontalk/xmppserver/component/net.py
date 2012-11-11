@@ -383,10 +383,12 @@ class NetService(object):
         """
 
         otherHost = jid.internJID(stanza["to"]).host
+        stanzaFrom = jid.JID(stanza['from'])
 
-        if stanza['from'] != self.defaultDomain:
+        if stanzaFrom.host != self.defaultDomain:
+            stanzaFrom.host = self.defaultDomain
             stanza['origin'] = stanza['from']
-            stanza['from'] = self.defaultDomain
+            stanza['from'] = stanzaFrom.full()
 
         if otherHost not in self._outgoingStreams:
             # There is no connection with the destination (yet). Cache the

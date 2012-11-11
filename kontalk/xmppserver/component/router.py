@@ -99,6 +99,14 @@ class Router(component.Router):
         if stanza.consumed:
             return
 
+        """"
+        TEST check sender host is component
+        stanzaFrom = jid.JID(stanza['from'])
+        if stanzaFrom.host != xs.thisEntity.host:
+            log.error("stanza is not from component - dropping")
+            return
+        """
+
         # reset namespace
         util.resetNamespace(stanza, component.NS_COMPONENT_ACCEPT)
 

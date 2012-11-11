@@ -41,11 +41,59 @@ class PresenceHandler(XMPPHandler):
     @type parent: L{C2SManager}
     """
 
+    def connectionInitialized(self):
+        # presence probes MUST be handled by server so the high priority
+        self.xmlstream.addObserver("/presence[@type='probe']", self.probe, 600)
+
     def connectionLost(self, reason):
         if self.xmlstream.otherEntity is not None:
             stanza = xmppim.UnavailablePresence()
             stanza['from'] = self.xmlstream.otherEntity.full()
             self.parent.forward(stanza, True)
+
+    def probe(self, stanza):
+        stanza.consumed = True
+        sender = jid.JID(stanza['from'])
+        to = jid.JID(stanza['to'])
+
+        def _db(presence, stanza):
+            log.debug("presence: %r" % (presence, ))
+            if type(presence) == list:
+                response = domish.Element((None, 'presence'))
+                response['to'] = sender.full()
+
+                for user in presence:
+                    response_from = util.userid_to_jid(user['userid'], self.parent.servername)
+                    response['from'] = response_from.full()
+
+                    if user['status'] is not None:
+                        response.addElement((None, 'status'), content=user['status'])
+                    if user['show'] is not None:
+                        response.addElement((None, 'show'), content=user['show'])
+
+                    if not self.parent.factory.client_connected(response_from):
+                        response['type'] = 'unavailable'
+                        delay = domish.Element(('urn:xmpp:delay', 'delay'))
+                        delay['stamp'] = user['timestamp'].strftime('%Y-%m-%dT%H:%M:%SZ')
+                        response.addChild(delay)
+
+                    self.send(response)
+                    log.debug("probe result sent: %s" % (response.toXml().encode('utf-8'), ))
+            else:
+                response = domish.Element((None, 'presence'))
+                response['to'] = sender.full()
+                response['from'] = to.full()
+
+                if presence['status'] is not None:
+                    response.addElement((None, 'status'), content=presence['status'])
+                if presence['show'] is not None:
+                    response.addElement((None, 'show'), content=presence['show'])
+
+                self.send(response)
+                log.debug("probe result sent: %s" % (response.toXml().encode('utf-8'), ))
+
+        d = self.parent.presencedb.get(to)
+        d.addCallback(_db, stanza)
 
     def features(self):
         return tuple()
