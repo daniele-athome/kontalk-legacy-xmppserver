@@ -363,23 +363,29 @@ class Resolver(component.Component):
             def _lookup(rcpts, stanza):
                 log.debug("rcpts = %r" % (rcpts, ))
                 if rcpts is None:
-                    log.debug("JID %s not found" % (stanza['to'], ))
-                    e = error.StanzaError('item-not-found', 'cancel')
-                    stanza = e.toResponse(stanza)
+                    if not stanza.consumed:
+                        stanza.consumed = True
+                        log.debug("JID %s not found" % (to.full(), ))
+                        e = error.StanzaError('item-not-found', 'cancel')
+                        stanza = e.toResponse(stanza)
+                    else:
+                        log.debug("JID %s not found (stanza has been consumed)" % (to.full(), ))
+                        return
                 else:
                     log.debug("JID found: %r" % (rcpts, ))
+                    stanza.consumed = True
                     if type(rcpts) == list:
                         for _to in rcpts:
-                            for full_jid in _to:
-                                stanza['to'] = full_jid.full()
-                                component.Component.send(self, stanza)
+                            stanza['to'] = _to.full()
+                            component.Component.send(self, stanza)
                         return
                     else:
                         stanza['to'] = rcpts.full()
                 component.Component.send(self, stanza)
 
-            d = self.lookupJID(to)
-            d.addCallback(_lookup, stanza=stanza)
+            d = self.lookupJID(to, progressive=True)
+            for cb in d:
+                cb.addCallback(_lookup, stanza=stanza)
 
         # otherwise send to router
         else:
@@ -489,7 +495,7 @@ class Resolver(component.Component):
 
         return idList
 
-    def find_jid(self, _jid):
+    def find_jid(self, _jid, progressive=False):
         """
         Send a presence probe to the network and wait for the first response.
         """
@@ -530,10 +536,11 @@ class Resolver(component.Component):
 
             self.xmlstream.addObserver("/presence[@id='%s']" % (stanzaId, ), _presence, 1000, callback=d, timeout=timeout, buf=buf)
 
-        # gather all returned presence from the network
-        g = defer.gatherResults(deferList, True)
-
-        return g
+        if progressive:
+            return deferList
+        else:
+            # gather all returned presence from the network
+            return defer.gatherResults(deferList, True)
 
     def cacheLookupJID(self, _jid):
         """
@@ -562,14 +569,19 @@ class Resolver(component.Component):
         if len(out) > 0:
             return out
 
-    def lookupJID(self, _jid, refresh=False):
+    def lookupJID(self, _jid, progressive=False, refresh=False):
         """
         Lookup a jid in the network.
+        @param progressive: see @return
         @param refresh: if true lookup is forced over the whole network;
         otherwise, just cached results are returned if found. In the latter
         case, if no results are found, a lookup over the network will be started.
-        @return a L{Deferred} which will be fired for lookups.
+        @return if progresive is false, a L{Deferred} which will be fired for
+        lookups. Otherwise a list of L{Deferred} is returned, the first one for
+        cache lookup, and then one for each remote lookup request. Useful for
+        getting JID lookup as soon as a server responds to presence probes.
         @rtype: L{Deferred}
+        @rtype: C{list}
         """
 
         log.debug("[%s] looking up" % (_jid.full(), ))
@@ -579,7 +591,14 @@ class Resolver(component.Component):
 
         # not found in caches or refreshing, lookup the network
         if hits is None or refresh:
-            d = self.find_jid(_jid)
+            d = self.find_jid(_jid, progressive)
+            # return hits + remote deferred
+            if progressive:
+                out = []
+                if hits: out.append(defer.succeed(hits))
+                out.extend(d)
+                return out
+
             clientDeferred = defer.Deferred()
             def _cb(result):
                 log.debug("result = %r, hits = %r" % (result, hits))
