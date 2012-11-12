@@ -22,7 +22,7 @@ NS_IQ_LAST = 'jabber:iq:last'
 
 NS_XMPP_PING = 'urn:xmpp:ping'
 
-NS_XMPP_STANZA_CHAIN = 'urn:xmpp:stanza-chain'
+NS_XMPP_STANZA_GROUP = 'urn:xmpp:stanza-group'
 
 
 class IXMPPUser(Interface):

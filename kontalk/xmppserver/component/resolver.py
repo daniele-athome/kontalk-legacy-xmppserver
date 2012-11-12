@@ -116,7 +116,13 @@ class PresenceHandler(XMPPHandler):
                     response = domish.Element((None, 'presence'))
                     response['to'] = sender.full()
 
-                    count = len(presence)
+                    if len(presence) > 1:
+                        chain = domish.Element((xmlstream2.NS_XMPP_STANZA_GROUP, 'group'))
+                        chain['id'] = stanza['id']
+                        chain['count'] = str(len(presence))
+                    else:
+                        chain = None
+
                     for user in presence:
                         response_from = util.userid_to_jid(user['userid'], self.parent.servername)
                         response['from'] = response_from.full()
@@ -132,10 +138,7 @@ class PresenceHandler(XMPPHandler):
                             delay['stamp'] = user['timestamp'].strftime('%Y-%m-%dT%H:%M:%SZ')
                             response.addChild(delay)
 
-                        if count > 1:
-                            count -= 1
-                            chain = domish.Element((xmlstream2.NS_XMPP_STANZA_CHAIN, 'chain'))
-                            chain['count'] = str(count)
+                        if chain:
                             response.addChild(chain)
 
                         self.send(response)
@@ -498,10 +501,10 @@ class Resolver(component.Component):
             stanza.consumed = True
             buf.append(sender)
 
-            chain = stanza.chain
+            chain = stanza.group
             # end of presence chain!!!
-            if not chain or int(chain['count']) == 0:
-                self.xmlstream.removeObserver("/presence[@id='%s']" % (stanza['id'], ), _presence)
+            if not chain or int(chain['count']) == len(buf):
+                self.xmlstream.removeObserver("/presence/group[@id='%s']" % (stanza['id'], ), _presence)
                 if not callback.called:
                     # cancel timeout
                     timeout.cancel()
@@ -510,7 +513,7 @@ class Resolver(component.Component):
 
         def _abort(stanzaId, callback, buf):
             log.debug("presence broadcast request timed out!")
-            self.xmlstream.removeObserver("/presence[@id='%s']" % (stanzaId, ), _presence)
+            self.xmlstream.removeObserver("/presence/group[@id='%s']" % (stanzaId, ), _presence)
             if not callback.called:
                 #callback.errback(failure.Failure(internet_error.TimeoutError()))
                 callback.callback(buf if len(buf) > 0 else None)
