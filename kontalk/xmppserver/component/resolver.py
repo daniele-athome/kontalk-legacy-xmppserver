@@ -22,10 +22,10 @@
 import time, datetime
 
 from twisted.python import failure
-from twisted.internet import defer, reactor, error as internet_error
+from twisted.internet import defer, reactor
 from twisted.words.protocols.jabber.xmlstream import XMPPHandler
 from twisted.words.xish import domish
-from twisted.words.protocols.jabber import jid, xmlstream, error
+from twisted.words.protocols.jabber import jid, error, xmlstream
 
 from wokkel import component
 
@@ -44,6 +44,10 @@ class PresenceHandler(XMPPHandler):
 
     def onPresenceAvailable(self, stanza):
         """Handle availability presence stanzas."""
+
+        if stanza.consumed:
+            return
+
         log.debug("presence: %s" % (stanza.toXml().encode('utf-8'), ))
 
         # update usercache with last seen and status
@@ -61,6 +65,10 @@ class PresenceHandler(XMPPHandler):
 
     def onPresenceUnavailable(self, stanza):
         """Handle unavailable presence stanzas."""
+
+        if stanza.consumed:
+            return
+
         log.debug("user unavailable: %s" % (stanza.toXml(), ))
         user = jid.JID(stanza['from'])
         # forget any subscription requested by this user
@@ -77,6 +85,10 @@ class PresenceHandler(XMPPHandler):
 
     def onSubscribe(self, stanza):
         """Handle subscription requests."""
+
+        if stanza.consumed:
+            return
+
         log.debug("subscription request: %s" % (stanza.toXml(), ))
 
         # extract jid the user wants to subscribe to
@@ -87,6 +99,10 @@ class PresenceHandler(XMPPHandler):
 
     def onProbe(self, stanza):
         """Handle presence probes."""
+
+        if stanza.consumed:
+            return
+
         log.debug("probe request: %s" % (stanza.toXml(), ))
         stanza.consumed = True
         sender = jid.JID(stanza['from'])
