@@ -116,6 +116,7 @@ class PresenceHandler(XMPPHandler):
                     response = domish.Element((None, 'presence'))
                     response['to'] = sender.full()
 
+                    count = len(presence)
                     for user in presence:
                         response_from = util.userid_to_jid(user['userid'], self.parent.servername)
                         response['from'] = response_from.full()
@@ -130,6 +131,12 @@ class PresenceHandler(XMPPHandler):
                             delay = domish.Element(('urn:xmpp:delay', 'delay'))
                             delay['stamp'] = user['timestamp'].strftime('%Y-%m-%dT%H:%M:%SZ')
                             response.addChild(delay)
+
+                        if count > 1:
+                            count -= 1
+                            chain = domish.Element((xmlstream2.NS_XMPP_STANZA_CHAIN, 'chain'))
+                            chain['count'] = str(count)
+                            response.addChild(chain)
 
                         self.send(response)
                         log.debug("probe result sent: %s" % (response.toXml().encode('utf-8'), ))
@@ -360,9 +367,10 @@ class Resolver(component.Component):
                     log.debug("JID found: %r" % (rcpts, ))
                     if type(rcpts) == list:
                         for _to in rcpts:
-                            stanza['to'] = _to.full()
-                            component.Component.send(self, stanza)
-                            return
+                            for full_jid in _to:
+                                stanza['to'] = full_jid.full()
+                                component.Component.send(self, stanza)
+                        return
                     else:
                         stanza['to'] = rcpts.full()
                 component.Component.send(self, stanza)
@@ -483,34 +491,41 @@ class Resolver(component.Component):
         Send a presence probe to the network and wait for the first response.
         """
         idList = self.network_presence_probe(_jid)
-        def _presence(stanza, callback, timeout):
+        def _presence(stanza, callback, timeout, buf):
             # check if stanza is for the requested user
             sender = jid.JID(stanza['from'])
             log.debug("full JID %s found!" % (sender.full(), ))
             stanza.consumed = True
-            self.xmlstream.removeObserver("/presence[@id='%s']" % (stanza['id'], ), _presence)
-            if not callback.called:
-                # cancel timeout
-                timeout.cancel()
-                # fire deferred
-                callback.callback(sender)
+            buf.append(sender)
 
-        def _abort(stanzaId, callback):
+            chain = stanza.chain
+            # end of presence chain!!!
+            if not chain or int(chain['count']) == 0:
+                self.xmlstream.removeObserver("/presence[@id='%s']" % (stanza['id'], ), _presence)
+                if not callback.called:
+                    # cancel timeout
+                    timeout.cancel()
+                    # fire deferred
+                    callback.callback(buf)
+
+        def _abort(stanzaId, callback, buf):
             log.debug("presence broadcast request timed out!")
             self.xmlstream.removeObserver("/presence[@id='%s']" % (stanzaId, ), _presence)
             if not callback.called:
                 #callback.errback(failure.Failure(internet_error.TimeoutError()))
-                callback.callback(None)
+                callback.callback(buf if len(buf) > 0 else None)
 
         deferList = []
         for stanzaId in idList:
             d = defer.Deferred()
             deferList.append(d)
+            # this will contain presence probe hits for this JID
+            buf = []
 
             # timeout of request
-            timeout = reactor.callLater(5, _abort, stanzaId=stanzaId, callback=d)
+            timeout = reactor.callLater(5, _abort, stanzaId=stanzaId, callback=d, buf=buf)
 
-            self.xmlstream.addObserver("/presence[@id='%s']" % (stanzaId, ), _presence, 1000, callback=d, timeout=timeout)
+            self.xmlstream.addObserver("/presence[@id='%s']" % (stanzaId, ), _presence, 1000, callback=d, timeout=timeout, buf=buf)
 
         # gather all returned presence from the network
         g = defer.gatherResults(deferList, True)
@@ -551,7 +566,7 @@ class Resolver(component.Component):
         otherwise, just cached results are returned if found. In the latter
         case, if no results are found, a lookup over the network will be started.
         @return a L{Deferred} which will be fired for lookups.
-        @rtype: L{Deferred} 
+        @rtype: L{Deferred}
         """
 
         log.debug("[%s] looking up" % (_jid.full(), ))

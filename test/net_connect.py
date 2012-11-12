@@ -56,12 +56,24 @@ class NetConnector(object):
 
         xs.addObserver("/presence[@type='probe']", self.probe)
 
+        """
         presence = domish.Element((None, 'presence'))
         presence['type'] = 'probe'
         presence['from'] = 'beta.kontalk.net'
         #presence['to'] = 'e73ea3be23d0449597a82c62ed981f584a5c181b@prime.kontalk.net'
-        presence['to'] = '584fb3000e857d399b0c99fe14ba65df8663e697@prime.kontalk.net'
+        presence['to'] = '584fb3000e857d399b0c99fe14ba65df8663e697@prime.kontalk.net/DKDJ3K2KJ'
+        #presence['to'] = '584fb3000e857d399b0c99fe14ba65df8663e697@kontalk.net'
         xs.send(presence)
+        """
+
+        msg = domish.Element((None, 'message'))
+        msg['type'] = 'chat'
+        msg['from'] = 'beta.kontalk.net'
+        msg['origin'] = 'kontalk.net'
+        #msg['to'] = 'e73ea3be23d0449597a82c62ed981f584a5c181b@prime.kontalk.net'
+        #msg['to'] = '584fb3000e857d399b0c99fe14ba65df8663e697@prime.kontalk.net/DKDJ3K2KJ'
+        msg['to'] = '584fb3000e857d399b0c99fe14ba65df8663e697@kontalk.net'
+        xs.send(msg)
 
         reactor.callLater(20, xs.sendFooter)
 

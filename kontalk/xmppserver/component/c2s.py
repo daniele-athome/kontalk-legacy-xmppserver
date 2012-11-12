@@ -581,6 +581,7 @@ class C2SComponent(component.Component):
             if type(presence) == list:
                 response = xmlstream2.toResponse(stanza)
 
+                count = len(presence)
                 for user in presence:
                     response_from = util.userid_to_jid(user['userid'], self.servername)
                     response['from'] = response_from.full()
@@ -596,9 +597,15 @@ class C2SComponent(component.Component):
                         delay['stamp'] = user['timestamp'].strftime('%Y-%m-%dT%H:%M:%SZ')
                         response.addChild(delay)
 
+                    if count > 1:
+                        count -= 1
+                        chain = domish.Element((xmlstream2.NS_XMPP_STANZA_CHAIN, 'chain'))
+                        chain['count'] = str(count)
+                        response.addChild(chain)
+
                     self.send(response)
                     log.debug("probe result sent: %s" % (response.toXml().encode('utf-8'), ))
-            else:
+            elif presence is not None:
                 response = xmlstream2.toResponse(stanza)
 
                 if presence['status'] is not None:
@@ -608,6 +615,9 @@ class C2SComponent(component.Component):
 
                 self.send(response)
                 log.debug("probe result sent: %s" % (response.toXml().encode('utf-8'), ))
+            else:
+                # TODO return error?
+                log.debug("probe: user not found")
 
         to = jid.JID(stanza['to'])
         d = self.presencedb.get(to)
