@@ -21,7 +21,8 @@
 
 import time, datetime
 
-from twisted.internet import defer, reactor
+from twisted.python import failure
+from twisted.internet import defer, reactor, error as internet_error
 from twisted.words.protocols.jabber.xmlstream import XMPPHandler
 from twisted.words.xish import domish
 from twisted.words.protocols.jabber import jid, xmlstream, error
@@ -151,7 +152,7 @@ class IQHandler(XMPPHandler):
             stanza.consumed = True
 
             if stanza['to'] == self.parent.network:
-                response = xmlstream.toResponse(stanza, 'result')
+                response = xmlstream2.toResponse(stanza, 'result')
                 query = domish.Element((xmlstream2.NS_IQ_VERSION, 'query'))
                 query.addElement((None, 'name'), content=version.NAME)
                 query.addElement((None, 'version'), content=version.VERSION)
@@ -168,7 +169,7 @@ class IQHandler(XMPPHandler):
             if stanza['to'] == self.parent.network:
                 # server uptime
                 seconds = self.parent.uptime()
-                response = xmlstream.toResponse(stanza, 'result')
+                response = xmlstream2.toResponse(stanza, 'result')
                 response.addChild(domish.Element((xmlstream2.NS_IQ_LAST, 'query'), attribs={'seconds': str(int(seconds))}))
                 self.send(response)
             else:
@@ -182,7 +183,7 @@ class IQHandler(XMPPHandler):
                         presence = presence[0]
 
                     if presence:
-                        response = xmlstream.toResponse(stanza, 'result')
+                        response = xmlstream2.toResponse(stanza, 'result')
                         if lookup is not None:
                             seconds = 0
                         else:
@@ -218,9 +219,6 @@ class MessageHandler(XMPPHandler):
             # no destination - use sender bare JID
             if not stanza.hasAttribute('to'):
                 stanza['to'] = jid.JID(stanza['from']).userhost()
-                stanza['destination'] = ''
-            else:
-                stanza['destination'] = stanza['to']
 
             self.parent.bounce(stanza)
 
@@ -236,10 +234,8 @@ class Resolver(component.Component):
     @type presencedb: L{PresenceStorage}
     @ivar subscriptions: a map of user subscriptions (key=watched, value=subscribers)
     @type subscriptions: C{dict}
-    @ivar local_users: locally connected users
-    @type local_users: C{dict}
-    @ivar remote_users: cache of remote users
-    @type remote_users: C{dict}
+    @ivar jid_cache: cache of JIDs location
+    @type jid_cache: C{dict}
     """
 
     protocolHandlers = (
@@ -263,8 +259,7 @@ class Resolver(component.Component):
         self.keyring = keyring.Keyring(storage.MySQLNetworkStorage(), config['fingerprint'], self.servername)
 
         self.subscriptions = {}
-        self.local_users = {}
-        self.remote_users = {}
+        self.jid_cache = {}
 
         # protocol handlers here!!
         for handler in self.protocolHandlers:
@@ -322,15 +317,14 @@ class Resolver(component.Component):
             stanza.consumed = True
             self.send(stanza)
 
-    def send(self, stanza, to=None):
+    def send(self, stanza):
         """Resolves stanza recipient and send the stanza to the router."""
 
         util.resetNamespace(stanza, component.NS_COMPONENT_ACCEPT)
         #if stanza.hasAttribute('from'):
         #    stanza['from'] = self.translateJID(jid.JID(stanza['from'])).full()
 
-        if to is None:
-            to = jid.JID(stanza['to'])
+        to = jid.JID(stanza['to'])
 
         # stanza is intended to the network
         if to.full() == self.network:
@@ -340,11 +334,8 @@ class Resolver(component.Component):
 
         # network JID - resolve and send to router
         elif to.host == self.network:
-            # no local users - drop silently to avoid loops
-            if len(self.local_users) == 0:
-                return
-
             def _lookup(rcpts, stanza):
+                log.debug("rcpts = %r" % (rcpts, ))
                 if rcpts is None:
                     log.debug("JID %s not found" % (stanza['to'], ))
                     e = error.StanzaError('item-not-found', 'cancel')
@@ -389,7 +380,7 @@ class Resolver(component.Component):
         pres['to'] = subscriber.full()
         pres['from'] = to.userhost()
         pres['type'] = 'subscribed'
-        self.send(pres, subscriber)
+        self.send(pres)
 
         """
         # send a fake roster entry
@@ -430,26 +421,17 @@ class Resolver(component.Component):
     def user_available(self, _jid):
         """Called when receiving a presence stanza."""
         userid, resource = util.jid_to_userid(_jid, True)
-        if _jid.host == self.servername:
-            if userid not in self.local_users:
-                self.local_users[userid] = set()
-            self.local_users[userid].add(resource)
-        else:
-            if userid not in self.remote_users:
-                self.remote_users[userid] = dict()
-            self.remote_users[userid][resource] = _jid.host
+        if userid not in self.jid_cache:
+            self.jid_cache[userid] = dict()
+        self.jid_cache[userid][resource] = _jid.host
 
     def user_unavailable(self, _jid):
         """Called when receiving a presence unavailable stanza."""
         userid, resource = util.jid_to_userid(_jid, True)
-        if _jid.host == self.servername:
-            if userid in self.local_users:
-                self.local_users[userid].discard(resource)
-                if len(self.local_users[userid]) == 0:
-                    del self.local_users[userid]
-        else:
-            if userid in self.remote_users and resource in self.remote_users[userid]:
-                del self.remote_users[userid][resource]
+        if userid in self.jid_cache and resource in self.jid_cache[userid]:
+            del self.jid_cache[userid][resource]
+            if len(self.jid_cache[userid]) == 0:
+                del self.jid_cache[userid]
 
     def translateJID(self, _jid):
         """
@@ -464,60 +446,60 @@ class Resolver(component.Component):
     def network_presence_probe(self, to):
         """
         Broadcast a presence probe to find the given jid.
-        @return: a list of JID attempts to the network that can be watched to
+        @return: a list of stanza IDs sent to the network that can be watched to
         for responses
         """
         presence = domish.Element((None, 'presence'))
         presence['type'] = 'probe'
         presence['from'] = self.network
-        toList = []
+        idList = []
         for server in self.keyring.hostlist():
             to.host = server
             presence['to'] = to.full()
             presence['id'] = util.rand_str(8, util.CHARSBOX_AZN_LOWERCASE)
             self.send(presence)
-            toList.append(to)
+            idList.append(presence['id'])
 
-        return toList
+        return idList
 
-    def find_jid(self, _jid, result=None):
+    def find_jid(self, _jid):
         """
         Send a presence probe to the network and wait for the first response.
-        @param result: results from previous lookups - will be passed as-is
         """
-        toList = self.network_presence_probe(_jid)
-        def _presence(stanza, probes, result, callback):
+        idList = self.network_presence_probe(_jid)
+        def _presence(stanza, callback, timeout):
             # check if stanza is for the requested user
             sender = jid.JID(stanza['from'])
-            for to in probes:
-                # full JID
-                if to.resource is not None:
-                    if sender.user == to.user and sender.host in self.keyring.hostlist() and sender.resource == to.resource:
-                        # GOT IT!
-                        log.debug("full JID %s found!" % (sender.full(), ))
-                        stanza.consumed = True
-
-                # bare JID
-                else:
-                    if sender.user == to.user and sender.host in self.keyring.hostlist():
-                        # GOT IT!
-                        log.debug("bare JID %s found!" % (sender.full(), ))
-                        stanza.consumed = True
-
-            if stanza.consumed:
-                self.xmlstream.removeObserver("/presence[@to='%s']" % (self.network, ), _presence)
-
-        def _abort(result, callback):
-            log.debug("presence broadcast request timed out!")
+            log.debug("full JID %s found!" % (sender.full(), ))
+            stanza.consumed = True
+            self.xmlstream.removeObserver("/presence[@id='%s']" % (stanza['id'], ), _presence)
             if not callback.called:
-                callback.callback(result)
+                # cancel timeout
+                timeout.cancel()
+                # fire deferred
+                callback.callback(sender)
 
-        d = defer.Deferred()
-        # timeout of request
-        reactor.callLater(5, _abort, result=result, callback=d)
+        def _abort(stanzaId, callback):
+            log.debug("presence broadcast request timed out!")
+            self.xmlstream.removeObserver("/presence[@id='%s']" % (stanzaId, ), _presence)
+            if not callback.called:
+                #callback.errback(failure.Failure(internet_error.TimeoutError()))
+                callback.callback(None)
 
-        self.xmlstream.addObserver("/presence[@to='%s']" % (self.network, ), _presence, 1000, probes=toList, result=result, callback=d)
-        return d
+        deferList = []
+        for stanzaId in idList:
+            d = defer.Deferred()
+            deferList.append(d)
+
+            # timeout of request
+            timeout = reactor.callLater(5, _abort, stanzaId=stanzaId, callback=d)
+
+            self.xmlstream.addObserver("/presence[@id='%s']" % (stanzaId, ), _presence, 1000, callback=d, timeout=timeout)
+
+        # gather all returned presence from the network
+        g = defer.gatherResults(deferList, True)
+
+        return g
 
     def cacheLookupJID(self, _jid):
         """
@@ -528,27 +510,17 @@ class Resolver(component.Component):
 
         out = []
 
-        # lookup in local cache first
-        if _jid.user in self.local_users:
-            if _jid.resource is not None:
-                # full JID found locally!
-                if _jid.resource in self.local_users[_jid.user]:
-                    return jid.JID(tuple=(_jid.user, self.servername, _jid.resource))
-            else:
-                # bare JID found locally: add to list (but it's not over yet)
-                out.extend([jid.JID(tuple=(_jid.user, self.servername, x)) for x in self.local_users[_jid.user]])
-
+        # lookup in JID cache first
         if _jid.resource is not None:
-            # full JID was not found, try remote cache
             try:
-                host = self.remote_users[_jid.user][_jid.resource]
+                host = self.jid_cache[_jid.user][_jid.resource]
                 return jid.JID(tuple=(_jid.user, host, _jid.resource))
             except:
                 pass
         else:
             # bare JID
             try:
-                resources = self.remote_users[_jid.user]
+                resources = self.jid_cache[_jid.user]
                 out.extend([jid.JID(tuple=(_jid.user, host, resource)) for resource, host in resources.iteritems()])
             except:
                 pass
@@ -559,23 +531,36 @@ class Resolver(component.Component):
     def lookupJID(self, _jid, refresh=False):
         """
         Lookup a jid in the network.
-        A L{Deferred} is returned, which will be fired when a lookup is
-        successful. If refresh is true, lookup is forced over the whole network;
-        otherwise, just cached results are returned if found.
-        In the latter case, if no results are found, a lookup over the network
-        will be started.
+        @param refresh: if true lookup is forced over the whole network;
+        otherwise, just cached results are returned if found. In the latter
+        case, if no results are found, a lookup over the network will be started.
+        @return a L{Deferred} which will be fired for lookups.
+        @rtype: L{Deferred} 
         """
 
         log.debug("[%s] looking up" % (_jid.full(), ))
 
-        result = self.cacheLookupJID(_jid)
-        log.debug("[%s] found: %r" % (_jid.full(), result))
+        hits = self.cacheLookupJID(_jid)
+        log.debug("[%s] found: %r" % (_jid.full(), hits))
 
         # not found in caches or refreshing, lookup the network
-        if result is None or refresh:
-            return self.find_jid(_jid, result)
+        if hits is None or refresh:
+            d = self.find_jid(_jid)
+            clientDeferred = defer.Deferred()
+            def _cb(result):
+                log.debug("result = %r, hits = %r" % (result, hits))
+                if isinstance(result, failure.Failure):
+                    out = hits
+                else:
+                    out = []
+                    if hits:
+                        out.extend(hits)
+                    for hit in result:
+                        if hit: out.append(hit)
 
-        if result is None:
-            log.debug("[%s] unknown JID" % (_jid.full(), ))
+                clientDeferred.callback(out)
 
-        return defer.succeed(result)
+            d.addBoth(_cb)
+            return clientDeferred
+
+        return defer.succeed(hits)

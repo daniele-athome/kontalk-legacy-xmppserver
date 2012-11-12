@@ -492,3 +492,42 @@ class StreamManager(xmlstream.XMPPHandlerCollection):
             self.xmlstream.send(obj)
         else:
             self._packetQueue.append(obj)
+
+def toResponse(stanza, stanzaType=None):
+    """
+    Create a response stanza from another stanza.
+
+    This takes the addressing and id attributes from a stanza to create a (new,
+    empty) response stanza. The addressing attributes are swapped and the id
+    copied. Optionally, the stanza type of the response can be specified.
+    This takes care also of handling origin and destination attributes
+
+    @param stanza: the original stanza
+    @type stanza: L{domish.Element}
+    @param stanzaType: optional response stanza type
+    @type stanzaType: C{str}
+    @return: the response stanza.
+    @rtype: L{domish.Element}
+    """
+
+    toAddr = stanza.getAttribute('from')
+    destinationAddr = stanza.getAttribute('origin')
+    fromAddr = stanza.getAttribute('to')
+    originAddr = stanza.getAttribute('destination')
+    stanzaID = stanza.getAttribute('id')
+
+    response = domish.Element((None, stanza.name))
+    if toAddr:
+        response['to'] = toAddr
+    if destinationAddr:
+        response['destination'] = destinationAddr
+    if fromAddr:
+        response['from'] = fromAddr
+    if originAddr:
+        response['origin'] = originAddr
+    if stanzaID:
+        response['id'] = stanzaID
+    if stanzaType:
+        response['type'] = stanzaType
+
+    return response

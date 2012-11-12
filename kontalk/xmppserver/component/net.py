@@ -417,7 +417,7 @@ class NetService(object):
         else:
             try:
                 sender = jid.internJID(stanzaFrom)
-                to = jid.internJID(stanzaTo)
+                jid.internJID(stanzaTo)
             except jid.InvalidFormat:
                 log.debug("dropping stanza with malformed JID")
 
@@ -425,14 +425,11 @@ class NetService(object):
             if sender.host != xs.otherEntity.host and sender.host != self.defaultDomain:
                 xs.sendStreamError(error.StreamError('invalid-from'))
             else:
-                # set destination host to network so it will be delivered to resolver
-                to.host = self.network
-                stanza['to'] = to.full()
-                # replace from with origin (if any)
-                origin = stanza.getAttribute('origin')
-                if origin:
-                    stanza['from'] = origin
-                    del stanza['origin']
+                # replace to with destination
+                destination = stanza.getAttribute('destination')
+                if destination:
+                    stanza['to'] = destination
+                    del stanza['destination']
                 self.router.send(stanza)
 
 

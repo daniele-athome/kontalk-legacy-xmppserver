@@ -41,59 +41,11 @@ class PresenceHandler(XMPPHandler):
     @type parent: L{C2SManager}
     """
 
-    def connectionInitialized(self):
-        # presence probes MUST be handled by server so the high priority
-        self.xmlstream.addObserver("/presence[@type='probe']", self.probe, 600)
-
     def connectionLost(self, reason):
         if self.xmlstream.otherEntity is not None:
             stanza = xmppim.UnavailablePresence()
             stanza['from'] = self.xmlstream.otherEntity.full()
             self.parent.forward(stanza, True)
-
-    def probe(self, stanza):
-        stanza.consumed = True
-        sender = jid.JID(stanza['from'])
-        to = jid.JID(stanza['to'])
-
-        def _db(presence, stanza):
-            log.debug("presence: %r" % (presence, ))
-            if type(presence) == list:
-                response = domish.Element((None, 'presence'))
-                response['to'] = sender.full()
-
-                for user in presence:
-                    response_from = util.userid_to_jid(user['userid'], self.parent.servername)
-                    response['from'] = response_from.full()
-
-                    if user['status'] is not None:
-                        response.addElement((None, 'status'), content=user['status'])
-                    if user['show'] is not None:
-                        response.addElement((None, 'show'), content=user['show'])
-
-                    if not self.parent.factory.client_connected(response_from):
-                        response['type'] = 'unavailable'
-                        delay = domish.Element(('urn:xmpp:delay', 'delay'))
-                        delay['stamp'] = user['timestamp'].strftime('%Y-%m-%dT%H:%M:%SZ')
-                        response.addChild(delay)
-
-                    self.send(response)
-                    log.debug("probe result sent: %s" % (response.toXml().encode('utf-8'), ))
-            else:
-                response = domish.Element((None, 'presence'))
-                response['to'] = sender.full()
-                response['from'] = to.full()
-
-                if presence['status'] is not None:
-                    response.addElement((None, 'status'), content=presence['status'])
-                if presence['show'] is not None:
-                    response.addElement((None, 'show'), content=presence['show'])
-
-                self.send(response)
-                log.debug("probe result sent: %s" % (response.toXml().encode('utf-8'), ))
-
-        d = self.parent.presencedb.get(to)
-        d.addCallback(_db, stanza)
 
     def features(self):
         return tuple()
@@ -142,13 +94,13 @@ class IQHandler(XMPPHandler):
     def last_activity(self, stanza):
         stanza.consumed = True
         seconds = self.parent.router.uptime()
-        response = xmlstream.toResponse(stanza, 'result')
+        response = xmlstream2.toResponse(stanza, 'result')
         response.addChild(domish.Element((xmlstream2.NS_IQ_LAST, 'query'), attribs={'seconds': str(int(seconds))}))
         self.send(response)
 
     def version(self, stanza):
         stanza.consumed = True
-        response = xmlstream.toResponse(stanza, 'result')
+        response = xmlstream2.toResponse(stanza, 'result')
         query = domish.Element((xmlstream2.NS_IQ_VERSION, 'query'))
         query.addElement((None, 'name'), content=version.NAME + '-c2s')
         query.addElement((None, 'version'), content=version.VERSION)
@@ -189,14 +141,14 @@ class DiscoveryHandler(XMPPHandler):
     def onDiscoItems(self, stanza):
         if not stanza.consumed:
             stanza.consumed = True
-            response = xmlstream.toResponse(stanza, 'result')
+            response = xmlstream2.toResponse(stanza, 'result')
             response.addElement((xmlstream2.NS_DISCO_ITEMS, 'query'))
             self.send(response)
 
     def onDiscoInfo(self, stanza):
         if not stanza.consumed:
             stanza.consumed = True
-            response = xmlstream.toResponse(stanza, 'result')
+            response = xmlstream2.toResponse(stanza, 'result')
             query = response.addElement((xmlstream2.NS_DISCO_INFO, 'query'))
             query.addChild(domish.Element((None, 'identity'), attribs={'category': 'server', 'type' : 'im', 'name': version.IDENTITY}))
 
@@ -322,19 +274,21 @@ class C2SManager(xmlstream2.StreamManager):
             util.resetNamespace(stanza, self.namespace)
             log.debug("bouncing %s" % (stanza.toXml(), ))
             stanza.consumed = True
-            self.send(xmlstream.toResponse(stanza, 'result'))
+            self.send(xmlstream2.toResponse(stanza, 'result'))
 
     def send(self, stanza, force=False):
         """Send stanza to client, setting to and id attributes if not present."""
         util.resetNamespace(stanza, component.NS_COMPONENT_ACCEPT, self.namespace)
 
-        # handle original to address
-        if stanza.hasAttribute('destination'):
-            stanza['to'] = stanza['destination']
-            del stanza['destination']
+        # translate sender to network JID
+        sender = stanza.getAttribute('from')
+        if sender:
+            sender = jid.JID(stanza['from'])
+            sender.host = self.network
+            stanza['from'] = sender.full()
 
-        if not stanza.hasAttribute('to'):
-            stanza['to'] = self.xmlstream.otherEntity.full()
+        # force destination address
+        stanza['to'] = self.xmlstream.otherEntity.full()
 
         if not stanza.hasAttribute('id'):
             stanza['id'] = util.rand_str(8, util.CHARSBOX_AZN_LOWERCASE)
@@ -419,20 +373,15 @@ class XMPPServerFactory(xish_xmlstream.XmlStreamFactoryMixin, ServerFactory):
 
         return False
 
-    def dispatch(self, stanza, to=None):
+    def dispatch(self, stanza):
         """
         Dispatch a stanza to a JID all to all available resources found locally.
         @raise L{KeyError}: if a destination route is not found
         """
-        # deliver to the requested jid
-        if to:
-            stanza['to'] = to.full()
-        else:
-            to = jid.JID(stanza['to'])
-
+        to = jid.JID(stanza['to'])
         userid, resource = util.jid_to_userid(to, True)
 
-        stanza.defaultUri = stanza.uri = None
+        util.resetNamespace(stanza, component.NS_COMPONENT_ACCEPT)
 
         if to.resource is not None:
             self.streams[userid][resource].send(stanza)
@@ -613,6 +562,7 @@ class C2SComponent(component.Component):
         component.Component._authd(self, xs)
         log.debug("connected to router.")
         self.xmlstream.addObserver("/error", self.onError)
+        self.xmlstream.addObserver("/presence[@type='probe']", self.probe, 100)
         self.xmlstream.addObserver("/presence", self.dispatch)
         self.xmlstream.addObserver("/iq", self.dispatch)
         self.xmlstream.addObserver("/message", self.dispatch)
@@ -621,8 +571,50 @@ class C2SComponent(component.Component):
         component.Component._disconnected(self, reason)
         log.debug("lost connection to router (%s)" % (reason, ))
 
+    def probe(self, stanza):
+        """Handle presence probes from router."""
+        log.debug("local presence probe: %s" % (stanza.toXml(), ))
+        stanza.consumed = True
+
+        def _db(presence, stanza):
+            log.debug("presence: %r" % (presence, ))
+            if type(presence) == list:
+                response = xmlstream2.toResponse(stanza)
+
+                for user in presence:
+                    response_from = util.userid_to_jid(user['userid'], self.servername)
+                    response['from'] = response_from.full()
+
+                    if user['status'] is not None:
+                        response.addElement((None, 'status'), content=user['status'])
+                    if user['show'] is not None:
+                        response.addElement((None, 'show'), content=user['show'])
+
+                    if not self.sfactory.client_connected(response_from):
+                        response['type'] = 'unavailable'
+                        delay = domish.Element(('urn:xmpp:delay', 'delay'))
+                        delay['stamp'] = user['timestamp'].strftime('%Y-%m-%dT%H:%M:%SZ')
+                        response.addChild(delay)
+
+                    self.send(response)
+                    log.debug("probe result sent: %s" % (response.toXml().encode('utf-8'), ))
+            else:
+                response = xmlstream2.toResponse(stanza)
+
+                if presence['status'] is not None:
+                    response.addElement((None, 'status'), content=presence['status'])
+                if presence['show'] is not None:
+                    response.addElement((None, 'show'), content=presence['show'])
+
+                self.send(response)
+                log.debug("probe result sent: %s" % (response.toXml().encode('utf-8'), ))
+
+        to = jid.JID(stanza['to'])
+        d = self.presencedb.get(to)
+        d.addCallback(_db, stanza)
+
+
     def dispatch(self, stanza):
-        log.debug("incoming stanza: %s" % (stanza.toXml()))
         """
         Stanzas from router must be intended to a server JID (e.g.
         prime.kontalk.net), since the resolver should already have resolved it.
@@ -631,34 +623,23 @@ class C2SComponent(component.Component):
         at this point - if it's from our network.
         """
 
-        if stanza.hasAttribute('to'):
-            to = jid.JID(stanza['to'])
-            # process only our JIDs
-            if to.host == self.servername:
-                if to.user is not None:
-                    sender = jid.JID(stanza['from'])
-                    sender.host = self.network
-                    stanza['from'] = sender.full()
-
-                    to.host = self.network
-                    stanza['to'] = to.full()
-                    try:
-                        self.sfactory.dispatch(stanza)
-                    except:
-                        # full JID doesn't exist, send to bare JID
-                        if to.resource is not None:
-                            # remove resource to avoid loops
-                            to.resource = None
-                            stanza['to'] = to.full()
+        if not stanza.consumed:
+            log.debug("incoming stanza: %s" % (stanza.toXml()))
+            stanza.consumed = True
+            if stanza.hasAttribute('to'):
+                to = jid.JID(stanza['to'])
+                # process only our JIDs
+                if to.host == self.servername:
+                    if to.user is not None:
+                        try:
                             self.sfactory.dispatch(stanza)
-
-                        # bare JID doesn't exist, send back to resolver
-                        else:
-                            self.send(stanza)
+                        except:
+                            # manager not found - TODO send error
+                            log.debug("c2s manager for %s not found" % (stanza['to'], ))
+                    else:
+                        self.local(stanza)
                 else:
-                    self.local(stanza)
-            else:
-                log.debug("stanza is not our concern or is an error")
+                    log.debug("stanza is not our concern or is an error")
 
     def onError(self, stanza):
         log.debug("routing error: %s" % (stanza.toXml()))
@@ -671,6 +652,7 @@ class C2SComponent(component.Component):
     def local(self, stanza):
         """Handle stanzas delivered to this component."""
 
+        """
         # resolver is up! Broadcast all of our local presence data
         if stanza.name == 'presence' and stanza['from'] == self.network:
             log.debug("resolver is online - restoring presence state")
@@ -691,3 +673,4 @@ class C2SComponent(component.Component):
 
                     d = self.presencedb.get(sender)
                     d.addCallback(send_presence, sender=sender)
+        """
