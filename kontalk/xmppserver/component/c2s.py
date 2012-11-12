@@ -647,7 +647,7 @@ class C2SComponent(component.Component):
                         try:
                             self.sfactory.dispatch(stanza)
                         except:
-                            # manager not found - TODO send error
+                            # manager not found - TODO send error or send to offline storage
                             log.debug("c2s manager for %s not found" % (stanza['to'], ))
                     else:
                         self.local(stanza)
