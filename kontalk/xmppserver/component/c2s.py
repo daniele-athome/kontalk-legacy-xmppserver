@@ -637,7 +637,7 @@ class C2SComponent(component.Component):
         """
 
         if not stanza.consumed:
-            log.debug("incoming stanza: %s" % (stanza.toXml()))
+            log.debug("incoming stanza: %s" % (stanza.toXml().encode('utf-8')))
             stanza.consumed = True
             if stanza.hasAttribute('to'):
                 to = jid.JID(stanza['to'])
