@@ -150,10 +150,10 @@ class Client(object):
         self.xmlstream = xs
 
         def logDataIn(buf):
-            print "RECV: %r" % buf
+            print "RECV: %s" % unicode(buf, 'utf-8').encode('utf-8')
 
         def logDataOut(buf):
-            print "SEND: %r" % buf
+            print "SEND: %s" % unicode(buf, 'utf-8').encode('utf-8')
 
         # Log all traffic
         xs.rawDataInFn = logDataIn
@@ -178,7 +178,7 @@ class Client(object):
 
         if self.peer is not None:
             userid, resource = util.split_userid(self.peer)
-            presence = xmppim.Presence(jid.JID(tuple=(userid, self.network, None)), 'probe')
+            presence = xmppim.Presence(jid.JID(tuple=(userid, self.network, resource)), 'probe')
             xs.send(presence)
 
         """
