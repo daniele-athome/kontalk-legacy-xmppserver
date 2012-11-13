@@ -176,6 +176,12 @@ class Client(object):
         ver.addElement((xmlstream2.NS_IQ_VERSION, 'query'))
         ver.send(self.network)
 
+        if self.peer is not None:
+            userid, resource = util.split_userid(self.peer)
+            presence = xmppim.Presence(jid.JID(tuple=(userid, self.network, None)), 'probe')
+            xs.send(presence)
+
+        """
         # subscription request
         self.index = 0
         if self.peer is not None:
@@ -197,6 +203,7 @@ class Client(object):
             message['to'] = jid.full()
             message.addElement('body', content='test message')
             xs.send(message)
+        """
 
         #reactor.callLater(5, self.testMessage)
         #reactor.callLater(10, xs.sendFooter)
