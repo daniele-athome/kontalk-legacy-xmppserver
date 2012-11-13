@@ -233,69 +233,6 @@ class JIDCache(XMPPHandler):
         for d in dlist:
             d.addCallback(_lookup)
 
-    def __legacy__onProbe(self, stanza):
-        """Handle presence probes."""
-
-        if stanza.consumed:
-            return
-
-        log.debug("probe request: %s" % (stanza.toXml(), ))
-        stanza.consumed = True
-        sender = jid.JID(stanza['from'])
-        to = jid.JID(stanza['to'])
-
-        # TODO for now we handle only requests from the network
-        if sender.full() in self.parent.keyring.hostlist():
-            def userdata(presence, stanza, found):
-                log.debug("presence: %r/%r" % (presence, found))
-                if type(presence) == list:
-                    response = domish.Element((None, 'presence'))
-                    response['to'] = sender.full()
-
-                    if len(presence) > 1:
-                        chain = domish.Element((xmlstream2.NS_XMPP_STANZA_GROUP, 'group'))
-                        chain['id'] = stanza['id']
-                        chain['count'] = str(len(presence))
-                    else:
-                        chain = None
-
-                    for user in presence:
-                        response_from = util.userid_to_jid(user['userid'], self.parent.servername)
-                        response['from'] = response_from.full()
-
-                        if user['status'] is not None:
-                            response.addElement((None, 'status'), content=user['status'])
-                        if user['show'] is not None:
-                            response.addElement((None, 'show'), content=user['show'])
-
-                        if not found or response_from not in found:
-                            response['type'] = 'unavailable'
-                            delay = domish.Element(('urn:xmpp:delay', 'delay'))
-                            delay['stamp'] = user['timestamp'].strftime('%Y-%m-%dT%H:%M:%SZ')
-                            response.addChild(delay)
-
-                        if chain:
-                            response.addChild(chain)
-
-                        self.send(response)
-                        log.debug("probe result sent: %s" % (response.toXml().encode('utf-8'), ))
-                else:
-                    response = domish.Element((None, 'presence'))
-                    response['to'] = sender.full()
-                    response['from'] = to.full()
-
-                    if presence['status'] is not None:
-                        response.addElement((None, 'status'), content=presence['status'])
-                    if presence['show'] is not None:
-                        response.addElement((None, 'show'), content=presence['show'])
-
-                    self.send(response)
-                    log.debug("probe result sent: %s" % (response.toXml().encode('utf-8'), ))
-
-            found = self.cache_lookup(to)
-            d = self.parent.presencedb.get(to)
-            d.addCallback(userdata, stanza, found)
-
     def user_available(self, stanza):
         """Called when receiving a presence stanza."""
         ujid = jid.JID(stanza['from'])
