@@ -1,0 +1,2 @@
+[ ] be careful with MySQL/NOW(): we must always store in UTC!!
+[ ] big TODO in resolver.py:538

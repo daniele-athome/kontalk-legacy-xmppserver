@@ -87,7 +87,15 @@ class NetworkStorage():
 class MySQLStanzaStorage(StanzaStorage):
 
     def store(self, stanza):
-        pass
+        global dbpool
+        args = (
+            stanza['id'],
+            util.jid_to_userid(jid.JID(stanza['from'])),
+            util.jid_to_userid(jid.JID(stanza['to'])),
+            # TODO should encode to base64
+            stanza.toXml().encode('utf-8'),
+        )
+        return dbpool.runOperation('INSERT INTO stanzas (id, sender, recipient, content, timestamp) VALUES(?, ?, ?, ?, NOW())', args)
 
     def get_by_id(self, stanzaId):
         global dbpool

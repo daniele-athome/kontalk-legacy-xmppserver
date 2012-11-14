@@ -195,17 +195,18 @@ class Client(object):
                 xs.send(presence)
 
             LoopingCall(pres).start(2, False)
-
-        def testMessage(self):
-            jid = xs.authenticator.jid
-            message = domish.Element((None, 'message'))
-            message['id'] = 'kontalk' + util.rand_str(8, util.CHARSBOX_AZN_LOWERCASE)
-            message['to'] = jid.full()
-            message.addElement('body', content='test message')
-            xs.send(message)
         """
 
-        #reactor.callLater(5, self.testMessage)
+        def testMessage():
+            jid = xs.authenticator.jid
+            message = domish.Element((None, 'message'))
+            # ID should be server generated -- message['id'] = 'kontalk' + util.rand_str(8, util.CHARSBOX_AZN_LOWERCASE)
+            message['to'] = jid.userhost()
+            message['to'] = util.userid_to_jid(self.peer, self.network).full()
+            message.addElement('body', content='test message')
+            xs.send(message)
+
+        reactor.callLater(1, testMessage)
         #reactor.callLater(10, xs.sendFooter)
 
 

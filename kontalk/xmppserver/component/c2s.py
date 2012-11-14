@@ -250,7 +250,7 @@ class C2SManager(xmlstream2.StreamManager):
     def message(self, stanza):
         # no to address, presume sender bare JID
         if not stanza.hasAttribute('to'):
-            stanza['to'] = self.xmlstream.otherEntity.full()
+            stanza['to'] = self.xmlstream.otherEntity.userhost()
             # try again
             self.message(stanza)
         else:
@@ -649,6 +649,7 @@ class C2SComponent(component.Component):
                         except:
                             # manager not found - TODO send error or send to offline storage
                             log.debug("c2s manager for %s not found" % (stanza['to'], ))
+                            self.not_found(stanza)
                     else:
                         self.local(stanza)
                 else:
@@ -664,26 +665,18 @@ class C2SComponent(component.Component):
 
     def local(self, stanza):
         """Handle stanzas delivered to this component."""
+        pass
 
-        """
-        # resolver is up! Broadcast all of our local presence data
-        if stanza.name == 'presence' and stanza['from'] == self.network:
-            log.debug("resolver is online - restoring presence state")
+    def not_found(self, stanza):
+        """Handle stanzas for unavailable resources."""
 
-            for userid, resources in self.sfactory.streams.iteritems():
-                for resource in resources:
-                    sender = jid.JID(tuple=(userid, self.servername, resource))
-                    def send_presence(data, sender):
-                        presence = domish.Element((None, 'presence'))
-                        presence['from'] = sender.full()
+        if stanza.name == 'message':
+            self.message_offline(stanza)
 
-                        if data['status'] is not None:
-                            presence.addElement((None, 'status'), content=data['status'])
-                        if data['show'] is not None:
-                            presence.addElement((None, 'show'), content=data['show'])
+        # TODO other stanza names
 
-                        self.send(presence)
+    def message_offline(self, stanza):
+        """Stores a message stanza to the storage."""
 
-                    d = self.presencedb.get(sender)
-                    d.addCallback(send_presence, sender=sender)
-        """
+        log.debug("storing offline message for %s" % (stanza['to'], ))
+        self.stanzadb.store(stanza)

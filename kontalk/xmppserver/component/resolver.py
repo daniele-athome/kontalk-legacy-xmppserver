@@ -369,6 +369,8 @@ class JIDCache(XMPPHandler):
         hits = self.cache_lookup(_jid)
         log.debug("[%s] found: %r" % (_jid.full(), hits))
 
+        # FIXME fix cases when a single JID is returned instead of a list
+
         # not found in caches or refreshing, lookup the network
         if hits is None or refresh:
             d = self.find(_jid, progressive)
@@ -396,7 +398,7 @@ class JIDCache(XMPPHandler):
             d.addBoth(_cb)
             return clientDeferred
 
-        return defer.succeed(hits)
+        return (defer.succeed(hits), )
 
 
 class Resolver(component.Component):
@@ -532,6 +534,24 @@ class Resolver(component.Component):
                         stanza['to'] = rcpts.full()
                 component.Component.send(self, stanza)
 
+            """
+            TODO there is an issue here.
+            Refresh was set to true because if it's false, L{JIDCache} will look
+            only in its local cache, where it will find the <presence/> received
+            so far by c2s and the like.
+            Thus it will not work e.g. for unavailable resources - since they
+            are not discovered yet by lookup.
+            XMPP is designed to deliver stanzas only to available resources, so,
+            if a resource is offline in a given moment, it doesn't matter, since
+            message will be delivered to available resources.
+            If no resource is available, message is stored for offline delivery.
+            
+            But the issue here is in fact the resolver: resolver will send the
+            <message/> for each resource found (even if unavailable), thus c2s
+            will see more then one <message/> stanza, one for each resource, and
+            they will store it multiple times. Instead, the correct behaviour
+            should be that a single <message/> to bare JID is stored.
+            """
             d = self.cache.lookup(to, progressive=True)
             for cb in d:
                 cb.addCallback(_lookup, stanza=stanza)
