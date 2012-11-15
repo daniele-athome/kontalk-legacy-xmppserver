@@ -177,10 +177,13 @@ class JIDCache(XMPPHandler):
     @type presence_cache: C{dict} [JID]=<presence/>
     """
 
+    MAX_LOOKUP_DELAY = 60
+
     def __init__(self):
         XMPPHandler.__init__(self)
         self.jid_cache = {}
         self.presence_cache = {}
+        self._last_lookup = 0
 
     def connectionInitialized(self):
         self.xmlstream.addObserver("/presence[not(@type)]", self.onPresenceAvailable, 200)
@@ -233,7 +236,7 @@ class JIDCache(XMPPHandler):
                     presence['to'] = sender.full()
                     self.send(presence)
 
-        dlist = self.lookup(to, progressive=True, refresh=True)
+        dlist = self.lookup(to, refresh=True, progressive=True)
         for d in dlist:
             d.addCallback(_lookup)
 
@@ -372,48 +375,50 @@ class JIDCache(XMPPHandler):
 
         return None
 
-    def lookup(self, _jid, progressive=False, refresh=False):
+    def lookup(self, _jid, refresh=False, progressive=False):
         """
         Lookup a L{JID} in the network.
         @param progressive: see @return
-        @param refresh: if true lookup is forced over the whole network;
-        otherwise, just cached results are returned if found. In the latter
-        case, if no results are found, a lookup over the network will be started.
+        @param refresh: if true lookup is started over the whole network
+        immediately; otherwise, just cached results are returned if cache is not
+        so old; in that case, a lookup is started anyway.
         @return if progressive is false, a L{Deferred} which will be fired for
         lookups. Otherwise a list of L{Deferred} is returned, the first one for
         cache lookup, and then one for each remote lookup request. Useful for
         getting JID lookup as soon as a server responds to presence probes.
-        @rtype: L{Deferred}
-        @rtype: C{list}
+        @rtype: L{Deferred} or C{list} of L{Deferred}s
         """
 
         log.debug("[%s] looking up" % (_jid.full(), ))
 
-        hits = self.cache_lookup(_jid)
-        log.debug("[%s] found: %r" % (_jid.full(), hits))
+        # force refresh is cache is too old
+        diff = time.time() - self._last_lookup
+        if diff > self.MAX_LOOKUP_DELAY:
+            refresh = True
 
-        # not found in caches or refreshing, lookup the network
-        if hits is None or refresh:
+        if not refresh:
+            hits = self.cache_lookup(_jid)
+            log.debug("[%s] found: %r" % (_jid.full(), hits))
+
+            return (defer.succeed(hits), )
+
+        else:
+            # refreshing, lookup the network
             d = self.find(_jid, progressive)
 
-            # return hits + remote deferreds
+            # return original remote deferreds
             if progressive:
-                out = []
-                if hits: out.append(defer.succeed(hits))
-                out.extend(d)
-                return out
+                return d
 
+            # cumulative response
             else:
                 clientDeferred = defer.Deferred()
                 def _cb(result):
                     log.debug("result = %r, hits = %r" % (result, hits))
-                    if isinstance(result, failure.Failure):
-                        out = set(hits)
-                    else:
+                    out = set()
+                    # TODO this is always true since errbacks are not used
+                    if not isinstance(result, failure.Failure):
                         out = set()
-                        if hits:
-                            [out.add(x) for x in hits]
-
                         for hit in result:
                             if hit: [out.add(x) for x in hit]
 
@@ -422,7 +427,7 @@ class JIDCache(XMPPHandler):
                 d.addBoth(_cb)
                 return clientDeferred
 
-        return (defer.succeed(hits), )
+
 
 
 class Resolver(component.Component):
@@ -596,7 +601,7 @@ class Resolver(component.Component):
             We should trigger a forced refresh only after a certain amount of
             time from the last refresh.
             """
-            d = self.cache.lookup(to, progressive=True, refresh=True)
+            d = self.cache.lookup(to, refresh=True, progressive=True)
             sent = set()
             for cb in d:
                 cb.addCallback(_lookup, stanza=stanza, sent=sent)
