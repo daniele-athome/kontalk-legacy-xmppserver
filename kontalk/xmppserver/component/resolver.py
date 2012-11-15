@@ -177,7 +177,10 @@ class JIDCache(XMPPHandler):
     @type presence_cache: C{dict} [JID]=<presence/>
     """
 
-    MAX_LOOKUP_DELAY = 60
+    """Seconds should pass to consider the cache to be old.""" 
+    MAX_CACHE_REFRESH_DELAY = 60
+    """Seconds to wait for presence probe response from servers.""" 
+    MAX_LOOKUP_TIMEOUT = 5
 
     def __init__(self):
         XMPPHandler.__init__(self)
@@ -249,6 +252,7 @@ class JIDCache(XMPPHandler):
 
         self.presence_cache[ujid] = stanza
         self.jid_cache[userid][resource] = ujid.host
+        self._last_lookup = time.time()
 
     def user_unavailable(self, stanza):
         """Called when receiving a presence unavailable stanza."""
@@ -260,6 +264,7 @@ class JIDCache(XMPPHandler):
                 del self.jid_cache[userid]
 
         self.presence_cache[ujid] = stanza
+        self._last_lookup = time.time()
 
     def network_presence_probe(self, to):
         """
@@ -319,7 +324,7 @@ class JIDCache(XMPPHandler):
             buf = []
 
             # timeout of request
-            timeout = reactor.callLater(5, _abort, stanzaId=stanzaId, callback=d, buf=buf)
+            timeout = reactor.callLater(self.MAX_LOOKUP_TIMEOUT, _abort, stanzaId=stanzaId, callback=d, buf=buf)
 
             self.xmlstream.addObserver("/presence[@id='%s']" % (stanzaId, ), _presence, callback=d, timeout=timeout, buf=buf)
 
@@ -381,7 +386,9 @@ class JIDCache(XMPPHandler):
         @param progressive: see @return
         @param refresh: if true lookup is started over the whole network
         immediately; otherwise, just cached results are returned if cache is not
-        so old; in that case, a lookup is started anyway.
+        so old; in that case, a lookup is started anyway. A lookup is started
+        also if refresh is false and no results are found in cache - just to be
+        sure the requested L{JID} doesn't exist.
         @return if progressive is false, a L{Deferred} which will be fired for
         lookups. Otherwise a list of L{Deferred} is returned, the first one for
         cache lookup, and then one for each remote lookup request. Useful for
@@ -392,19 +399,26 @@ class JIDCache(XMPPHandler):
         log.debug("[%s] looking up" % (_jid.full(), ))
 
         # force refresh is cache is too old
-        diff = time.time() - self._last_lookup
-        if diff > self.MAX_LOOKUP_DELAY:
+        now = time.time()
+        diff = now - self._last_lookup
+        if diff > self.MAX_CACHE_REFRESH_DELAY:
             refresh = True
 
         if not refresh:
             hits = self.cache_lookup(_jid)
-            log.debug("[%s] found: %r" % (_jid.full(), hits))
 
-            return (defer.succeed(hits), )
+            if hits:
+                log.debug("[%s] found: %r" % (_jid.full(), hits))
+                return (defer.succeed(hits), )
+            else:
+                refresh = True
 
-        else:
+        # evaluate refresh again
+        if refresh:
             # refreshing, lookup the network
             d = self.find(_jid, progressive)
+
+            self._last_lookup = now
 
             # return original remote deferreds
             if progressive:
