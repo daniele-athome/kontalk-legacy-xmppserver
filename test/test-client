@@ -1,0 +1,2 @@
+#!/bin/sh
+./run-test ./client_auth.py 584fb3000e857d399b0c99fe14ba65df8663e697DXRTQL31 e73ea3be23d0449597a82c62ed981f584a5c181b

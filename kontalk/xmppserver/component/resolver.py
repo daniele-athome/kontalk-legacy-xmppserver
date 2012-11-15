@@ -160,7 +160,11 @@ class MessageHandler(XMPPHandler):
             if not stanza.hasAttribute('to'):
                 stanza['to'] = jid.JID(stanza['from']).userhost()
 
-            self.parent.bounce(stanza)
+            # generate message id
+            stanza['id'] = util.rand_str(30, util.CHARSBOX_AZN_LOWERCASE)
+
+            # send to router (without implicitly consuming)
+            self.parent.send(stanza)
 
 
 class JIDCache(XMPPHandler):
@@ -322,41 +326,60 @@ class JIDCache(XMPPHandler):
             # gather all returned presence from the network
             return defer.gatherResults(deferList, True)
 
-    def cache_lookup(self, _jid):
+    def jid_available(self, _jid):
+        """Return true if full L{JID} is an available resource."""
+        try:
+            # no type attribute - assume available
+            if not self.presence_cache[_jid].getAttribute('type'):
+                return True
+        except:
+            pass
+
+        return False
+
+    def cache_lookup(self, _jid, unavailable=True):
         """
         Search a JID in the server caches. If jid is a bare JID, all matches
         are returned.
-        @return one or a list of translated server JIDs if found.
+        @return a list of translated server JIDs if found.
         """
 
-        out = []
-
-        # lookup in JID cache first
         if _jid.resource is not None:
+            # full JID
             try:
                 host = self.jid_cache[_jid.user][_jid.resource]
-                return jid.JID(tuple=(_jid.user, host, _jid.resource))
+                hit = jid.JID(tuple=(_jid.user, host, _jid.resource))
+                # FIXME redundant condition
+                if not unavailable and self.jid_available(hit):
+                    return set((hit, ))
+                else:
+                    return set((hit, ))
             except:
                 pass
         else:
             # bare JID
             try:
                 resources = self.jid_cache[_jid.user]
-                out.extend([jid.JID(tuple=(_jid.user, host, resource)) for resource, host in resources.iteritems()])
+                out = set([jid.JID(tuple=(_jid.user, host, resource)) for resource, host in resources.iteritems()])
+                if not unavailable:
+                    tmp = set()
+                    for u in out:
+                        if self.jid_available(u): tmp.add(u)
+                    out = tmp
+                return out
             except:
                 pass
 
-        if len(out) > 0:
-            return out
+        return None
 
     def lookup(self, _jid, progressive=False, refresh=False):
         """
-        Lookup a jid in the network.
+        Lookup a L{JID} in the network.
         @param progressive: see @return
         @param refresh: if true lookup is forced over the whole network;
         otherwise, just cached results are returned if found. In the latter
         case, if no results are found, a lookup over the network will be started.
-        @return if progresive is false, a L{Deferred} which will be fired for
+        @return if progressive is false, a L{Deferred} which will be fired for
         lookups. Otherwise a list of L{Deferred} is returned, the first one for
         cache lookup, and then one for each remote lookup request. Useful for
         getting JID lookup as soon as a server responds to presence probes.
@@ -369,34 +392,35 @@ class JIDCache(XMPPHandler):
         hits = self.cache_lookup(_jid)
         log.debug("[%s] found: %r" % (_jid.full(), hits))
 
-        # FIXME fix cases when a single JID is returned instead of a list
-
         # not found in caches or refreshing, lookup the network
         if hits is None or refresh:
             d = self.find(_jid, progressive)
-            # return hits + remote deferred
+
+            # return hits + remote deferreds
             if progressive:
                 out = []
                 if hits: out.append(defer.succeed(hits))
                 out.extend(d)
                 return out
 
-            clientDeferred = defer.Deferred()
-            def _cb(result):
-                log.debug("result = %r, hits = %r" % (result, hits))
-                if isinstance(result, failure.Failure):
-                    out = hits
-                else:
-                    out = []
-                    if hits:
-                        out.extend(hits)
-                    for hit in result:
-                        if hit: out.extend(hit)
+            else:
+                clientDeferred = defer.Deferred()
+                def _cb(result):
+                    log.debug("result = %r, hits = %r" % (result, hits))
+                    if isinstance(result, failure.Failure):
+                        out = set(hits)
+                    else:
+                        out = set()
+                        if hits:
+                            [out.add(x) for x in hits]
 
-                clientDeferred.callback(out)
+                        for hit in result:
+                            if hit: [out.add(x) for x in hit]
 
-            d.addBoth(_cb)
-            return clientDeferred
+                    clientDeferred.callback(out)
+
+                d.addBoth(_cb)
+                return clientDeferred
 
         return (defer.succeed(hits), )
 
@@ -410,8 +434,12 @@ class Resolver(component.Component):
 
     @ivar presencedb: database connection to the usercache table
     @type presencedb: L{PresenceStorage}
+
     @ivar subscriptions: a map of user subscriptions (key=watched, value=subscribers)
-    @type subscriptions: C{dict}
+    @type subscriptions: L{dict}
+
+    @ivar cache: a local JID cache
+    @type cache: L{JIDCache}
     """
 
     protocolHandlers = (
@@ -490,14 +518,18 @@ class Resolver(component.Component):
             e = error.StanzaError(condition, 'cancel')
             self.send(e.toResponse(stanza))
 
-    def bounce(self, stanza):
+    def bounce(self, stanza, *args, **kwargs):
         """Send the stanza to the router."""
         if not stanza.consumed:
             stanza.consumed = True
-            self.send(stanza)
+            self.send(stanza, *args, **kwargs)
 
-    def send(self, stanza):
-        """Resolves stanza recipient and send the stanza to the router."""
+    def send(self, stanza, unavailable=False):
+        """
+        Resolves stanza recipient and send the stanza to the router.
+        @param unavailable: default behaviour is to send only to available
+        resources, otherwise it will send the stanza to the bare JID.
+        """
 
         util.resetNamespace(stanza, component.NS_COMPONENT_ACCEPT)
 
@@ -511,7 +543,7 @@ class Resolver(component.Component):
 
         # network JID - resolve and send to router
         elif to.host == self.network:
-            def _lookup(rcpts, stanza):
+            def _lookup(rcpts, stanza, sent):
                 log.debug("rcpts = %r" % (rcpts, ))
                 if rcpts is None:
                     if not stanza.consumed:
@@ -525,36 +557,49 @@ class Resolver(component.Component):
                 else:
                     log.debug("JID found: %r" % (rcpts, ))
                     stanza.consumed = True
-                    if type(rcpts) == list:
-                        for _to in rcpts:
-                            stanza['to'] = _to.full()
+                    for _to in rcpts:
+                        """
+                        TODO this part should be heavily tested and optimized.
+                        There could be cases where duplicates are skipped when
+                        they should not.
+                        """
+
+                        # skip duplicates
+                        if _to in sent or _to.userhostJID() in sent:
+                            continue
+
+                        # FIXME redundant condition
+                        if not unavailable:
+                            if self.cache.jid_available(_to):
+                                # JID is available
+                                stanza['to'] = _to.full()
+                            else:
+                                # JID is unavailable, send to bare JID
+                                stanza['to'] = _to.userhost()
+                            sent.add(jid.JID(stanza['to']))
                             component.Component.send(self, stanza)
-                        return
-                    else:
-                        stanza['to'] = rcpts.full()
+                        else:
+                            stanza['to'] = _to.full()
+                            sent.add(_to)
+                            component.Component.send(self, stanza)
+                    return
+
                 component.Component.send(self, stanza)
 
             """
-            TODO there is an issue here.
+            TODO refresh is always true here.
             Refresh was set to true because if it's false, L{JIDCache} will look
             only in its local cache, where it will find the <presence/> received
             so far by c2s and the like.
             Thus it will not work e.g. for unavailable resources - since they
             are not discovered yet by lookup.
-            XMPP is designed to deliver stanzas only to available resources, so,
-            if a resource is offline in a given moment, it doesn't matter, since
-            message will be delivered to available resources.
-            If no resource is available, message is stored for offline delivery.
-            
-            But the issue here is in fact the resolver: resolver will send the
-            <message/> for each resource found (even if unavailable), thus c2s
-            will see more then one <message/> stanza, one for each resource, and
-            they will store it multiple times. Instead, the correct behaviour
-            should be that a single <message/> to bare JID is stored.
+            We should trigger a forced refresh only after a certain amount of
+            time from the last refresh.
             """
-            d = self.cache.lookup(to, progressive=True)
+            d = self.cache.lookup(to, progressive=True, refresh=True)
+            sent = set()
             for cb in d:
-                cb.addCallback(_lookup, stanza=stanza)
+                cb.addCallback(_lookup, stanza=stanza, sent=sent)
 
         # otherwise send to router
         else:

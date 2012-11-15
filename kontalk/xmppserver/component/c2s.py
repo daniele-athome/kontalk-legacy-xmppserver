@@ -671,6 +671,8 @@ class C2SComponent(component.Component):
         """Handle stanzas for unavailable resources."""
 
         if stanza.name == 'message':
+            # store message for bare JID
+            stanza['to'] = jid.JID(stanza['to']).userhost()
             self.message_offline(stanza)
 
         # TODO other stanza names

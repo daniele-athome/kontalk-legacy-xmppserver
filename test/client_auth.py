@@ -176,10 +176,12 @@ class Client(object):
         ver.addElement((xmlstream2.NS_IQ_VERSION, 'query'))
         ver.send(self.network)
 
+        """
         if self.peer is not None:
             userid, resource = util.split_userid(self.peer)
             presence = xmppim.Presence(jid.JID(tuple=(userid, self.network, resource)), 'probe')
             xs.send(presence)
+        """
 
         """
         # subscription request
