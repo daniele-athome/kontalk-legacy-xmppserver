@@ -92,10 +92,9 @@ class MySQLStanzaStorage(StanzaStorage):
             stanza['id'],
             util.jid_to_userid(jid.JID(stanza['from'])),
             util.jid_to_userid(jid.JID(stanza['to'])),
-            # TODO should encode to base64
-            stanza.toXml().encode('utf-8'),
+            base64.b64encode(stanza.toXml().encode('utf-8')),
         )
-        return dbpool.runOperation('INSERT INTO stanzas (id, sender, recipient, content, timestamp) VALUES(?, ?, ?, ?, NOW())', args)
+        return dbpool.runOperation('INSERT INTO stanzas (id, sender, recipient, content, timestamp) VALUES(?, ?, ?, ?, UTC_TIMESTAMP())', args)
 
     def get_by_id(self, stanzaId):
         global dbpool
@@ -176,9 +175,9 @@ class MySQLPresenceStorage(PresenceStorage):
                 return None
 
         values = (userid, encode_not_null(stanza.status), util.str_none(stanza.show))
-        dbpool.runOperation('REPLACE INTO presence VALUES(?, NOW(), ?, ?)', values)
+        dbpool.runOperation('REPLACE INTO presence VALUES(?, UCT_TIMESTAMP(), ?, ?)', values)
 
     def touch(self, user_jid):
         global dbpool
         userid = util.jid_to_userid(user_jid)
-        dbpool.runOperation('UPDATE presence SET timestamp = NOW() WHERE userid = ?', (userid, ))
+        dbpool.runOperation('UPDATE presence SET timestamp = UCT_TIMESTAMP() WHERE userid = ?', (userid, ))

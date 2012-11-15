@@ -1,3 +1,6 @@
-[ ] be careful with MySQL/NOW(): we must always store in UTC!!
-[ ] refresh lookup only after some time after the last refresh
+[ ] stanza re-delivery when available presence
+[ ] schema/stanzas.content -> MEDIUMTEXT(ascii_bin)
 [ ] stanza storage should be a component (?)
+
+[x] refresh lookup only after some time after the last refresh
+[x] be careful with MySQL/NOW(): we must always store in UTC!!
