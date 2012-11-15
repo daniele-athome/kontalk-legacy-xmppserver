@@ -22,6 +22,8 @@
 from twisted.enterprise import adbapi
 from twisted.words.protocols.jabber import jid
 
+from wokkel import generic
+
 import base64
 import util
 
@@ -113,12 +115,15 @@ class MySQLStanzaStorage(StanzaStorage):
         global dbpool
         def _translate(tx, recipient):
             userid, unused = util.jid_to_userid(recipient, True)
-            tx.execute('SELECT id, recipient, content, timestamp FROM stanzas WHERE recipient = ?', (userid, ))
+            tx.execute('SELECT id, timestamp, content FROM stanzas WHERE recipient = ?', (userid, ))
             data = tx.fetchall()
             out = {}
             for row in data:
-                # TODO process result set
-                pass
+                d = { 'timestamp': row[1] }
+                rawXml = base64.b64decode(row[2])
+                d['stanza'] = generic.parseXml(rawXml.encode('utf-8'))
+
+                out[str(row[0])] = d
             return out
         return dbpool.runInteraction(_translate, recipient)
 

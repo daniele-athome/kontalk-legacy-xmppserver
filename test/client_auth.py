@@ -203,13 +203,15 @@ class Client(object):
             jid = xs.authenticator.jid
             message = domish.Element((None, 'message'))
             # ID should be server generated -- message['id'] = 'kontalk' + util.rand_str(8, util.CHARSBOX_AZN_LOWERCASE)
-            message['to'] = jid.userhost()
-            message['to'] = util.userid_to_jid(self.peer, self.network).full()
+            if self.peer:
+                message['to'] = util.userid_to_jid(self.peer, self.network).full()
+            else:
+                message['to'] = jid.userhost()
             message.addElement('body', content='test message')
             xs.send(message)
 
         reactor.callLater(1, testMessage)
-        #reactor.callLater(10, xs.sendFooter)
+        reactor.callLater(10, xs.sendFooter)
 
 
     def init_failed(self, failure):

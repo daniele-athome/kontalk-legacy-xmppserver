@@ -56,8 +56,14 @@ class PresenceHandler(XMPPHandler):
     def presence(self, stanza):
         # initial presence - deliver offline storage
         if not stanza.hasAttribute('to'):
+            def output(data):
+                log.debug("data: %r" % (data, ))
+                for msgId, msg in data.iteritems():
+                    log.debug("msg[%s]=%s" % (msgId, msg['stanza'].toXml().encode('utf-8'), ))
+                    self.send(msg['stanza'])
+
             d = self.parent.router.stanzadb.get_by_recipient(self.xmlstream.otherEntity)
-            # TODO d.addCallback(...)
+            d.addCallback(output)
 
 class PingHandler(XMPPHandler):
     """
@@ -647,12 +653,19 @@ class C2SComponent(component.Component):
         if not stanza.consumed:
             log.debug("incoming stanza: %s" % (stanza.toXml().encode('utf-8')))
             stanza.consumed = True
+
+            util.resetNamespace(stanza, component.NS_COMPONENT_ACCEPT)
+
             if stanza.hasAttribute('to'):
                 to = jid.JID(stanza['to'])
                 # process only our JIDs
                 if to.host == self.servername:
                     if to.user is not None:
                         try:
+                            """ TEST to store message anyway :)
+                            if stanza.name == 'message':
+                                raise Exception()
+                            """
                             self.sfactory.dispatch(stanza)
                         except:
                             # manager not found - TODO send error or send to offline storage
@@ -681,6 +694,8 @@ class C2SComponent(component.Component):
         if stanza.name == 'message':
             # store message for bare JID
             stanza['to'] = jid.JID(stanza['to']).userhost()
+            # safe uri for persistance
+            stanza.uri = stanza.defaultUri = C2SManager.namespace
             self.message_offline(stanza)
 
         # TODO other stanza names
