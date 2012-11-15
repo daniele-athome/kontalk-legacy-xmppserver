@@ -110,7 +110,18 @@ class MySQLStanzaStorage(StanzaStorage):
         pass
 
     def get_by_recipient(self, recipient):
-        pass
+        global dbpool
+        def _translate(tx, recipient):
+            userid, unused = util.jid_to_userid(recipient, True)
+            tx.execute('SELECT id, recipient, content, timestamp FROM stanzas WHERE recipient = ?', (userid, ))
+            data = tx.fetchall()
+            out = {}
+            for row in data:
+                # TODO process result set
+                pass
+            return out
+        return dbpool.runInteraction(_translate, recipient)
+
 
 class MySQLNetworkStorage(NetworkStorage):
 

@@ -41,6 +41,9 @@ class PresenceHandler(XMPPHandler):
     @type parent: L{C2SManager}
     """
 
+    def connectionInitialized(self):
+        self.xmlstream.addObserver("/presence", self.presence)
+
     def connectionLost(self, reason):
         if self.xmlstream.otherEntity is not None:
             stanza = xmppim.UnavailablePresence()
@@ -50,6 +53,11 @@ class PresenceHandler(XMPPHandler):
     def features(self):
         return tuple()
 
+    def presence(self, stanza):
+        # initial presence - deliver offline storage
+        if not stanza.hasAttribute('to'):
+            d = self.parent.router.stanzadb.get_by_recipient(self.xmlstream.otherEntity)
+            # TODO d.addCallback(...)
 
 class PingHandler(XMPPHandler):
     """

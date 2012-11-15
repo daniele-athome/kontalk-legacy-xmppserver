@@ -326,7 +326,7 @@ class JIDCache(XMPPHandler):
             # timeout of request
             timeout = reactor.callLater(self.MAX_LOOKUP_TIMEOUT, _abort, stanzaId=stanzaId, callback=d, buf=buf)
 
-            self.xmlstream.addObserver("/presence[@id='%s']" % (stanzaId, ), _presence, callback=d, timeout=timeout, buf=buf)
+            self.xmlstream.addObserver("/presence/group[@id='%s']" % (stanzaId, ), _presence, callback=d, timeout=timeout, buf=buf)
 
         if progressive:
             return deferList
@@ -442,14 +442,12 @@ class JIDCache(XMPPHandler):
                 return clientDeferred
 
 
-
-
 class Resolver(component.Component):
     """
     Kontalk resolver XMPP handler.
-    This component resolves network JIDs in <route> stanzas (kontalk.net) into
-    server JIDs (prime.kontalk.net), altering the "to" attribute and bouncing
-    the stanza back to the router.
+    This component resolves network JIDs in stanzas (kontalk.net) into server
+    JIDs (prime.kontalk.net), altering the "to" attribute, then it bounces the
+    stanza back to the router.
 
     @ivar presencedb: database connection to the usercache table
     @type presencedb: L{PresenceStorage}
@@ -605,17 +603,7 @@ class Resolver(component.Component):
 
                 component.Component.send(self, stanza)
 
-            """
-            TODO refresh is always true here.
-            Refresh was set to true because if it's false, L{JIDCache} will look
-            only in its local cache, where it will find the <presence/> received
-            so far by c2s and the like.
-            Thus it will not work e.g. for unavailable resources - since they
-            are not discovered yet by lookup.
-            We should trigger a forced refresh only after a certain amount of
-            time from the last refresh.
-            """
-            d = self.cache.lookup(to, refresh=True, progressive=True)
+            d = self.cache.lookup(to, refresh=False, progressive=True)
             sent = set()
             for cb in d:
                 cb.addCallback(_lookup, stanza=stanza, sent=sent)
