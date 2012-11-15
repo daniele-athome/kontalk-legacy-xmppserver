@@ -186,9 +186,9 @@ class MySQLPresenceStorage(PresenceStorage):
                 return None
 
         values = (userid, encode_not_null(stanza.status), util.str_none(stanza.show))
-        dbpool.runOperation('REPLACE INTO presence VALUES(?, UCT_TIMESTAMP(), ?, ?)', values)
+        dbpool.runOperation('REPLACE INTO presence VALUES(?, UTC_TIMESTAMP(), ?, ?)', values)
 
     def touch(self, user_jid):
         global dbpool
         userid = util.jid_to_userid(user_jid)
-        dbpool.runOperation('UPDATE presence SET timestamp = UCT_TIMESTAMP() WHERE userid = ?', (userid, ))
+        dbpool.runOperation('UPDATE presence SET timestamp = UTC_TIMESTAMP() WHERE userid = ?', (userid, ))
