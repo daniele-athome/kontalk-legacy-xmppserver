@@ -45,14 +45,13 @@ class S2SService(object):
 
     implements(IS2SService)
 
-    def __init__(self, config, router, keyring):
+    def __init__(self, config, router):
         self.config = config
         self.defaultDomain = config['network']
         self.domains = set()
         self.domains.add(self.defaultDomain)
         self.secret = randbytes.secureRandom(16).encode('hex')
         self.router = router
-        self.keyring = keyring
 
         self._outgoingStreams = {}
         self._outgoingQueues = {}
@@ -194,9 +193,9 @@ class S2SComponent(component.Component):
 
     def setup(self):
         storage.init(self.config['database'])
-        ring = keyring.Keyring(storage.MySQLNetworkStorage(), self.config['fingerprint'], self.servername)
+        self.keyring = keyring.Keyring(storage.MySQLNetworkStorage(), self.config['fingerprint'], self.servername)
 
-        self.service = S2SService(self.config, self, ring)
+        self.service = S2SService(self.config, self)
         self.service.logTraffic = self.logTraffic
         self.sfactory = server.XMPPS2SServerFactory(self.service)
         self.sfactory.logTraffic = self.logTraffic
@@ -240,7 +239,7 @@ class S2SComponent(component.Component):
 
             if to is not None:
                 sender = jid.JID(to)
-                if sender.host in (self.network, self.servername):
+                if sender.host == self.network or sender.host in self.keyring.hostlist():
                     log.debug("stanza is for %s - resolver/c2s/net is down?" % (sender.host, ))
                 else:
                     self.service.send(stanza)
