@@ -94,13 +94,14 @@ class MySQLStanzaStorage(StanzaStorage):
             stanza['id'],
             util.jid_to_userid(jid.JID(stanza['from'])),
             util.jid_to_userid(jid.JID(stanza['to'])),
-            base64.b64encode(stanza.toXml().encode('utf-8')),
+            stanza.toXml().encode('utf-8'),
         )
         return dbpool.runOperation('INSERT INTO stanzas (id, sender, recipient, content, timestamp) VALUES(?, ?, ?, ?, UTC_TIMESTAMP())', args)
 
     def get_by_id(self, stanzaId):
         global dbpool
         def _translate(tx, stanzaId):
+            # TODO translation to dict
             tx.execute('SELECT content, timestamp FROM stanzas WHERE id = ?', (stanzaId, ))
             return tx.fetchone()
         return dbpool.runInteraction(_translate, stanzaId)
@@ -120,8 +121,7 @@ class MySQLStanzaStorage(StanzaStorage):
             out = {}
             for row in data:
                 d = { 'timestamp': row[1] }
-                rawXml = base64.b64decode(row[2])
-                d['stanza'] = generic.parseXml(rawXml.encode('utf-8'))
+                d['stanza'] = generic.parseXml(row[2].encode('utf-8'))
 
                 out[str(row[0])] = d
             return out
