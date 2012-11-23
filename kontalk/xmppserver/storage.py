@@ -151,7 +151,7 @@ class MySQLPresenceStorage(PresenceStorage):
             if data:
                 return {
                     'timestamp': data[0],
-                    'status': base64.b64decode(data[1]).decode('utf-8'),
+                    'status': base64.b64decode(data[1]).decode('utf-8') if data is not None else '',
                     'show': data[2]
                 }
         def _fetchall(tx, query, args):
@@ -163,7 +163,7 @@ class MySQLPresenceStorage(PresenceStorage):
                 out.append({
                     'userid': d[0],
                     'timestamp': d[1],
-                    'status': base64.b64decode(d[2]).decode('utf-8'),
+                    'status': base64.b64decode(d[2]).decode('utf-8') if data is not None else '',
                     'show': d[3]
                 })
             return out
