@@ -1,6 +1,9 @@
-[ ] stanza re-delivery when available presence
-[ ] schema/stanzas.content -> MEDIUMTEXT(ascii_bin)
+[ ] 2-steps (SMS) registration
+
+== ALPHA ==
 [ ] stanza storage should be a component (?)
 
+== COMPLETED ==
+[x] stanza re-delivery when available presence
 [x] refresh lookup only after some time after the last refresh
 [x] be careful with MySQL/NOW(): we must always store in UTC!!
