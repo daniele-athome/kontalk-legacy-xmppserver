@@ -1,5 +1,7 @@
+[ ] delivery receipts (s2s)
 [ ] 2-steps (SMS) registration
-
+[ ] multi-user chat (without using MUC)
+0
 == ALPHA ==
 [ ] stanza storage should be a component (?)
 

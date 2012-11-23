@@ -200,6 +200,8 @@ class Client(object):
         """
 
         def testMessage():
+            xs.addObserver('/message', self.message, xs=xs)
+
             jid = xs.authenticator.jid
             message = domish.Element((None, 'message'))
             # ID should be server generated -- message['id'] = 'kontalk' + util.rand_str(8, util.CHARSBOX_AZN_LOWERCASE)
@@ -207,12 +209,21 @@ class Client(object):
                 message['to'] = util.userid_to_jid(self.peer, self.network).full()
             else:
                 message['to'] = jid.userhost()
-            message.addElement('body', content='test message')
+            message.addElement((None, 'body'), content='test message')
+            message.addElement(('urn:xmpp:receipts', 'request'))
             xs.send(message)
 
         reactor.callLater(1, testMessage)
         reactor.callLater(10, xs.sendFooter)
 
+    def message(self, stanza, xs):
+        print "message from %s" % (stanza['from'], )
+        if stanza.request:
+            receipt = domish.Element((None, 'message'))
+            receipt['to'] = stanza['from']
+            child = receipt.addElement(('urn:xmpp:receipts', 'received'))
+            child['id'] = stanza['id']
+            xs.send(receipt)
 
     def init_failed(self, failure):
         print "Initialization failed."
