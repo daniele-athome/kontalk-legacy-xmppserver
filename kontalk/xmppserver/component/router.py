@@ -19,6 +19,8 @@
 """
 
 
+from twisted.internet import reactor
+from twisted.manhole import telnet
 from twisted.words.protocols.jabber.component import XMPPComponentServerFactory
 from twisted.words.protocols.jabber import jid
 from twisted.words.xish import domish
@@ -29,12 +31,29 @@ from wokkel.xmppim import Presence, UnavailablePresence
 from kontalk.xmppserver import log, util
 
 
+class RouterShell(telnet.ShellFactory):
+
+    def __init__(self, service):
+        telnet.ShellFactory.__init__(self)
+        telnet.ShellFactory.setService(self, service)
+
+
 class Router(component.Router):
     """Kontalk router."""
 
     def __init__(self):
         component.Router.__init__(self)
         self.logs = set()
+
+        def shell():
+            factory = RouterShell(self)
+            port = reactor.listenTCP(2000, factory)
+            factory.namespace['x'] = 'hello world'
+            factory.username = 'admin'
+            factory.password = 'ciao'
+            return port
+
+        reactor.callWhenRunning(shell)
 
     def addRoute(self, destination, xs):
         """

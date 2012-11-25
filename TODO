@@ -1,3 +1,4 @@
+[ ] interactive shell
 [ ] JIDCache: presence observers (might be used with subscriptions too)
 [ ] delivery receipts (s2s)
 [ ] 2-steps (SMS) registration
