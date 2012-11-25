@@ -52,6 +52,20 @@ class KontalkC2SServiceMaker(object):
         comp = C2SComponent(config)
         comp.setServiceParent(appl)
         comp.setup().setServiceParent(appl)
+
+        if 'shell' in config:
+            from twisted.manhole import telnet
+            from twisted.application import strports
+
+            factory = telnet.ShellFactory()
+            factory.setService(comp)
+            factory.username = config['shell']['user']
+            factory.password = config['shell']['password']
+
+            shell = strports.service('tcp:' + str(config['shell']['bind'][1]) +
+                ':interface=' + str(config['shell']['bind'][0]), factory)
+            shell.setServiceParent(appl)
+
         return appl
 
 serviceMaker = KontalkC2SServiceMaker()
