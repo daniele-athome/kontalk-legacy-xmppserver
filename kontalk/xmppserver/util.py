@@ -86,8 +86,9 @@ def resetNamespace(node, fromUri = None, toUri = None):
 def str_none(obj, encoding='utf-8'):
     if obj is not None:
         try:
-            return str(obj)
+            data = str(obj)
         except:
-            return obj.__str__().encode(encoding)
-    else:
-        return None
+            data = obj.__str__().encode(encoding)
+        if len(data) > 0:
+            return data
+    return None

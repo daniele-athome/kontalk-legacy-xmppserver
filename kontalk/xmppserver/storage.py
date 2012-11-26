@@ -151,7 +151,7 @@ class MySQLPresenceStorage(PresenceStorage):
             if data:
                 return {
                     'timestamp': data[0],
-                    'status': base64.b64decode(data[1]).decode('utf-8') if data is not None else '',
+                    'status': base64.b64decode(data[1]).decode('utf-8') if data[1] is not None else '',
                     'show': data[2]
                 }
         def _fetchall(tx, query, args):
@@ -163,7 +163,7 @@ class MySQLPresenceStorage(PresenceStorage):
                 out.append({
                     'userid': d[0],
                     'timestamp': d[1],
-                    'status': base64.b64decode(d[2]).decode('utf-8') if data is not None else '',
+                    'status': base64.b64decode(d[2]).decode('utf-8') if d[2] is not None else '',
                     'show': d[3]
                 })
             return out
@@ -184,13 +184,14 @@ class MySQLPresenceStorage(PresenceStorage):
         sender = jid.JID(stanza['from'])
         userid = util.jid_to_userid(sender)
 
-        def encode_not_null(val):
+        def encode_not_empty(val):
             if val is not None:
-                return base64.b64encode(val.__str__().encode('utf-8'))
-            else:
-                return None
+                data = val.__str__().encode('utf-8')
+                if len(data) > 0:
+                    return base64.b64encode(val.__str__().encode('utf-8'))
+            return None
 
-        values = (userid, encode_not_null(stanza.status), util.str_none(stanza.show))
+        values = (userid, encode_not_empty(stanza.status), util.str_none(stanza.show))
         dbpool.runOperation('REPLACE INTO presence VALUES(?, UTC_TIMESTAMP(), ?, ?)', values)
 
     def touch(self, user_jid):

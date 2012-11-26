@@ -606,8 +606,6 @@ class C2SComponent(component.Component):
         def _db(presence, stanza):
             log.debug("presence: %r" % (presence, ))
             if type(presence) == list:
-                response = xmlstream2.toResponse(stanza)
-
                 if len(presence) > 1:
                     chain = domish.Element((xmlstream2.NS_XMPP_STANZA_GROUP, 'group'))
                     chain['id'] = stanza['id']
@@ -616,6 +614,8 @@ class C2SComponent(component.Component):
                     chain = None
 
                 for user in presence:
+                    response = xmlstream2.toResponse(stanza)
+                    response['id'] = util.rand_str(8, util.CHARSBOX_AZN_LOWERCASE)
                     response_from = util.userid_to_jid(user['userid'], self.servername)
                     response['from'] = response_from.full()
 
