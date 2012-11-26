@@ -60,7 +60,11 @@ class PresenceHandler(XMPPHandler):
                 log.debug("data: %r" % (data, ))
                 for msgId, msg in data.iteritems():
                     log.debug("msg[%s]=%s" % (msgId, msg['stanza'].toXml().encode('utf-8'), ))
-                    self.send(msg['stanza'])
+                    try:
+                        self.send(msg['stanza'])
+                        # TODO delete message from storage
+                    except:
+                        log.debug("offline message delivery failed (%s)" % (msgId, ))
 
             d = self.parent.router.stanzadb.get_by_recipient(self.xmlstream.otherEntity)
             d.addCallback(output)
@@ -242,7 +246,16 @@ class C2SManager(xmlstream2.StreamManager):
     def handle(self, stanza):
         to = stanza.getAttribute('to')
         if to is not None:
-            to = jid.JID(to)
+            try:
+                to = jid.JID(to)
+            except:
+                # invalid destination, consume stanza and return error
+                stanza.consumed = True
+                log.debug("invalid address: %s" % (to, ))
+                e = error.StanzaError('improper-addressing', 'modify')
+                self.send(e.toResponse(stanza))
+                return
+
             # stanza is for us
             if to.host == self.network:
                 # sending to full JID, forward to router
