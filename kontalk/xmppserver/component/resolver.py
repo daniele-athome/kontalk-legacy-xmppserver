@@ -25,7 +25,7 @@ from twisted.python import failure
 from twisted.internet import defer, reactor
 from twisted.words.protocols.jabber.xmlstream import XMPPHandler
 from twisted.words.xish import domish
-from twisted.words.protocols.jabber import jid, error, xmlstream
+from twisted.words.protocols.jabber import jid, error, xmlstream, client
 
 from wokkel import component
 
@@ -114,33 +114,72 @@ class IQHandler(XMPPHandler):
                 self.send(response)
             else:
                 # seconds ago user was last seen
-                def userdata(data, stanza):
-                    presence = data[0]
-                    lookup = data[1]
+                to = jid.JID(stanza['to'])
 
-                    log.debug("presence/lookup: %r/%r" % (presence, lookup))
-                    if type(presence) == list and len(presence) > 0:
-                        presence = presence[0]
-
-                    if presence:
+                def found_latest(latest, stanza):
+                    if latest:
+                        log.debug("found latest! %r" % (latest, ))
                         response = xmlstream2.toResponse(stanza, 'result')
-                        if lookup is not None:
-                            seconds = 0
-                        else:
-                            now = datetime.datetime.today()
-                            delta = now - presence['timestamp']
-                            seconds = int(delta.total_seconds())
-
-                        query = domish.Element((xmlstream2.NS_IQ_LAST, 'query'), attribs={ 'seconds' : str(seconds) })
+                        query = domish.Element((xmlstream2.NS_IQ_LAST, 'query'), attribs={ 'seconds' : str(latest[1]) })
                         response.addChild(query)
                         self.send(response)
                         log.debug("response sent: %s" % (response.toXml(), ))
+                    else:
+                        # send error
+                        # TODO
+                        pass
 
-                to = jid.JID(stanza['to'])
-                d1 = self.parent.presencedb.get(to)
-                d2 = self.parent.lookupJID(to)
-                d = defer.gatherResults((d1, d2))
-                d.addCallback(userdata, stanza)
+                def _abort(stanzaId, callback, data):
+                    log.debug("iq/last broadcast request timed out!")
+                    self.xmlstream.removeObserver("/iq[@id='%s']" % stanza['id'], find_latest)
+                    if not callback.called:
+                        #callback.errback(failure.Failure(internet_error.TimeoutError()))
+                        callback.callback(data['latest'])
+
+                def find_latest(stanza, data, callback, timeout):
+                    log.debug("iq/last: %s" % (stanza.toXml(), ))
+                    data['count'] += 1
+                    seconds = int(stanza.query['seconds'])
+                    if not data['latest'] or seconds < data['latest'][1]:
+                        # no need to parse JID here
+                        data['latest'] = (stanza['from'], seconds)
+
+                    if int(stanza.query['seconds']) == 0 or data['count'] >= data['max']:
+                        log.debug("all replies received, stop watching iq %s" % (stanza['id'], ))
+                        timeout.cancel()
+                        self.xmlstream.removeObserver("/iq[@id='%s']" % stanza['id'], find_latest)
+                        if not callback.called:
+                            callback.callback(data['latest'])
+
+                tmpTo = jid.JID(tuple=(to.user, to.host, to.resource))
+                lastIq = domish.Element((None, 'iq'))
+                lastIq['id'] = stanza['id']
+                lastIq['type'] = 'get'
+                lastIq['from'] = self.parent.network
+                lastIq.addElement((xmlstream2.NS_IQ_LAST, 'query'))
+
+                # data
+                data = {
+                    # max replies that can be received
+                    'max': len(self.parent.keyring.hostlist()),
+                    # number of replies received so far
+                    'count': 0,
+                    # contains a tuple with JID and timestamp of latest seen user 
+                    'latest': None,
+                }
+                # final callback
+                callback = defer.Deferred()
+                callback.addCallback(found_latest, stanza)
+                # timeout of request
+                timeout = reactor.callLater(self.parent.cache.MAX_LOOKUP_TIMEOUT, _abort, stanzaId=lastIq['id'], data=data, callback=callback)
+                # request observer
+                self.xmlstream.addObserver("/iq[@id='%s']" % lastIq['id'], find_latest, 100, data=data, callback=callback, timeout=timeout)
+
+                # send iq last activity to the network
+                for server in self.parent.keyring.hostlist():
+                    tmpTo.host = server
+                    lastIq['to'] = tmpTo.full()
+                    self.send(lastIq)
 
 
 class MessageHandler(XMPPHandler):
@@ -432,7 +471,7 @@ class JIDCache(XMPPHandler):
             else:
                 clientDeferred = defer.Deferred()
                 def _cb(result):
-                    log.debug("result = %r, hits = %r" % (result, hits))
+                    log.debug("result = %r" % (result, ))
                     out = set()
                     # TODO this is always true since errbacks are not used
                     if not isinstance(result, failure.Failure):

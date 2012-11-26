@@ -592,6 +592,7 @@ class C2SComponent(component.Component):
         self.xmlstream.addObserver("/presence[@type='probe']", self.probe, 100)
         self.xmlstream.addObserver("/presence", self.dispatch)
         self.xmlstream.addObserver("/iq", self.dispatch)
+        self.xmlstream.addObserver("/iq[@type='get']/query[@xmlns='%s']" % (xmlstream2.NS_IQ_LAST, ), self.last_activity, 100)
         self.xmlstream.addObserver("/message", self.dispatch)
 
     def _disconnected(self, reason):
@@ -653,6 +654,41 @@ class C2SComponent(component.Component):
         d = self.presencedb.get(to)
         d.addCallback(_db, stanza)
 
+    def last_activity(self, stanza):
+        log.debug("local last activity request: %s" % (stanza.toXml(), ))
+        stanza.consumed = True
+
+        def _db(presence, stanza):
+            log.debug("iq/last: presence=%r" % (presence, ))
+            if type(presence) == list and len(presence) > 0:
+                user = presence[0]
+
+                response = xmlstream2.toResponse(stanza, 'result')
+                response_from = util.userid_to_jid(user['userid'], self.servername)
+                response['from'] = response_from.userhost()
+
+                query = response.addElement((xmlstream2.NS_IQ_LAST, 'query'))
+                if self.sfactory.client_connected(response_from):
+                    query['seconds'] = '0'
+                else:
+                    latest = None
+                    for user in presence:
+                        if latest is None or max['timestam'] > user['timestamp']:
+                            latest = user
+                    # TODO timediff from latest
+                    log.debug("max timestamp: %r" % (max, ))
+                    query['seconds'] = '123456'
+
+                self.send(response)
+                log.debug("iq/last result sent: %s" % (response.toXml().encode('utf-8'), ))
+
+            else:
+                # TODO return error?
+                log.debug("iq/last: user not found")
+
+        to = jid.JID(stanza['to'])
+        d = self.presencedb.get(to)
+        d.addCallback(_db, stanza)
 
     def dispatch(self, stanza):
         """
