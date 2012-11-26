@@ -213,8 +213,12 @@ class JIDCache(XMPPHandler):
 
         if user.user:
             if user.host == self.parent.servername:
-                # update usercache with last seen
-                self.parent.presencedb.touch(user)
+                if stanza.status is not None:
+                    # update last seen and status
+                    self.parent.presencedb.presence(stanza)
+                else:
+                    # update last seen only
+                    self.parent.presencedb.touch(user)
 
             self.user_unavailable(stanza)
 

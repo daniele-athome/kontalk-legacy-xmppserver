@@ -1,9 +1,9 @@
-[ ] interactive shell
 [ ] JIDCache: presence observers (might be used with subscriptions too)
+[ ] connectionLost: unavailable presence should be sent only if client did not
 [ ] delivery receipts (s2s)
 [ ] 2-steps (SMS) registration
 [ ] multi-user chat (without using MUC)
-0
+
 == ALPHA ==
 [ ] stanza storage should be a component (?)
 

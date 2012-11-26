@@ -42,7 +42,7 @@ class PresenceHandler(XMPPHandler):
     """
 
     def connectionInitialized(self):
-        self.xmlstream.addObserver("/presence", self.presence)
+        self.xmlstream.addObserver("/presence[not(@type)]", self.presence)
 
     def connectionLost(self, reason):
         if self.xmlstream.otherEntity is not None:
@@ -252,7 +252,7 @@ class C2SManager(xmlstream2.StreamManager):
                 # invalid destination, consume stanza and return error
                 stanza.consumed = True
                 log.debug("invalid address: %s" % (to, ))
-                e = error.StanzaError('improper-addressing', 'modify')
+                e = error.StanzaError('jid-malformed', 'modify')
                 self.send(e.toResponse(stanza))
                 return
 
