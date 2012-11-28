@@ -125,9 +125,8 @@ class IQHandler(XMPPHandler):
                         self.send(response)
                         log.debug("response sent: %s" % (response.toXml(), ))
                     else:
-                        # send error
-                        # TODO
-                        pass
+                        log.debug("no latest found! sending back error")
+                        # TODO send error
 
                 def _abort(stanzaId, callback, data):
                     log.debug("iq/last broadcast request timed out!")
