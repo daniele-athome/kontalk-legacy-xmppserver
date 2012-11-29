@@ -1,10 +1,9 @@
 [ ] JIDCache: presence observers (might be used with subscriptions too)
+[ ] JIDCache/resource conflicts: use timestamp to choose most recent result
 [ ] connectionLost: unavailable presence should be sent only if client did not
 [ ] delivery receipts (s2s)
 [ ] 2-steps (SMS) registration
 [ ] multi-user chat (without using MUC)
-[ ] initial <presence/>: consider only the first available one when sending
-    offline messages - or consider the first available one after unavailablity
 
 == ALPHA ==
 [ ] stanza storage should be a component (?)

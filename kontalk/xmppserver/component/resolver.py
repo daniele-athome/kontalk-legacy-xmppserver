@@ -46,20 +46,6 @@ class PresenceHandler(XMPPHandler):
         if stanza.consumed:
             return
 
-        # deliver offline messages
-        def output(data):
-            log.debug("data: %r" % (data, ))
-            for msgId, msg in data.iteritems():
-                log.debug("msg[%s]=%s" % (msgId, msg['stanza'].toXml().encode('utf-8'), ))
-                try:
-                    self.send(msg['stanza'])
-                    # TODO delete message from storage
-                except:
-                    log.debug("offline message delivery failed (%s)" % (msgId, ))
-
-        d = self.parent.stanzadb.get_by_recipient(jid.JID(stanza['from']))
-        d.addCallback(output)
-
         self.parent.broadcastSubscribers(stanza)
 
     def onPresenceUnavailable(self, stanza):
@@ -212,9 +198,9 @@ class MessageHandler(XMPPHandler):
             if not stanza.hasAttribute('to'):
                 stanza['to'] = jid.JID(stanza['from']).userhost()
 
-            # generate message id
-            # TODO investigate this issue, especially regarding s2s message delivery
-            # TODO this is handled by c2s -- stanza['id'] = util.rand_str(30, util.CHARSBOX_AZN_LOWERCASE)
+            # generate message id if client is requesting server receipts
+            if xmlstream2.extract_receipt(stanza, 'request'):
+                stanza.request['id'] = util.rand_str(30, util.CHARSBOX_AZN_LOWERCASE)
 
             # send to router (without implicitly consuming)
             self.parent.send(stanza)

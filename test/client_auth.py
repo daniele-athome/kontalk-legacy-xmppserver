@@ -204,21 +204,22 @@ class Client(object):
 
             jid = xs.authenticator.jid
             message = domish.Element((None, 'message'))
-            # ID should be server generated -- message['id'] = 'kontalk' + util.rand_str(8, util.CHARSBOX_AZN_LOWERCASE)
+            message['id'] = 'kontalk' + util.rand_str(8, util.CHARSBOX_AZN_LOWERCASE)
+            message['type'] = 'chat'
             if self.peer:
                 message['to'] = util.userid_to_jid(self.peer, self.network).full()
             else:
                 message['to'] = jid.userhost()
             message.addElement((None, 'body'), content='test message')
-            message.addElement(('urn:xmpp:receipts', 'request'))
+            message.addElement(('urn:xmpp:server-receipts', 'request'))
             xs.send(message)
 
         reactor.callLater(1, testMessage)
-        reactor.callLater(10, xs.sendFooter)
+        reactor.callLater(30, xs.sendFooter)
 
     def message(self, stanza, xs):
         print "message from %s" % (stanza['from'], )
-        if stanza.request:
+        if stanza.request and stanza.request.uri == 'urn:xmpp:receipts':
             receipt = domish.Element((None, 'message'))
             receipt['to'] = stanza['from']
             child = receipt.addElement(('urn:xmpp:receipts', 'received'))

@@ -23,6 +23,24 @@ NS_IQ_LAST = 'jabber:iq:last'
 NS_XMPP_PING = 'urn:xmpp:ping'
 
 NS_XMPP_STANZA_GROUP = 'urn:xmpp:stanza-group'
+NS_XMPP_SERVER_RECEIPTS = 'urn:xmpp:server-receipts'
+
+
+def strip_server_receipt(stanza):
+    """
+    Strips server receipt elements from the given stanza.
+    """
+    for receipt in stanza.elements(NS_XMPP_SERVER_RECEIPTS):
+        stanza.children.remove(receipt)
+
+
+def extract_receipt(stanza, type=None):
+    """
+    Extract the requested type of server receipt, or the first found if None.
+    """
+    for receipt in stanza.elements(NS_XMPP_SERVER_RECEIPTS):
+        if not type or (type and receipt.name == type):
+            return receipt
 
 
 class IXMPPUser(Interface):

@@ -25,7 +25,7 @@ from twisted.words.protocols.jabber import jid
 from wokkel import generic
 
 import base64
-import util
+import util, xmlstream2
 
 dbpool = None
 
@@ -90,8 +90,13 @@ class MySQLStanzaStorage(StanzaStorage):
 
     def store(self, stanza):
         global dbpool
+        receipt = xmlstream2.extract_receipt(stanza, 'request')
+        if receipt:
+            msgId = receipt['id']
+        else:
+            msgId = util.rand_str(30, util.CHARSBOX_AZN_LOWERCASE)
         args = (
-            stanza['id'],
+            msgId,
             util.jid_to_userid(jid.JID(stanza['from'])),
             util.jid_to_userid(jid.JID(stanza['to'])),
             stanza.toXml().encode('utf-8'),

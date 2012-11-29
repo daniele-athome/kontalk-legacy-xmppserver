@@ -1,0 +1,9 @@
+Client request server receipts:
+<message to='...' id='1'>
+  <body/>
+  <request xmlns='urn:xmpp:server-receipts'/>
+</message>
+
+1. resource available: <received xmlns='urn:xmpp:server-receipts'/>
+2. resource unavailable: <sent xmlns='urn:xmpp:server-receipts'/>
+3. user not found: return error

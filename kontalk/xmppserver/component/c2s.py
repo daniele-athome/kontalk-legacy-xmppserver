@@ -219,6 +219,31 @@ class XMPPListenAuthenticator(xmlstream.ListenAuthenticator):
             self.xmlstream.dispatch(self.xmlstream, xmlstream.STREAM_AUTHD_EVENT)
 
 
+class InitialPresenceHandler(XMPPHandler):
+    """
+    Handle presence stanzas and client disconnection.
+    @type parent: L{C2SManager}
+    """
+
+    def connectionInitialized(self):
+        self.xmlstream.addObserver("/presence[not(@type)][@to='%s']" % (self.parent.servername, ), self.presence)
+
+    def presence(self, stanza):
+        # initial presence - deliver offline storage
+        def output(data):
+            log.debug("data: %r" % (data, ))
+            for msgId, msg in data.iteritems():
+                log.debug("msg[%s]=%s" % (msgId, msg['stanza'].toXml().encode('utf-8'), ))
+                try:
+                    self.send(msg['stanza'])
+                    # TODO delete message from storage
+                except:
+                    log.debug("offline message delivery failed (%s)" % (msgId, ))
+
+        d = self.parent.stanzadb.get_by_recipient(jid.JID(stanza['from']))
+        d.addCallback(output)
+
+
 class PresenceProbeHandler(XMPPHandler):
     """Handles presence stanza with type 'probe'."""
 
@@ -236,12 +261,9 @@ class PresenceProbeHandler(XMPPHandler):
         def _db(presence, stanza):
             log.debug("presence: %r" % (presence, ))
             if type(presence) == list:
-                if len(presence) > 1:
-                    chain = domish.Element((xmlstream2.NS_XMPP_STANZA_GROUP, 'group'))
-                    chain['id'] = stanza['id']
-                    chain['count'] = str(len(presence))
-                else:
-                    chain = None
+                chain = domish.Element((xmlstream2.NS_XMPP_STANZA_GROUP, 'group'))
+                chain['id'] = stanza['id']
+                chain['count'] = str(len(presence))
 
                 for user in presence:
                     response = xmlstream2.toResponse(stanza)
@@ -260,8 +282,7 @@ class PresenceProbeHandler(XMPPHandler):
                         delay['stamp'] = user['timestamp'].strftime('%Y-%m-%dT%H:%M:%SZ')
                         response.addChild(delay)
 
-                    if chain:
-                        response.addChild(chain)
+                    response.addChild(chain)
 
                     self.send(response)
                     log.debug("probe result sent: %s" % (response.toXml().encode('utf-8'), ))
@@ -353,7 +374,7 @@ class MessageHandler(XMPPHandler):
                 # process only our JIDs
                 if to.host == self.parent.servername:
                     if to.user is not None:
-                        msgId = util.rand_str(30, util.CHARSBOX_AZN_LOWERCASE)
+                        #msgId = util.rand_str(30, util.CHARSBOX_AZN_LOWERCASE)
                         try:
                             self.parent.sfactory.dispatch(stanza)
                             status = 'received'
@@ -361,11 +382,11 @@ class MessageHandler(XMPPHandler):
                             # manager not found - send error or send to offline storage
                             log.debug("c2s manager for %s not found" % (stanza['to'], ))
                             self.not_found(stanza)
-                            status = 'stored'
+                            status = 'sent'
 
-                        # send ack
-                        if not stanza.received and not stanza.stored:
-                            self.send_ack(stanza, msgId, status)
+                        # send ack only for chat messages
+                        if xmlstream2.extract_receipt(stanza, 'request') and stanza.getAttribute('type') == 'chat':
+                            self.send_ack(stanza, status)
 
                     else:
                         # deliver local stanza
@@ -373,17 +394,34 @@ class MessageHandler(XMPPHandler):
                 else:
                     log.debug("stanza is not our concern or is an error")
 
-    def send_ack(self, stanza, msgId, status):
-        ack = xmlstream2.toResponse(stanza, stanza['type'])
-        rec = ack.addElement(('urn:xmpp:receipts', status))
-        rec['id'] = msgId
+    def send_ack(self, stanza, status):
+        ack = xmlstream2.toResponse(stanza, stanza.getAttribute('type'))
+        rec = ack.addElement((xmlstream2.NS_XMPP_SERVER_RECEIPTS, status))
+        rec['id'] = stanza['id']
         self.send(ack)
 
     def not_found(self, stanza):
         """Handle messages for unavailable resources."""
 
-        # store message for bare JID
-        stanza['to'] = jid.JID(stanza['to']).userhost()
+        # TEST using deepcopy is not safe
+        from copy import deepcopy
+        stanza = deepcopy(stanza)
+
+        # store message for bare network JID
+        jid_to = jid.JID(stanza['to'])
+        jid_to.host = self.parent.network
+        stanza['to'] = jid_to.userhost()
+
+        # sender JID should be a network JID
+        jid_from = jid.JID(stanza['from'])
+        jid_from.host = self.parent.network
+        stanza['from'] = jid_from.full()
+
+        try:
+            del stanza['origin']
+        except KeyError:
+            pass
+
         # safe uri for persistance
         stanza.uri = stanza.defaultUri = sm.C2SManager.namespace
         self.message_offline(stanza)
@@ -392,7 +430,7 @@ class MessageHandler(XMPPHandler):
         """Stores a message stanza to the storage."""
 
         log.debug("storing offline message for %s" % (stanza['to'], ))
-        self.stanzadb.store(stanza)
+        self.parent.stanzadb.store(stanza)
 
 
 class C2SComponent(component.Component):
@@ -402,6 +440,7 @@ class C2SComponent(component.Component):
     """
 
     protocolHandlers = (
+        InitialPresenceHandler,
         PresenceProbeHandler,
         LastActivityHandler,
         MessageHandler,

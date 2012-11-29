@@ -35,7 +35,7 @@ class PresenceHandler(XMPPHandler):
     """
 
     def connectionInitialized(self):
-        pass
+        self.xmlstream.addObserver("/presence[not(@type)]", self.presence)
 
     def connectionLost(self, reason):
         if self.xmlstream.otherEntity is not None:
@@ -45,6 +45,29 @@ class PresenceHandler(XMPPHandler):
 
     def features(self):
         return tuple()
+
+    def presence(self, stanza):
+        # initial presence - deliver offline storage
+        if not stanza.hasAttribute('to'):
+            def output(data):
+                log.debug("data: %r" % (data, ))
+                for msgId, msg in data.iteritems():
+                    log.debug("msg[%s]=%s" % (msgId, msg['stanza'].toXml().encode('utf-8'), ))
+
+                    # TODO write a utility method for filtering internal attributes
+                    try:
+                        del msg['stanza']['origin']
+                    except KeyError:
+                        pass
+
+                    try:
+                        self.send(msg['stanza'])
+                        # TODO delete message from storage
+                    except:
+                        log.debug("offline message delivery failed (%s)" % (msgId, ))
+
+            d = self.parent.router.stanzadb.get_by_recipient(self.xmlstream.otherEntity)
+            d.addCallback(output)
 
 
 class PingHandler(XMPPHandler):
