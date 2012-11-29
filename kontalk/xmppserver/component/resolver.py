@@ -46,6 +46,20 @@ class PresenceHandler(XMPPHandler):
         if stanza.consumed:
             return
 
+        # deliver offline messages
+        def output(data):
+            log.debug("data: %r" % (data, ))
+            for msgId, msg in data.iteritems():
+                log.debug("msg[%s]=%s" % (msgId, msg['stanza'].toXml().encode('utf-8'), ))
+                try:
+                    self.send(msg['stanza'])
+                    # TODO delete message from storage
+                except:
+                    log.debug("offline message delivery failed (%s)" % (msgId, ))
+
+        d = self.parent.stanzadb.get_by_recipient(jid.JID(stanza['from']))
+        d.addCallback(output)
+
         self.parent.broadcastSubscribers(stanza)
 
     def onPresenceUnavailable(self, stanza):
@@ -163,7 +177,7 @@ class IQHandler(XMPPHandler):
                     'max': len(self.parent.keyring.hostlist()),
                     # number of replies received so far
                     'count': 0,
-                    # contains a tuple with JID and timestamp of latest seen user 
+                    # contains a tuple with JID and timestamp of latest seen user
                     'latest': None,
                 }
                 # final callback
@@ -199,7 +213,8 @@ class MessageHandler(XMPPHandler):
                 stanza['to'] = jid.JID(stanza['from']).userhost()
 
             # generate message id
-            stanza['id'] = util.rand_str(30, util.CHARSBOX_AZN_LOWERCASE)
+            # TODO investigate this issue, especially regarding s2s message delivery
+            # TODO this is handled by c2s -- stanza['id'] = util.rand_str(30, util.CHARSBOX_AZN_LOWERCASE)
 
             # send to router (without implicitly consuming)
             self.parent.send(stanza)
@@ -215,9 +230,9 @@ class JIDCache(XMPPHandler):
     @type presence_cache: C{dict} [JID]=<presence/>
     """
 
-    """Seconds should pass to consider the cache to be old.""" 
+    """Seconds should pass to consider the cache to be old."""
     MAX_CACHE_REFRESH_DELAY = 60
-    """Seconds to wait for presence probe response from servers.""" 
+    """Seconds to wait for presence probe response from servers."""
     MAX_LOOKUP_TIMEOUT = 5
 
     def __init__(self):
@@ -520,6 +535,7 @@ class Resolver(component.Component):
 
         storage.init(config['database'])
         self.presencedb = storage.MySQLPresenceStorage()
+        self.stanzadb = storage.MySQLStanzaStorage()
         self.keyring = keyring.Keyring(storage.MySQLNetworkStorage(), config['fingerprint'], self.servername)
 
         self.subscriptions = {}

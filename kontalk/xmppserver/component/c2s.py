@@ -332,6 +332,69 @@ class LastActivityHandler(XMPPHandler):
         d.addCallback(_db, stanza)
 
 
+class MessageHandler(XMPPHandler):
+    """Message stanzas handler."""
+
+    def connectionInitialized(self):
+        self.xmlstream.addObserver("/message", self.dispatch)
+
+    def features(self):
+        return tuple()
+
+    def dispatch(self, stanza):
+        if not stanza.consumed:
+            log.debug("incoming stanza: %s" % (stanza.toXml().encode('utf-8')))
+            stanza.consumed = True
+
+            util.resetNamespace(stanza, component.NS_COMPONENT_ACCEPT)
+
+            if stanza.hasAttribute('to'):
+                to = jid.JID(stanza['to'])
+                # process only our JIDs
+                if to.host == self.parent.servername:
+                    if to.user is not None:
+                        msgId = util.rand_str(30, util.CHARSBOX_AZN_LOWERCASE)
+                        try:
+                            self.parent.sfactory.dispatch(stanza)
+                            status = 'received'
+                        except:
+                            # manager not found - send error or send to offline storage
+                            log.debug("c2s manager for %s not found" % (stanza['to'], ))
+                            self.not_found(stanza)
+                            status = 'stored'
+
+                        # send ack
+                        if not stanza.received and not stanza.stored:
+                            self.send_ack(stanza, msgId, status)
+
+                    else:
+                        # deliver local stanza
+                        self.parent.local(stanza)
+                else:
+                    log.debug("stanza is not our concern or is an error")
+
+    def send_ack(self, stanza, msgId, status):
+        ack = xmlstream2.toResponse(stanza, stanza['type'])
+        rec = ack.addElement(('urn:xmpp:receipts', status))
+        rec['id'] = msgId
+        self.send(ack)
+
+    def not_found(self, stanza):
+        """Handle messages for unavailable resources."""
+
+        # store message for bare JID
+        stanza['to'] = jid.JID(stanza['to']).userhost()
+        # safe uri for persistance
+        stanza.uri = stanza.defaultUri = sm.C2SManager.namespace
+        self.message_offline(stanza)
+
+    def message_offline(self, stanza):
+        """Stores a message stanza to the storage."""
+
+        log.debug("storing offline message for %s" % (stanza['to'], ))
+        self.stanzadb.store(stanza)
+
+
 class C2SComponent(component.Component):
     """
     Kontalk c2s component.
@@ -341,6 +404,7 @@ class C2SComponent(component.Component):
     protocolHandlers = (
         PresenceProbeHandler,
         LastActivityHandler,
+        MessageHandler,
     )
 
     def __init__(self, config):
@@ -351,7 +415,7 @@ class C2SComponent(component.Component):
         self.network = config['network']
         self.servername = config['host']
         self.start_time = time.time()
-        
+
         # protocol handlers here!!
         for handler in self.protocolHandlers:
             handler().setHandlerParent(self)
@@ -405,7 +469,6 @@ class C2SComponent(component.Component):
         self.xmlstream.addObserver("/error", self.onError)
         self.xmlstream.addObserver("/presence", self.dispatch)
         self.xmlstream.addObserver("/iq", self.dispatch)
-        self.xmlstream.addObserver("/message", self.dispatch)
 
     def _disconnected(self, reason):
         component.Component._disconnected(self, reason)
@@ -460,18 +523,5 @@ class C2SComponent(component.Component):
 
     def not_found(self, stanza):
         """Handle stanzas for unavailable resources."""
-
-        if stanza.name == 'message':
-            # store message for bare JID
-            stanza['to'] = jid.JID(stanza['to']).userhost()
-            # safe uri for persistance
-            stanza.uri = stanza.defaultUri = sm.C2SManager.namespace
-            self.message_offline(stanza)
-
-        # TODO other stanza names
-
-    def message_offline(self, stanza):
-        """Stores a message stanza to the storage."""
-
-        log.debug("storing offline message for %s" % (stanza['to'], ))
-        self.stanzadb.store(stanza)
+        # TODO if stanza.name == ...
+        pass
