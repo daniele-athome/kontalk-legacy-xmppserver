@@ -339,6 +339,23 @@ class NetService(object):
         def resetConnecting(_):
             self._outgoingConnecting.remove(otherHost)
 
+        def bounceError(_):
+            resetConnecting(None)
+            log.debug("unable to connect to remote server, bouncing error")
+            if otherHost in self._outgoingQueues:
+                for element in self._outgoingQueues[otherHost]:
+                    log.debug("ERROR pre: %s" % (element.toXml().encode('utf-8'),))
+                    # do not send routing errors for presence
+                    if element.name != 'presence':
+                        e = error.StanzaError('network-server-timeout', 'wait')
+                        log.debug("ERROR back %s" % (e.toResponse(element).toXml(), ))
+                        err = e.toResponse(element)
+                        # append original stanza
+                        c = err.addElement((None, 'original'))
+                        c.addChild(element)
+                        self.router.send(err)
+                del self._outgoingQueues[otherHost]
+
         if otherHost in self._outgoingConnecting:
             return
 
@@ -351,7 +368,8 @@ class NetService(object):
         self._outgoingConnecting.add(otherHost)
 
         d = initiateNet(factory)
-        d.addBoth(resetConnecting)
+        d.addCallback(resetConnecting)
+        d.addErrback(bounceError)
         return d
 
     def validateConnection(self, xs):
@@ -477,7 +495,6 @@ class NetComponent(component.Component):
                 bind['name'] = host
                 self.send(bind)
 
-        self.xmlstream.addObserver("/error", self.onError)
         self.xmlstream.addObserver("/bind", self.consume)
         self.xmlstream.addObserver("/presence", self.dispatch)
         self.xmlstream.addObserver("/iq", self.dispatch)
@@ -486,10 +503,6 @@ class NetComponent(component.Component):
     def consume(self, stanza):
         stanza.consumed = True
         log.debug("consuming stanza %s" % (stanza.toXml(), ))
-
-    def onError(self, stanza):
-        stanza.consmued = True
-        log.debug("routing error %s" % (stanza.toXml(), ))
 
     def dispatch(self, stanza):
         """Handle incoming stanza from router to the proper server stream."""

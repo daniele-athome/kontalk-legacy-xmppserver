@@ -1,5 +1,5 @@
 [ ] JIDCache: presence observers (might be used with subscriptions too)
-[ ] JIDCache/resource conflicts: use timestamp to choose most recent result
+[ ] JIDCache: cache expiration and invalidation
 [ ] connectionLost: unavailable presence should be sent only if client did not
 [ ] delivery receipts (s2s)
 [ ] 2-steps (SMS) registration
@@ -12,3 +12,5 @@
 [x] stanza re-delivery when available presence
 [x] refresh lookup only after some time after the last refresh
 [x] be careful with MySQL/NOW(): we must always store in UTC!!
+[x] JIDCache/resource conflicts: use timestamp to choose most recent result
+    (actually there should be none because of initial presence broadcast, but who knows)

@@ -279,7 +279,7 @@ class PresenceProbeHandler(XMPPHandler):
                     if not self.parent.sfactory.client_connected(response_from):
                         response['type'] = 'unavailable'
                         delay = domish.Element(('urn:xmpp:delay', 'delay'))
-                        delay['stamp'] = user['timestamp'].strftime('%Y-%m-%dT%H:%M:%SZ')
+                        delay['stamp'] = user['timestamp'].strftime(xmlstream2.XMPP_STAMP_FORMAT)
                         response.addChild(delay)
 
                     response.addChild(chain)
@@ -358,9 +358,23 @@ class MessageHandler(XMPPHandler):
 
     def connectionInitialized(self):
         self.xmlstream.addObserver("/message", self.dispatch)
+        self.xmlstream.addObserver("/message[@type='error']/error/network-server-timeout", self.network_timeout, 100)
 
     def features(self):
         return tuple()
+
+    def network_timeout(self, stanza):
+        """
+        Handles errors from the net component (e.g. kontalk server not responding).
+        """
+        stanza.consumed = True
+        util.resetNamespace(stanza, component.NS_COMPONENT_ACCEPT)
+        message = stanza.original.firstChildElement()
+        self.not_found(message)
+
+        # send ack only for chat messages
+        if message.getAttribute('type') == 'chat':
+            self.send_ack(message, 'sent')
 
     def dispatch(self, stanza):
         if not stanza.consumed:
@@ -385,7 +399,7 @@ class MessageHandler(XMPPHandler):
                             status = 'sent'
 
                         # send ack only for chat messages
-                        if xmlstream2.extract_receipt(stanza, 'request') and stanza.getAttribute('type') == 'chat':
+                        if stanza.getAttribute('type') == 'chat':
                             self.send_ack(stanza, status)
 
                     else:
@@ -395,10 +409,12 @@ class MessageHandler(XMPPHandler):
                     log.debug("stanza is not our concern or is an error")
 
     def send_ack(self, stanza, status):
-        ack = xmlstream2.toResponse(stanza, stanza.getAttribute('type'))
-        rec = ack.addElement((xmlstream2.NS_XMPP_SERVER_RECEIPTS, status))
-        rec['id'] = stanza['id']
-        self.send(ack)
+        request = xmlstream2.extract_receipt(stanza, 'request')
+        if request: 
+            ack = xmlstream2.toResponse(stanza, stanza.getAttribute('type'))
+            rec = ack.addElement((xmlstream2.NS_XMPP_SERVER_RECEIPTS, status))
+            rec['id'] = request['id']
+            self.send(ack)
 
     def not_found(self, stanza):
         """Handle messages for unavailable resources."""
@@ -505,9 +521,9 @@ class C2SComponent(component.Component):
     def _authd(self, xs):
         component.Component._authd(self, xs)
         log.debug("connected to router.")
-        self.xmlstream.addObserver("/error", self.onError)
         self.xmlstream.addObserver("/presence", self.dispatch)
         self.xmlstream.addObserver("/iq", self.dispatch)
+        # <message/> has its own handler
 
     def _disconnected(self, reason):
         component.Component._disconnected(self, reason)
@@ -547,14 +563,6 @@ class C2SComponent(component.Component):
                         self.local(stanza)
                 else:
                     log.debug("stanza is not our concern or is an error")
-
-    def onError(self, stanza):
-        log.debug("routing error: %s" % (stanza.toXml()))
-
-        # unroutable stanza :(
-        if stanza['type'] == 'unroutable':
-            e = error.StanzaError('service-unavailable', 'cancel')
-            self.dispatch(e.toResponse(stanza.firstChildElement()))
 
     def local(self, stanza):
         """Handle stanzas delivered to this component."""

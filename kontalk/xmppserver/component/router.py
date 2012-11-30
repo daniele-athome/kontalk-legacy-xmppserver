@@ -20,7 +20,7 @@
 
 
 from twisted.words.protocols.jabber.component import XMPPComponentServerFactory
-from twisted.words.protocols.jabber import jid
+from twisted.words.protocols.jabber import jid, error
 from twisted.words.xish import domish
 
 from wokkel import component
@@ -129,11 +129,8 @@ class Router(component.Router):
 
             except KeyError:
                 log.debug("unroutable stanza, bouncing back to component")
-                error = domish.Element((None, 'error'))
-                error['type'] = 'unroutable'
-                error['to'] = stanza['from']
-                error.addChild(stanza)
-                xs.send(error)
+                e = error.StanzaError('service-unavailable')
+                xs.send(e.toResponse(stanza))
 
     def broadcast(self, stanza, same=False):
         """

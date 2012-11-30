@@ -26,6 +26,9 @@ NS_XMPP_STANZA_GROUP = 'urn:xmpp:stanza-group'
 NS_XMPP_SERVER_RECEIPTS = 'urn:xmpp:server-receipts'
 
 
+XMPP_STAMP_FORMAT = '%Y-%m-%dT%H:%M:%SZ'
+
+
 def strip_server_receipt(stanza):
     """
     Strips server receipt elements from the given stanza.

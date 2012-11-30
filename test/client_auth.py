@@ -133,6 +133,9 @@ class KontalkXMPPAuthenticator(xmlstream.ConnectAuthenticator):
 
 
 class Client(object):
+    logTrafficOut = True
+    logTrafficIn = False
+
     def __init__(self, network, token, peer=None):
         a = KontalkXMPPAuthenticator(network, token)
         f = xmlstream.XmlStreamFactory(a)
@@ -149,15 +152,15 @@ class Client(object):
 
         self.xmlstream = xs
 
-        def logDataIn(buf):
-            print "RECV: %s" % unicode(buf, 'utf-8').encode('utf-8')
+        if self.logTrafficIn:
+            def logDataIn(buf):
+                print "RECV: %s" % unicode(buf, 'utf-8').encode('utf-8')
+            xs.rawDataInFn = logDataIn
 
-        def logDataOut(buf):
-            print "SEND: %s" % unicode(buf, 'utf-8').encode('utf-8')
-
-        # Log all traffic
-        xs.rawDataInFn = logDataIn
-        xs.rawDataOutFn = logDataOut
+        if self.logTrafficOut:    
+            def logDataOut(buf):
+                print "SEND: %s" % unicode(buf, 'utf-8').encode('utf-8')
+            xs.rawDataOutFn = logDataOut
 
 
     def disconnected(self, xs):
@@ -168,6 +171,7 @@ class Client(object):
 
     def authenticated(self, xs):
         print "Authenticated."
+        xs.addObserver('/*', self.stanza, xs=xs)
 
         presence = xmppim.AvailablePresence(statuses={None: 'status message'})
         xs.send(presence)
@@ -176,28 +180,26 @@ class Client(object):
         ver.addElement((xmlstream2.NS_IQ_VERSION, 'query'))
         ver.send(self.network)
 
-        """
-        if self.peer is not None:
-            userid, resource = util.split_userid(self.peer)
-            presence = xmppim.Presence(jid.JID(tuple=(userid, self.network, resource)), 'probe')
-            xs.send(presence)
-        """
-
-        """
-        # subscription request
-        self.index = 0
-        if self.peer is not None:
-            userid, resource = util.split_userid(self.peer)
-            presence = xmppim.Presence(jid.JID(tuple=(userid, self.network, None)), 'subscribe')
-            xs.send(presence)
-        else:
-            def pres():
-                self.index += 1
-                presence = xmppim.AvailablePresence(statuses={None: 'status message (%d)' % (self.index, )})
+        def testProbe():
+            if self.peer is not None:
+                userid, resource = util.split_userid(self.peer)
+                presence = xmppim.Presence(jid.JID(tuple=(userid, self.network, resource)), 'probe')
                 xs.send(presence)
 
-            LoopingCall(pres).start(2, False)
-        """
+        def testSubscribe():
+            # subscription request
+            self.index = 0
+            if self.peer is not None:
+                userid, resource = util.split_userid(self.peer)
+                presence = xmppim.Presence(jid.JID(tuple=(userid, self.network, None)), 'subscribe')
+                xs.send(presence)
+            else:
+                def pres():
+                    self.index += 1
+                    presence = xmppim.AvailablePresence(statuses={None: 'status message (%d)' % (self.index, )})
+                    xs.send(presence)
+    
+                LoopingCall(pres).start(2, False)
 
         def testMessage():
             xs.addObserver('/message', self.message, xs=xs)
@@ -214,6 +216,8 @@ class Client(object):
             message.addElement(('urn:xmpp:server-receipts', 'request'))
             xs.send(message)
 
+        #reactor.callLater(1, testProbe)
+        #reactor.callLater(1, testSubscribe)
         reactor.callLater(1, testMessage)
         reactor.callLater(30, xs.sendFooter)
 
@@ -225,6 +229,9 @@ class Client(object):
             child = receipt.addElement(('urn:xmpp:receipts', 'received'))
             child['id'] = stanza['id']
             xs.send(receipt)
+
+    def stanza(self, stanza, xs):
+        print 'STANZA: %r' % (stanza.toXml().encode('utf-8'), )
 
     def init_failed(self, failure):
         print "Initialization failed."

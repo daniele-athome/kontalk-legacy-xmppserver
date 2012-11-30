@@ -214,7 +214,6 @@ class S2SComponent(component.Component):
         bind.addElement((None, 'default'))
         self.send(bind)
 
-        self.xmlstream.addObserver("/error", self.onError)
         self.xmlstream.addObserver("/bind", self.consume)
         self.xmlstream.addObserver("/presence", self.dispatch)
         self.xmlstream.addObserver("/iq", self.dispatch)
@@ -223,10 +222,6 @@ class S2SComponent(component.Component):
     def consume(self, stanza):
         stanza.consumed = True
         log.debug("consuming stanza %s" % (stanza.toXml(), ))
-
-    def onError(self, stanza):
-        stanza.consmued = True
-        log.debug("routing error %s" % (stanza.toXml(), ))
 
     def dispatch(self, stanza):
         """Handle incoming stanza from router to the proper server stream."""
