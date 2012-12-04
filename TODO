@@ -1,4 +1,5 @@
 [ ] JIDCache: presence observers (might be used with subscriptions too)
+[ ] presence storage: remove <group> elements when storing
 [ ] JIDCache: cache expiration and invalidation
 [ ] connectionLost: unavailable presence should be sent only if client did not
 [ ] delivery receipts (s2s)

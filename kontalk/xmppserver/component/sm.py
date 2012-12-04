@@ -93,7 +93,7 @@ class IQHandler(XMPPHandler):
     """Handle various iq stanzas."""
 
     def connectionInitialized(self):
-        self.xmlstream.addObserver("/iq[@type='get']/query[@xmlns='%s']" % (xmlstream2.NS_IQ_ROSTER), self.parent.bounce, 100)
+        self.xmlstream.addObserver("/iq[@type='get']/query[@xmlns='%s']" % (xmlstream2.NS_IQ_ROSTER), self.roster, 100)
         self.xmlstream.addObserver("/iq/query[@xmlns='%s']" % (xmlstream2.NS_IQ_LAST), self.forward_check, 100,
             fn=self.parent.forward, componentfn=self.last_activity)
         self.xmlstream.addObserver("/iq/query[@xmlns='%s']" % (xmlstream2.NS_IQ_VERSION), self.forward_check, 100,
@@ -109,6 +109,15 @@ class IQHandler(XMPPHandler):
                 return componentfn(stanza)
             else:
                 return fn(stanza)
+
+    def roster(self, stanza):
+        items = stanza.query.elements(name='item')
+        # requesting items lookup, forward to resolver
+        if items:
+            self.parent.forward(stanza) 
+        # requesting initial roster - no action
+        else:
+            self.parent.bounce(stanza)
 
     def last_activity(self, stanza):
         stanza.consumed = True

@@ -83,10 +83,52 @@ class IQHandler(XMPPHandler):
     """
 
     def connectionInitialized(self):
+        self.xmlstream.addObserver("/iq[@type='get']/query[@xmlns='%s']" % (xmlstream2.NS_IQ_ROSTER), self.roster, 100)
         self.xmlstream.addObserver("/iq[@type='get']/query[@xmlns='%s']" % (xmlstream2.NS_IQ_LAST, ), self.last_activity, 100)
         self.xmlstream.addObserver("/iq[@type='get']/query[@xmlns='%s']" % (xmlstream2.NS_IQ_VERSION, ), self.version, 100)
         self.xmlstream.addObserver("/iq[@type='result']", self.parent.bounce, 100)
         self.xmlstream.addObserver("/iq/query", self.parent.error, 80)
+
+    def roster(self, stanza):
+        items = stanza.query.elements(uri=xmlstream2.NS_IQ_ROSTER, name='item')
+        if items:
+            stanza.consumed = True
+            dlist = []
+            for item in items:
+                log.debug("checking for roster: %s" % (item['jid'], ))
+                dlist.append(self.parent.cache.lookup(jid.JID(item['jid']), refresh=True))
+
+            def _roster(data, stanza):
+                log.debug("roster result: %r" % (data, ))
+                response = xmlstream2.toResponse(stanza, 'result')
+                unique = set([e.userhostJID() for entry in data for e in entry])
+                if len(unique) > 0:
+                    log.debug("roster output: %r" % (unique, ))
+                    roster = response.addElement((xmlstream2.NS_IQ_ROSTER, 'query'))
+                    for e in unique:
+                        item = roster.addElement((None, 'item'))
+                        item['jid'] = self.parent.translateJID(e).userhost()
+
+                self.send(response)
+
+                if len(unique) > 0:
+                    # simulate a presence probe
+                    from copy import deepcopy
+                    for entry in data:
+                        gid = util.rand_str(8, util.CHARSBOX_AZN_LOWERCASE)
+                        i = len(entry)
+                        for e in entry:
+                            presence = deepcopy(self.parent.cache.presence_cache[e])
+                            presence['to'] = stanza['from']
+                            # FIXME this will duplicate group elements - actually in storage there should be no group element!!!
+                            group = presence.addElement((xmlstream2.NS_XMPP_STANZA_GROUP, 'group'))
+                            group['id'] = gid
+                            group['count'] = str(i)
+                            i -= 1
+                            self.send(presence)
+
+            d = defer.gatherResults(dlist)
+            d.addCallback(_roster, stanza)
 
     def version(self, stanza):
         if not stanza.consumed:
@@ -275,18 +317,26 @@ class JIDCache(XMPPHandler):
         sender = jid.JID(stanza['from'])
         to = jid.JID(stanza['to'])
 
-        def _lookup(data):
-            log.debug("onProbe: found %r" % (data, ))
+        def _lookup(data, gid):
+            log.debug("onProbe(%s): found %r" % (gid, data, ))
             if data:
                 # TEST using deepcopy is not safe
                 from copy import deepcopy
+                i = len(data)
                 for user in data:
                     presence = deepcopy(self.presence_cache[user])
                     presence['to'] = sender.full()
+                    if gid:
+                        # FIXME this will duplicate group elements - actually in storage there should be no group element!!!
+                        group = presence.addElement((xmlstream2.NS_XMPP_STANZA_GROUP, 'group'))
+                        group['id'] = gid
+                        group['count'] = str(i)
+                        i -= 1
+
                     self.send(presence)
 
         d = self.lookup(to, refresh=True)
-        d.addCallback(_lookup)
+        d.addCallback(_lookup, gid=stanza.getAttribute('id'))
 
     def user_available(self, stanza):
         """Called when receiving a presence stanza."""
@@ -760,7 +810,7 @@ class Resolver(component.Component):
                 stanza['to'] = sub.userhost()
                 self.send(stanza)
 
-    def __unused__translateJID(self, _jid):
+    def translateJID(self, _jid):
         """
         Translate a server JID (user@prime.kontalk.net) into a network JID
         (user@kontalk.net).

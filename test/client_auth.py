@@ -185,6 +185,17 @@ class Client(object):
                 userid, resource = util.split_userid(self.peer)
                 presence = xmppim.Presence(jid.JID(tuple=(userid, self.network, resource)), 'probe')
                 xs.send(presence)
+        
+        def testRoster():
+            if self.peer is not None:
+                _jid = util.userid_to_jid(self.peer, self.network)
+                r = domish.Element((None, 'iq'))
+                r['type'] = 'get'
+                r['id'] = util.rand_str(8)
+                q = r.addElement((xmppim.NS_ROSTER, 'query'))
+                item = q.addElement((None, 'item'))
+                item['jid'] = _jid.userhost()
+                xs.send(r)
 
         def testSubscribe():
             # subscription request
@@ -218,7 +229,8 @@ class Client(object):
 
         #reactor.callLater(1, testProbe)
         #reactor.callLater(1, testSubscribe)
-        reactor.callLater(1, testMessage)
+        #reactor.callLater(1, testMessage)
+        reactor.callLater(1, testRoster)
         reactor.callLater(30, xs.sendFooter)
 
     def message(self, stanza, xs):
