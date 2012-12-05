@@ -346,7 +346,17 @@ class JIDCache(XMPPHandler):
             self.jid_cache[userid] = dict()
 
         now = time.time()
-        self.presence_cache[ujid] = stanza
+        # recreate presence stanza for local use
+        presence = domish.Element((None, 'presence'))
+        for attr in ('type', 'to', 'from'):
+            if stanza.hasAttribute(attr):
+                presence[attr] = stanza[attr]
+        for child in ('status', 'show', 'priority', 'delay'):
+            e = getattr(stanza, child)
+            if e:
+                presence.addChild(e)
+
+        self.presence_cache[ujid] = presence
         self.jid_cache[userid][resource] = (now, ujid.host)
         #self._last_lookup = time.time()
 
