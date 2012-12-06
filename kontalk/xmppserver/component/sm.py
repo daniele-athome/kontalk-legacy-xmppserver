@@ -255,6 +255,9 @@ class C2SManager(xmlstream2.StreamManager):
         xs.addObserver("/presence", self._unauthorized)
         xs.addObserver("/message", self._unauthorized)
 
+    def conflict(self):
+        self.xmlstream.sendStreamError(error.StreamError('conflict'))
+
     def _unauthorized(self, stanza):
         if not stanza.consumed and (not stanza.hasAttribute('to') or stanza['to'] != self.network):
             stanza.consumed = True

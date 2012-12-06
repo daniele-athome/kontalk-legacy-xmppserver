@@ -70,6 +70,10 @@ class XMPPServerFactory(xish_xmlstream.XmlStreamFactoryMixin, ServerFactory):
         userid, resource = util.jid_to_userid(xs.otherEntity, True)
         if userid not in self.streams:
             self.streams[userid] = {}
+        
+        if resource in self.streams[userid]:
+            log.debug("resource conflict for %s" % (xs.otherEntity, ))
+            self.streams[userid][resource].conflict()
         self.streams[userid][resource] = xs.manager
 
     def connectionLost(self, xs, reason):

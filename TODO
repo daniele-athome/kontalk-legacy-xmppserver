@@ -1,8 +1,6 @@
-[ ] !!! resource conflict !!!
-[ ] JIDCache: presence observers (might be used with subscriptions too)
-[ ] presence storage: remove <group> elements when storing
 [ ] JIDCache: cache expiration and invalidation
 [ ] connectionLost: unavailable presence should be sent only if client did not
+[ ] JIDCache: presence observers (might be used with subscriptions too)
 [ ] delivery receipts (s2s)
 [ ] 2-steps (SMS) registration
 [ ] multi-user chat (without using MUC)
@@ -11,6 +9,8 @@
 [ ] stanza storage should be a component (?)
 
 == COMPLETED ==
+[x] c2s resource conflict (sm)
+[x] presence storage: remove <group> elements when storing
 [x] stanza re-delivery when available presence
 [x] refresh lookup only after some time after the last refresh
 [x] be careful with MySQL/NOW(): we must always store in UTC!!
