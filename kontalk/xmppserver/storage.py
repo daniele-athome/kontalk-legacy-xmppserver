@@ -57,6 +57,10 @@ class StanzaStorage():
         """Retrieve stanzas by recipient."""
         pass
 
+    def delete(self, stanzaId):
+        """Delete a stanza by id."""
+        pass
+
 
 class PresenceStorage():
     """Presence cache storage."""
@@ -132,6 +136,9 @@ class MySQLStanzaStorage(StanzaStorage):
             return out
         return dbpool.runInteraction(_translate, recipient)
 
+    def delete(self, stanzaId):
+        global dbpool
+        return dbpool.runOperation('DELETE FROM stanzas WHERE id = ?', (stanzaId, ))
 
 class MySQLNetworkStorage(NetworkStorage):
 

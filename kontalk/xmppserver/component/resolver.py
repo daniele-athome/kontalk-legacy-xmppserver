@@ -246,7 +246,7 @@ class MessageHandler(XMPPHandler):
                 stanza.request['id'] = util.rand_str(30, util.CHARSBOX_AZN_LOWERCASE)
 
             # send to router (without implicitly consuming)
-            self.parent.send(stanza)
+            self.parent.send(stanza, force_unavailable=False, force_delivery=(stanza.sent is not None or stanza.received is not None))
 
 
 class JIDCache(XMPPHandler):
@@ -690,11 +690,10 @@ class Resolver(component.Component):
             stanza.consumed = True
             self.send(stanza, *args, **kwargs)
 
-    def send(self, stanza, unavailable=False):
+    def send(self, stanza, force_unavailable=False, force_delivery=False):
         """
         Resolves stanza recipient and send the stanza to the router.
-        @param unavailable: default behaviour is to send only to available
-        resources, otherwise it will send the stanza to the bare JID.
+        @todo document parameters
         """
 
         util.resetNamespace(stanza, component.NS_COMPONENT_ACCEPT)
@@ -721,36 +720,52 @@ class Resolver(component.Component):
                         log.debug("JID %s not found (stanza has been consumed)" % (to.full(), ))
                         return
                 else:
+
+                    """
+                    Stanza delivery rules (force_unavailable=False):
+                    1. deliver to all available resources
+                    2. destination was a bare JID
+                      a. if all resources are unavailable, deliver to the first network bare JID (then return)
+                    3. destination was a full JID:
+                      a. deliver to full JID if force_delivery=True
+
+                    Stanza delivery rules (force_unavailable=True):
+                    1. deliver to all resources found
+                    2. if no resource is available, silently drop stanza
+                    """
                     log.debug("JID found: %r" % (rcpts, ))
                     stanza.consumed = True
-                    for _to in rcpts:
-                        """
-                        TODO this part should be heavily tested and optimized.
-                        There could be cases where duplicates are skipped when
-                        they should not.
-                        """
 
-                        # skip duplicates
-                        if _to in sent or _to.userhostJID() in sent:
-                            continue
-
-                        # FIXME redundant condition
-                        if not unavailable:
-                            if self.cache.jid_available(_to):
-                                # JID is available
-                                stanza['to'] = _to.full()
-                            else:
-                                # JID is unavailable, send to bare JID
-                                stanza['to'] = _to.userhost()
-                            sent.add(jid.JID(stanza['to']))
-                            component.Component.send(self, stanza)
+                    if not force_unavailable:
+                        # destination was a full JID
+                        if to.resource:
+                            # deliver anyway
+                            if force_delivery:
+                                for _to in rcpts:
+                                    stanza['to'] = _to.full()
+                                    component.Component.send(self, stanza)
+                        
+                        # destination was a bare JID
                         else:
-                            stanza['to'] = _to.full()
-                            sent.add(_to)
-                            component.Component.send(self, stanza)
-                    return
+                            avail = 0
+                            for _to in rcpts:
+                                if self.cache.jid_available(_to):
+                                    avail += 1
+                                    stanza['to'] = _to.full()
+                                    component.Component.send(self, stanza)
+                            
+                            # no available resources, send to first network bare JID
+                            if avail == 0:
+                                for _to in rcpts:
+                                    stanza['to'] = _to.userhost()
+                                    component.Component.send(self, stanza)
+                                    break
 
-                component.Component.send(self, stanza)
+                    else:
+                        for _to in rcpts:
+                            if self.cache.jid_available(_to):
+                                stanza['to'] = _to.full()
+                                component.Component.send(self, stanza)
 
             sent = set()
             d = self.cache.lookup(to, refresh=False)

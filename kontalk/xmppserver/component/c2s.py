@@ -229,6 +229,13 @@ class InitialPresenceHandler(XMPPHandler):
         self.xmlstream.addObserver("/presence[not(@type)][@to='%s']" % (self.parent.servername, ), self.presence)
 
     def presence(self, stanza):
+        """
+        This initial presence is from a broadcast sent by external entities
+        (e.g. not the sm), so sm wouldn't see it because it has no observer.
+        Here we are sending offline messages to the resolver which will deliver
+        them through the actual route. 
+        """
+
         # initial presence - deliver offline storage
         def output(data):
             log.debug("data: %r" % (data, ))
@@ -236,7 +243,8 @@ class InitialPresenceHandler(XMPPHandler):
                 log.debug("msg[%s]=%s" % (msgId, msg['stanza'].toXml().encode('utf-8'), ))
                 try:
                     self.send(msg['stanza'])
-                    # TODO delete message from storage
+                    # delete message from storage
+                    self.parent.stanzadb.delete(msgId)
                 except:
                     log.debug("offline message delivery failed (%s)" % (msgId, ))
 
@@ -287,6 +295,10 @@ class PresenceProbeHandler(XMPPHandler):
                     self.send(response)
                     log.debug("probe result sent: %s" % (response.toXml().encode('utf-8'), ))
             elif presence is not None:
+                chain = domish.Element((xmlstream2.NS_XMPP_STANZA_GROUP, 'group'))
+                chain['id'] = stanza['id']
+                chain['count'] = '1'
+
                 response = xmlstream2.toResponse(stanza)
 
                 if presence['status'] is not None:
@@ -294,6 +306,7 @@ class PresenceProbeHandler(XMPPHandler):
                 if presence['show'] is not None:
                     response.addElement((None, 'show'), content=presence['show'])
 
+                response.addChild(chain)
                 self.send(response)
                 log.debug("probe result sent: %s" % (response.toXml().encode('utf-8'), ))
             else:
@@ -388,19 +401,21 @@ class MessageHandler(XMPPHandler):
                 # process only our JIDs
                 if to.host == self.parent.servername:
                     if to.user is not None:
-                        #msgId = util.rand_str(30, util.CHARSBOX_AZN_LOWERCASE)
                         try:
                             self.parent.sfactory.dispatch(stanza)
                             status = 'received'
+                            stamp = time.time()
                         except:
                             # manager not found - send error or send to offline storage
                             log.debug("c2s manager for %s not found" % (stanza['to'], ))
                             self.not_found(stanza)
                             status = 'sent'
+                            stamp = None
 
                         # send ack only for chat messages
+                        log.debug("sending ack (%s)" % (stanza.getAttribute('type'), ))
                         if stanza.getAttribute('type') == 'chat':
-                            self.send_ack(stanza, status)
+                            self.send_ack(stanza, status, stamp)
 
                     else:
                         # deliver local stanza
@@ -408,12 +423,15 @@ class MessageHandler(XMPPHandler):
                 else:
                     log.debug("stanza is not our concern or is an error")
 
-    def send_ack(self, stanza, status):
+    def send_ack(self, stanza, status, stamp=None):
         request = xmlstream2.extract_receipt(stanza, 'request')
+        log.debug("checking receipt request (%s)" % (request, ))
         if request: 
             ack = xmlstream2.toResponse(stanza, stanza.getAttribute('type'))
             rec = ack.addElement((xmlstream2.NS_XMPP_SERVER_RECEIPTS, status))
             rec['id'] = request['id']
+            if stamp:
+                rec['stamp'] = time.strftime(xmlstream2.XMPP_STAMP_FORMAT, time.gmtime(stamp))
             self.send(ack)
 
     def not_found(self, stanza):

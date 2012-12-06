@@ -19,6 +19,8 @@
 """
 
 
+import time
+
 from twisted.words.protocols.jabber import error, jid, component
 from twisted.words.protocols.jabber.xmlstream import XMPPHandler
 from twisted.words.xish import domish
@@ -46,7 +48,24 @@ class PresenceHandler(XMPPHandler):
     def features(self):
         return tuple()
 
+    def send_ack(self, stanza, status, stamp=None):
+        request = xmlstream2.extract_receipt(stanza, 'request')
+        log.debug("checking receipt request (%s)" % (request, ))
+        if request: 
+            ack = xmlstream2.toResponse(stanza, stanza.getAttribute('type'))
+            rec = ack.addElement((xmlstream2.NS_XMPP_SERVER_RECEIPTS, status))
+            rec['id'] = request['id']
+            if stamp:
+                rec['stamp'] = time.strftime(xmlstream2.XMPP_STAMP_FORMAT, time.gmtime(stamp))
+            self.parent.forward(ack)
+
     def presence(self, stanza):
+        """
+        This initial presence is from the client connection. We deliver the
+        locally stored messages for simplicity - going through the router is a
+        waste of resources and might even be harmful.
+        """
+
         # initial presence - deliver offline storage
         if not stanza.hasAttribute('to'):
             def output(data):
@@ -62,8 +81,14 @@ class PresenceHandler(XMPPHandler):
 
                     try:
                         self.send(msg['stanza'])
-                        # TODO delete message from storage
+                        # delete message from storage
+                        self.parent.router.stanzadb.delete(msgId)
+
+                        if msg['stanza'].getAttribute('type') == 'chat':
+                            self.send_ack(msg['stanza'], 'received', time.time())
                     except:
+                        import traceback
+                        traceback.print_exc()
                         log.debug("offline message delivery failed (%s)" % (msgId, ))
 
             d = self.parent.router.stanzadb.get_by_recipient(self.xmlstream.otherEntity)

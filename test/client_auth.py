@@ -230,7 +230,7 @@ class Client(object):
         #reactor.callLater(1, testProbe)
         #reactor.callLater(1, testSubscribe)
         #reactor.callLater(1, testMessage)
-        reactor.callLater(1, testRoster)
+        #reactor.callLater(1, testRoster)
         reactor.callLater(30, xs.sendFooter)
 
     def message(self, stanza, xs):
