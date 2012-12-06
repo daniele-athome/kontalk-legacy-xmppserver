@@ -385,6 +385,7 @@ class JIDCache(XMPPHandler):
         presence['type'] = 'probe'
         presence['from'] = self.parent.network
         idList = []
+        to = jid.JID(tuple=(to.user, to.host, to.resource))
         for server in self.parent.keyring.hostlist():
             to.host = server
             presence['to'] = to.full()
@@ -549,7 +550,7 @@ class JIDCache(XMPPHandler):
                                             """
                                             strcmp for presence stanzas :)
                                             """
-                                            
+
                                             # available presence is always the most recent (without type)
                                             if not p1.getAttribute('type'):
                                                 return 1
@@ -744,7 +745,7 @@ class Resolver(component.Component):
                                 for _to in rcpts:
                                     stanza['to'] = _to.full()
                                     component.Component.send(self, stanza)
-                        
+
                         # destination was a bare JID
                         else:
                             avail = 0
@@ -753,7 +754,7 @@ class Resolver(component.Component):
                                     avail += 1
                                     stanza['to'] = _to.full()
                                     component.Component.send(self, stanza)
-                            
+
                             # no available resources, send to first network bare JID
                             if avail == 0:
                                 for _to in rcpts:
