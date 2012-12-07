@@ -50,7 +50,7 @@ class PresenceHandler(XMPPHandler):
 
     def send_ack(self, stanza, status, stamp=None):
         request = xmlstream2.extract_receipt(stanza, 'request')
-        if request: 
+        if request:
             ack = xmlstream2.toResponse(stanza, stanza.getAttribute('type'))
             rec = ack.addElement((xmlstream2.NS_XMPP_SERVER_RECEIPTS, status))
             rec['id'] = request['id']
@@ -85,6 +85,12 @@ class PresenceHandler(XMPPHandler):
 
                         if msg['stanza'].getAttribute('type') == 'chat':
                             self.send_ack(msg['stanza'], 'received', time.time())
+                            try:
+                                origin = msg['stanza'].request.getAttribute['origin']
+                                msg['stanza']['to'] = origin
+                                self.send_ack(stanza, 'received', time.time())
+                            except:
+                                pass
                     except:
                         import traceback
                         traceback.print_exc()
@@ -138,7 +144,7 @@ class IQHandler(XMPPHandler):
         items = stanza.query.elements(name='item')
         # requesting items lookup, forward to resolver
         if items:
-            self.parent.forward(stanza) 
+            self.parent.forward(stanza)
         # requesting initial roster - no action
         else:
             self.parent.bounce(stanza)

@@ -157,7 +157,7 @@ class Client(object):
                 print "RECV: %s" % unicode(buf, 'utf-8').encode('utf-8')
             xs.rawDataInFn = logDataIn
 
-        if self.logTrafficOut:    
+        if self.logTrafficOut:
             def logDataOut(buf):
                 print "SEND: %s" % unicode(buf, 'utf-8').encode('utf-8')
             xs.rawDataOutFn = logDataOut
@@ -185,7 +185,7 @@ class Client(object):
                 userid, resource = util.split_userid(self.peer)
                 presence = xmppim.Presence(jid.JID(tuple=(userid, self.network, resource)), 'probe')
                 xs.send(presence)
-        
+
         def testRoster():
             if self.peer is not None:
                 _jid = util.userid_to_jid(self.peer, self.network)
@@ -209,7 +209,7 @@ class Client(object):
                     self.index += 1
                     presence = xmppim.AvailablePresence(statuses={None: 'status message (%d)' % (self.index, )})
                     xs.send(presence)
-    
+
                 LoopingCall(pres).start(2, False)
 
         def testMessage():
@@ -229,7 +229,7 @@ class Client(object):
 
         #reactor.callLater(1, testProbe)
         #reactor.callLater(1, testSubscribe)
-        #reactor.callLater(1, testMessage)
+        reactor.callLater(1, testMessage)
         #reactor.callLater(1, testRoster)
         reactor.callLater(30, xs.sendFooter)
 

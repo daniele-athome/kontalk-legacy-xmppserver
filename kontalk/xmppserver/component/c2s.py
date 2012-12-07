@@ -70,7 +70,7 @@ class XMPPServerFactory(xish_xmlstream.XmlStreamFactoryMixin, ServerFactory):
         userid, resource = util.jid_to_userid(xs.otherEntity, True)
         if userid not in self.streams:
             self.streams[userid] = {}
-        
+
         if resource in self.streams[userid]:
             log.debug("resource conflict for %s" % (xs.otherEntity, ))
             self.streams[userid][resource].conflict()
@@ -234,7 +234,7 @@ class InitialPresenceHandler(XMPPHandler):
 
     def send_ack(self, stanza, status, stamp=None):
         request = xmlstream2.extract_receipt(stanza, 'request')
-        if request: 
+        if request:
             ack = xmlstream2.toResponse(stanza, stanza.getAttribute('type'))
             rec = ack.addElement((xmlstream2.NS_XMPP_SERVER_RECEIPTS, status))
             rec['id'] = request['id']
@@ -247,7 +247,7 @@ class InitialPresenceHandler(XMPPHandler):
         This initial presence is from a broadcast sent by external entities
         (e.g. not the sm), so sm wouldn't see it because it has no observer.
         Here we are sending offline messages to the resolver which will deliver
-        them through the actual route. 
+        them through the actual route.
         """
 
         # initial presence - deliver offline storage
@@ -256,24 +256,18 @@ class InitialPresenceHandler(XMPPHandler):
             for msgId, msg in data.iteritems():
                 log.debug("msg[%s]=%s" % (msgId, msg['stanza'].toXml().encode('utf-8'), ))
                 try:
+                    """
+                    Mark the stanza with our server name, so we'll receive a
+                    copy of the receipt
+                    """
+                    if msg['stanza'].request:
+                        msg['stanza'].request['origin'] = self.parent.servername
+
                     self.send(msg['stanza'])
                     """
-                    FIXME it is not safe in this case to delete the message
-                    from storage, since we are not sure it will be actually
-                    delivered. Anything could happen (s2s connection reset, c2s
-                    on the other side failing, etc.). We must be sure that the
-                    component has actually received the message, using some sort
-                    of acknowledgement stanza. 
+                    We don't delete the message from storage now; we must be
+                    sure remote sm has received it.
                     """
-                    # delete message from storage
-                    #self.parent.stanzadb.delete(msgId)
-
-                    """
-                    FIXME marking the message as received is not safe either for
-                    the same reasons above.
-                    """
-                    #if msg['stanza'].getAttribute('type') == 'chat':
-                    #    self.send_ack(msg['stanza'], 'received', time.time())
                 except:
                     import traceback
                     traceback.print_exc()
@@ -451,13 +445,29 @@ class MessageHandler(XMPPHandler):
                     else:
                         # deliver local stanza
                         self.parent.local(stanza)
+
+                    """
+                    If message is a receipt, delete the message from our storage
+                    FIXME this is a useless SQL statement even if no data is
+                    actually altered in database.
+                    FIXME if the message sender (e.g. user which would receive
+                    the server receipt) is on a different server than our own,
+                    receipt will be sent to another server, and we'll be stuck
+                    with the message in offline storage because we didn't
+                    receive any acknowledgement.
+                    """
+                    r_sent = xmlstream2.extract_receipt(stanza, 'sent')
+                    r_received = xmlstream2.extract_receipt(stanza, 'received')
+                    if r_sent or r_received:
+                        self.parent.stanzadb.delete(r_sent['id'] if r_sent else r_received['id'])
+
                 else:
                     log.debug("stanza is not our concern or is an error")
 
     def send_ack(self, stanza, status, stamp=None):
         request = xmlstream2.extract_receipt(stanza, 'request')
         log.debug("checking receipt request (%s)" % (request, ))
-        if request: 
+        if request:
             ack = xmlstream2.toResponse(stanza, stanza.getAttribute('type'))
             rec = ack.addElement((xmlstream2.NS_XMPP_SERVER_RECEIPTS, status))
             rec['id'] = request['id']
