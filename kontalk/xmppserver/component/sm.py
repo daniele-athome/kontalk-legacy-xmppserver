@@ -50,7 +50,6 @@ class PresenceHandler(XMPPHandler):
 
     def send_ack(self, stanza, status, stamp=None):
         request = xmlstream2.extract_receipt(stanza, 'request')
-        log.debug("checking receipt request (%s)" % (request, ))
         if request: 
             ack = xmlstream2.toResponse(stanza, stanza.getAttribute('type'))
             rec = ack.addElement((xmlstream2.NS_XMPP_SERVER_RECEIPTS, status))

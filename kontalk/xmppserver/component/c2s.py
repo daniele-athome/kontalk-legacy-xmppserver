@@ -232,6 +232,16 @@ class InitialPresenceHandler(XMPPHandler):
     def connectionInitialized(self):
         self.xmlstream.addObserver("/presence[not(@type)][@to='%s']" % (self.parent.servername, ), self.presence)
 
+    def send_ack(self, stanza, status, stamp=None):
+        request = xmlstream2.extract_receipt(stanza, 'request')
+        if request: 
+            ack = xmlstream2.toResponse(stanza, stanza.getAttribute('type'))
+            rec = ack.addElement((xmlstream2.NS_XMPP_SERVER_RECEIPTS, status))
+            rec['id'] = request['id']
+            if stamp:
+                rec['stamp'] = time.strftime(xmlstream2.XMPP_STAMP_FORMAT, time.gmtime(stamp))
+            self.send(ack)
+
     def presence(self, stanza):
         """
         This initial presence is from a broadcast sent by external entities
@@ -247,9 +257,26 @@ class InitialPresenceHandler(XMPPHandler):
                 log.debug("msg[%s]=%s" % (msgId, msg['stanza'].toXml().encode('utf-8'), ))
                 try:
                     self.send(msg['stanza'])
+                    """
+                    FIXME it is not safe in this case to delete the message
+                    from storage, since we are not sure it will be actually
+                    delivered. Anything could happen (s2s connection reset, c2s
+                    on the other side failing, etc.). We must be sure that the
+                    component has actually received the message, using some sort
+                    of acknowledgement stanza. 
+                    """
                     # delete message from storage
-                    self.parent.stanzadb.delete(msgId)
+                    #self.parent.stanzadb.delete(msgId)
+
+                    """
+                    FIXME marking the message as received is not safe either for
+                    the same reasons above.
+                    """
+                    #if msg['stanza'].getAttribute('type') == 'chat':
+                    #    self.send_ack(msg['stanza'], 'received', time.time())
                 except:
+                    import traceback
+                    traceback.print_exc()
                     log.debug("offline message delivery failed (%s)" % (msgId, ))
 
         d = self.parent.stanzadb.get_by_recipient(jid.JID(stanza['from']))
