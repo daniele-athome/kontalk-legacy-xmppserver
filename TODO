@@ -1,11 +1,18 @@
-[ ] JIDCache: cache expiration and invalidation
+== URGENT ==
+[ ] client-side acknowledgement
+   [ ] stanza storage must be accessed by one component only
+      [ ] sm can't see remote initial presence (c2s may alert sm about it?)
+      [ ] c2s can't see local initial presence
+
+== TODO ==
+[ ] JIDCache: cache expiration and invalidation (instead of one big timeout)
 [ ] connectionLost: unavailable presence should be sent only if client did not
-[ ] JIDCache: presence observers (might be used with subscriptions too)
-[ ] delivery receipts (s2s)
-[ ] 2-steps (SMS) registration
-[ ] multi-user chat (without using MUC)
+[ ] delivery receipts (s2s) - this might actually be done using server-receipts
 
 == ALPHA ==
+[ ] JIDCache: presence observers (might be used with subscriptions too)
+[ ] 2-steps (SMS) registration
+[ ] multi-user chat (without using MUC)
 [ ] stanza storage should be a component (?)
 
 == COMPLETED ==

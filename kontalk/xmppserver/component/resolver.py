@@ -631,7 +631,6 @@ class Resolver(component.Component):
 
         storage.init(config['database'])
         self.presencedb = storage.MySQLPresenceStorage()
-        self.stanzadb = storage.MySQLStanzaStorage()
         self.keyring = keyring.Keyring(storage.MySQLNetworkStorage(), config['fingerprint'], self.servername)
 
         self.subscriptions = {}

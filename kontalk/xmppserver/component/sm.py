@@ -50,13 +50,12 @@ class PresenceHandler(XMPPHandler):
 
     def send_ack(self, stanza, status, stamp=None):
         request = xmlstream2.extract_receipt(stanza, 'request')
-        if request:
-            ack = xmlstream2.toResponse(stanza, stanza.getAttribute('type'))
-            rec = ack.addElement((xmlstream2.NS_XMPP_SERVER_RECEIPTS, status))
-            rec['id'] = request['id']
-            if stamp:
-                rec['stamp'] = time.strftime(xmlstream2.XMPP_STAMP_FORMAT, time.gmtime(stamp))
-            self.parent.forward(ack)
+        ack = xmlstream2.toResponse(stanza, stanza.getAttribute('type'))
+        rec = ack.addElement((xmlstream2.NS_XMPP_SERVER_RECEIPTS, status))
+        rec['id'] = request['id']
+        if stamp:
+            rec['stamp'] = time.strftime(xmlstream2.XMPP_STAMP_FORMAT, time.gmtime(stamp))
+        self.parent.forward(ack)
 
     def presence(self, stanza):
         """
@@ -83,8 +82,10 @@ class PresenceHandler(XMPPHandler):
                         # delete message from storage
                         self.parent.router.stanzadb.delete(msgId)
 
-                        if msg['stanza'].getAttribute('type') == 'chat':
+                        if msg['stanza'].getAttribute('type') == 'chat' and xmlstream2.extract_receipt(msg['stanza'], 'request'):
                             self.send_ack(msg['stanza'], 'received', time.time())
+
+                            # send receipt to originating server, if requested
                             try:
                                 origin = msg['stanza'].request.getAttribute['origin']
                                 msg['stanza']['to'] = origin

@@ -232,16 +232,6 @@ class InitialPresenceHandler(XMPPHandler):
     def connectionInitialized(self):
         self.xmlstream.addObserver("/presence[not(@type)][@to='%s']" % (self.parent.servername, ), self.presence)
 
-    def send_ack(self, stanza, status, stamp=None):
-        request = xmlstream2.extract_receipt(stanza, 'request')
-        if request:
-            ack = xmlstream2.toResponse(stanza, stanza.getAttribute('type'))
-            rec = ack.addElement((xmlstream2.NS_XMPP_SERVER_RECEIPTS, status))
-            rec['id'] = request['id']
-            if stamp:
-                rec['stamp'] = time.strftime(xmlstream2.XMPP_STAMP_FORMAT, time.gmtime(stamp))
-            self.send(ack)
-
     def presence(self, stanza):
         """
         This initial presence is from a broadcast sent by external entities
@@ -427,6 +417,15 @@ class MessageHandler(XMPPHandler):
                 if to.host == self.parent.servername:
                     if to.user is not None:
                         try:
+                            """
+                            FIXME this is not acceptable. Connection might be
+                            silently failing - Twisted just buffers data here
+                            waiting to be sent on the next reactor iteration.
+                            The only reliable option is client-side
+                            acknowledgement. Client will need to cooperate
+                            handling the server-receipts extension if requested
+                            by the originating entity.
+                            """
                             self.parent.sfactory.dispatch(stanza)
                             status = 'received'
                             stamp = time.time()
@@ -438,8 +437,7 @@ class MessageHandler(XMPPHandler):
                             stamp = None
 
                         # send ack only for chat messages
-                        log.debug("sending ack (%s)" % (stanza.getAttribute('type'), ))
-                        if stanza.getAttribute('type') == 'chat':
+                        if stanza.getAttribute('type') == 'chat' and xmlstream2.extract_receipt(stanza, 'request'):
                             self.send_ack(stanza, status, stamp)
 
                     else:
@@ -454,7 +452,9 @@ class MessageHandler(XMPPHandler):
                     the server receipt) is on a different server than our own,
                     receipt will be sent to another server, and we'll be stuck
                     with the message in offline storage because we didn't
-                    receive any acknowledgement.
+                    receive any acknowledgement. This can be addressed using an
+                    'origin' attribute in <request/>, so a copy of the receipt
+                    will be sent to the JID defined in 'origin'.
                     """
                     r_sent = xmlstream2.extract_receipt(stanza, 'sent')
                     r_received = xmlstream2.extract_receipt(stanza, 'received')
@@ -466,14 +466,12 @@ class MessageHandler(XMPPHandler):
 
     def send_ack(self, stanza, status, stamp=None):
         request = xmlstream2.extract_receipt(stanza, 'request')
-        log.debug("checking receipt request (%s)" % (request, ))
-        if request:
-            ack = xmlstream2.toResponse(stanza, stanza.getAttribute('type'))
-            rec = ack.addElement((xmlstream2.NS_XMPP_SERVER_RECEIPTS, status))
-            rec['id'] = request['id']
-            if stamp:
-                rec['stamp'] = time.strftime(xmlstream2.XMPP_STAMP_FORMAT, time.gmtime(stamp))
-            self.send(ack)
+        ack = xmlstream2.toResponse(stanza, stanza.getAttribute('type'))
+        rec = ack.addElement((xmlstream2.NS_XMPP_SERVER_RECEIPTS, status))
+        rec['id'] = request['id']
+        if stamp:
+            rec['stamp'] = time.strftime(xmlstream2.XMPP_STAMP_FORMAT, time.gmtime(stamp))
+        self.send(ack)
 
     def not_found(self, stanza):
         """Handle messages for unavailable resources."""
