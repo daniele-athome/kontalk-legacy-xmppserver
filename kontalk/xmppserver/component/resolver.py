@@ -716,7 +716,7 @@ class Resolver(component.Component):
                         stanza.consumed = True
                         log.debug("JID %s not found" % (to.full(), ))
                         e = error.StanzaError('item-not-found', 'cancel')
-                        stanza = e.toResponse(stanza)
+                        component.Component.send(self, e.toResponse(stanza))
                     else:
                         log.debug("JID %s not found (stanza has been consumed)" % (to.full(), ))
                         return

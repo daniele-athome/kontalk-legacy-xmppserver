@@ -172,6 +172,7 @@ class Client(object):
     def authenticated(self, xs):
         print "Authenticated."
         xs.addObserver('/*', self.stanza, xs=xs)
+        xs.addObserver('/message', self.message, xs=xs)
 
         presence = xmppim.AvailablePresence(statuses={None: 'status message'})
         xs.send(presence)
@@ -213,8 +214,6 @@ class Client(object):
                 LoopingCall(pres).start(2, False)
 
         def testMessage():
-            xs.addObserver('/message', self.message, xs=xs)
-
             jid = xs.authenticator.jid
             message = domish.Element((None, 'message'))
             message['id'] = 'kontalk' + util.rand_str(8, util.CHARSBOX_AZN_LOWERCASE)
@@ -226,6 +225,7 @@ class Client(object):
             message.addElement((None, 'body'), content='test message')
             message.addElement(('urn:xmpp:server-receipts', 'request'))
             xs.send(message)
+            #xs.sendFooter()
 
         #reactor.callLater(1, testProbe)
         #reactor.callLater(1, testSubscribe)
