@@ -1,8 +1,7 @@
 == URGENT ==
 [ ] client-side acknowledgement
-   [ ] stanza storage must be accessed by one component only
-      [ ] sm can't see remote initial presence (c2s may alert sm about it?)
-      [ ] c2s can't see local initial presence
+   [x] stanza storage must be accessed by one component only
+      [x] sm alerts c2s about local initial presence
 
 == TODO ==
 [ ] JIDCache: cache expiration and invalidation (instead of one big timeout)

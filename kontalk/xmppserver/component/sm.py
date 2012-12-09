@@ -59,46 +59,13 @@ class PresenceHandler(XMPPHandler):
 
     def presence(self, stanza):
         """
-        This initial presence is from the client connection. We deliver the
-        locally stored messages for simplicity - going through the router is a
-        waste of resources and might even be harmful.
+        This initial presence is from the client connection. We just notify c2s
+        which will do the rest.
         """
 
-        # initial presence - deliver offline storage
+        # initial presence - tell c2s about it
         if not stanza.hasAttribute('to'):
-            def output(data):
-                log.debug("data: %r" % (data, ))
-                for msgId, msg in data.iteritems():
-                    log.debug("msg[%s]=%s" % (msgId, msg['stanza'].toXml().encode('utf-8'), ))
-
-                    # TODO write a utility method for filtering internal attributes
-                    try:
-                        del msg['stanza']['origin']
-                    except KeyError:
-                        pass
-
-                    try:
-                        self.send(msg['stanza'])
-                        # delete message from storage
-                        self.parent.router.stanzadb.delete(msgId)
-
-                        if msg['stanza'].getAttribute('type') == 'chat' and xmlstream2.extract_receipt(msg['stanza'], 'request'):
-                            self.send_ack(msg['stanza'], 'received', time.time())
-
-                            # send receipt to originating server, if requested
-                            try:
-                                origin = msg['stanza'].request.getAttribute['origin']
-                                msg['stanza']['to'] = origin
-                                self.send_ack(stanza, 'received', time.time())
-                            except:
-                                pass
-                    except:
-                        import traceback
-                        traceback.print_exc()
-                        log.debug("offline message delivery failed (%s)" % (msgId, ))
-
-            d = self.parent.router.stanzadb.get_by_recipient(self.xmlstream.otherEntity)
-            d.addCallback(output)
+            self.parent.router.local_presence(self.xmlstream.otherEntity, stanza)
 
 
 class PingHandler(XMPPHandler):

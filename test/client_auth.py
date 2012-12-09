@@ -225,7 +225,7 @@ class Client(object):
             message.addElement((None, 'body'), content='test message')
             message.addElement(('urn:xmpp:server-receipts', 'request'))
             xs.send(message)
-            #xs.sendFooter()
+            xs.sendFooter()
 
         #reactor.callLater(1, testProbe)
         #reactor.callLater(1, testSubscribe)
@@ -235,11 +235,11 @@ class Client(object):
 
     def message(self, stanza, xs):
         print "message from %s" % (stanza['from'], )
-        if stanza.request and stanza.request.uri == 'urn:xmpp:receipts':
+        if stanza.request and stanza.request.uri == 'urn:xmpp:server-receipts':
             receipt = domish.Element((None, 'message'))
             receipt['to'] = stanza['from']
-            child = receipt.addElement(('urn:xmpp:receipts', 'received'))
-            child['id'] = stanza['id']
+            child = receipt.addElement(('urn:xmpp:server-receipts', 'received'))
+            child['id'] = stanza.request['id']
             xs.send(receipt)
 
     def stanza(self, stanza, xs):

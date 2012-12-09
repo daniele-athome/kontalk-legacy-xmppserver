@@ -235,7 +235,7 @@ class InitialPresenceHandler(XMPPHandler):
     def presence(self, stanza):
         """
         This initial presence is from a broadcast sent by external entities
-        (e.g. not the sm), so sm wouldn't see it because it has no observer.
+        (e.g. not the sm); sm wouldn't see it because it has no observer.
         Here we are sending offline messages to the resolver which will deliver
         them through the actual route.
         """
@@ -404,7 +404,7 @@ class MessageHandler(XMPPHandler):
         if message.getAttribute('type') == 'chat':
             self.send_ack(message, 'sent')
 
-    def dispatch(self, stanza):
+    def dispatch(self, stanza, skip_storage=False):
         if not stanza.consumed:
             log.debug("incoming stanza: %s" % (stanza.toXml().encode('utf-8')))
             stanza.consumed = True
@@ -417,49 +417,48 @@ class MessageHandler(XMPPHandler):
                 if to.host == self.parent.servername:
                     if to.user is not None:
                         try:
-                            """
-                            FIXME this is not acceptable. Connection might be
-                            silently failing - Twisted just buffers data here
-                            waiting to be sent on the next reactor iteration.
-                            The only reliable option is client-side
-                            acknowledgement. Client will need to cooperate
-                            handling the server-receipts extension if requested
-                            by the originating entity.
-                            """
+                            if xmlstream2.extract_receipt(stanza, ('request', 'received')):
+                                # store message to storage just to be safe
+                                stanza['id'] = self.message_offline(stanza)
+                            # send message to sm
                             self.parent.sfactory.dispatch(stanza)
-                            status = 'received'
-                            stamp = time.time()
                         except:
                             # manager not found - send error or send to offline storage
                             log.debug("c2s manager for %s not found" % (stanza['to'], ))
-                            self.not_found(stanza)
-                            status = 'sent'
-                            stamp = None
+
+                        stamp = time.time()
 
                         # send ack only for chat messages
                         if stanza.getAttribute('type') == 'chat' and xmlstream2.extract_receipt(stanza, 'request'):
-                            self.send_ack(stanza, status, stamp)
+                            self.send_ack(stanza, 'sent', stamp)
+                        # send receipt to originating server, if requested
+                        try:
+                            origin = stanza.request.getAttribute['origin']
+                            stanza['to'] = origin
+                            self.send_ack(stanza, 'sent', stamp)
+                        except:
+                            pass
 
                     else:
                         # deliver local stanza
                         self.parent.local(stanza)
 
                     """
-                    If message is a receipt, delete the message from our storage
-                    FIXME this is a useless SQL statement even if no data is
-                    actually altered in database.
-                    FIXME if the message sender (e.g. user which would receive
-                    the server receipt) is on a different server than our own,
-                    receipt will be sent to another server, and we'll be stuck
-                    with the message in offline storage because we didn't
-                    receive any acknowledgement. This can be addressed using an
-                    'origin' attribute in <request/>, so a copy of the receipt
-                    will be sent to the JID defined in 'origin'.
+                    If message is a receipt coming from a remote server, delete
+                    the message from our storage.
                     """
                     r_sent = xmlstream2.extract_receipt(stanza, 'sent')
                     r_received = xmlstream2.extract_receipt(stanza, 'received')
-                    if r_sent or r_received:
-                        self.parent.stanzadb.delete(r_sent['id'] if r_sent else r_received['id'])
+                    receipt = r_sent if r_sent else r_received
+                    if receipt is not None:
+                        sender = jid.JID(stanza['from'])
+                        """
+                        We are receiving a sent receipt from another server,
+                        meaning that the server has now responsibility for the
+                        message - we can delete it now.
+                        """
+                        if sender.host != self.parent.servername:
+                            self.parent.stanzadb.delete(receipt['id'])
 
                 else:
                     log.debug("stanza is not our concern or is an error")
@@ -473,12 +472,17 @@ class MessageHandler(XMPPHandler):
             rec['stamp'] = time.strftime(xmlstream2.XMPP_STAMP_FORMAT, time.gmtime(stamp))
         self.send(ack)
 
-    def not_found(self, stanza):
-        """Handle messages for unavailable resources."""
+    def message_offline(self, stanza):
+        """Stores a message stanza to the storage."""
 
         # TEST using deepcopy is not safe
         from copy import deepcopy
         stanza = deepcopy(stanza)
+
+        # check if an id is present in the receipt, otherwise generate a new one
+        receipt = xmlstream2.extract_receipt(stanza, 'request')
+        if not receipt:
+            stanza['id'] = util.rand_str(30, util.CHARSBOX_AZN_LOWERCASE)
 
         # store message for bare network JID
         jid_to = jid.JID(stanza['to'])
@@ -497,13 +501,15 @@ class MessageHandler(XMPPHandler):
 
         # safe uri for persistance
         stanza.uri = stanza.defaultUri = sm.C2SManager.namespace
-        self.message_offline(stanza)
-
-    def message_offline(self, stanza):
-        """Stores a message stanza to the storage."""
 
         log.debug("storing offline message for %s" % (stanza['to'], ))
-        self.parent.stanzadb.store(stanza)
+        try:
+            self.parent.stanzadb.store(stanza)
+        except:
+            import traceback
+            traceback.print_exc()
+
+        return stanza['id']
 
 
 class C2SComponent(component.Component):
@@ -629,3 +635,34 @@ class C2SComponent(component.Component):
         """Handle stanzas for unavailable resources."""
         # TODO if stanza.name == ...
         pass
+
+    def local_presence(self, user, stanza):
+        """
+        Called by sm after receiving a local initial presence.
+        """
+
+        # initial presence - deliver offline storage
+        def output(data):
+            log.debug("data: %r" % (data, ))
+            for msgId, msg in data.iteritems():
+                log.debug("msg[%s]=%s" % (msgId, msg['stanza'].toXml().encode('utf-8'), ))
+                try:
+                    """
+                    Mark the stanza with our server name, so we'll receive a
+                    copy of the receipt
+                    """
+                    if msg['stanza'].request:
+                        msg['stanza'].request['origin'] = self.servername
+
+                    self.send(msg['stanza'])
+                    """
+                    We don't delete the message from storage now; we must be
+                    sure client has received it.
+                    """
+                except:
+                    import traceback
+                    traceback.print_exc()
+                    log.debug("offline message delivery failed (%s)" % (msgId, ))
+
+        d = self.stanzadb.get_by_recipient(user)
+        d.addCallback(output)

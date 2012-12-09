@@ -37,12 +37,12 @@ def strip_server_receipt(stanza):
         stanza.children.remove(receipt)
 
 
-def extract_receipt(stanza, type=None):
+def extract_receipt(stanza, rtype=None):
     """
     Extract the requested type of server receipt, or the first found if None.
     """
     for receipt in stanza.elements(NS_XMPP_SERVER_RECEIPTS):
-        if not type or (type and receipt.name == type):
+        if not rtype or (rtype and (receipt.name in rtype if type(rtype) in (list, tuple) else receipt.name == rtype)):
             return receipt
 
 
