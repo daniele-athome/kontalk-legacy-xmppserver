@@ -223,24 +223,27 @@ class Client(object):
             else:
                 message['to'] = jid.userhost()
             message.addElement((None, 'body'), content='test message')
-            message.addElement(('urn:xmpp:server-receipts', 'request'))
+            req = message.addElement(('urn:xmpp:server-receipts', 'request'))
+            req['id'] = 'stocazzo'
             xs.send(message)
-            xs.sendFooter()
+            #xs.sendFooter()
 
         #reactor.callLater(1, testProbe)
         #reactor.callLater(1, testSubscribe)
-        #reactor.callLater(1, testMessage)
+        reactor.callLater(1, testMessage)
         #reactor.callLater(1, testRoster)
         reactor.callLater(30, xs.sendFooter)
 
     def message(self, stanza, xs):
         print "message from %s" % (stanza['from'], )
         if stanza.request and stanza.request.uri == 'urn:xmpp:server-receipts':
-            receipt = domish.Element((None, 'message'))
-            receipt['to'] = stanza['from']
-            child = receipt.addElement(('urn:xmpp:server-receipts', 'received'))
-            child['id'] = stanza.request['id']
-            xs.send(receipt)
+            def sendReceipt(stanza):
+                receipt = domish.Element((None, 'message'))
+                receipt['to'] = stanza['from']
+                child = receipt.addElement(('urn:xmpp:server-receipts', 'received'))
+                child['id'] = stanza.request['id']
+                xs.send(receipt)
+            reactor.callLater(5, sendReceipt, stanza)
 
     def stanza(self, stanza, xs):
         print 'STANZA: %r' % (stanza.toXml().encode('utf-8'), )

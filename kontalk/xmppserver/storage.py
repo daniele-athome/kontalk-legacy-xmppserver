@@ -131,10 +131,18 @@ class MySQLStanzaStorage(StanzaStorage):
             data = tx.fetchall()
             out = {}
             for row in data:
+                stanzaId = str(row[0])
                 d = { 'timestamp': row[1] }
                 d['stanza'] = generic.parseXml(row[2].encode('utf-8'))
 
-                out[str(row[0])] = d
+                """
+                Add a <storage/> element to the stanza; this way components have
+                a way to know if stanza is coming from storage.
+                """
+                stor = d['stanza'].addElement((xmlstream2.NS_XMPP_STORAGE, 'storage'))
+                stor['id'] = stanzaId
+
+                out[stanzaId] = d
             return out
         return dbpool.runInteraction(_translate, recipient)
 

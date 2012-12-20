@@ -417,27 +417,46 @@ class MessageHandler(XMPPHandler):
                 if to.host == self.parent.servername:
                     if to.user is not None:
                         try:
-                            if xmlstream2.extract_receipt(stanza, ('request', 'received')):
+                            """
+                            We are deliberately ignoring messages with sent
+                            receipt because they are assumed to be volatile.
+                            """
+                            # store message only if not coming from storage already
+                            if not xmlstream2.has_element(stanza, xmlstream2.NS_XMPP_STORAGE, 'storage') and \
+                                    xmlstream2.extract_receipt(stanza, ('request', 'received')):
                                 # store message to storage just to be safe
                                 stanza['id'] = self.message_offline(stanza)
                             # send message to sm
                             self.parent.sfactory.dispatch(stanza)
+                            
+                            """
+                            If message is a received receipt, we have delivered it.
+                            It's not really a big deal if a receipt is lost...
+                            """
+                            receipt = xmlstream2.extract_receipt(stanza, 'received')
+                            if receipt:
+                                # delete the receipt
+                                self.parent.stanzadb.delete(stanza['id'])
+                                # delete the received message
+                                self.parent.stanzadb.delete(receipt['id'])
                         except:
                             # manager not found - send error or send to offline storage
                             log.debug("c2s manager for %s not found" % (stanza['to'], ))
 
                         stamp = time.time()
 
-                        # send ack only for chat messages
-                        if stanza.getAttribute('type') == 'chat' and xmlstream2.extract_receipt(stanza, 'request'):
-                            self.send_ack(stanza, 'sent', stamp)
-                        # send receipt to originating server, if requested
-                        try:
-                            origin = stanza.request.getAttribute['origin']
-                            stanza['to'] = origin
-                            self.send_ack(stanza, 'sent', stamp)
-                        except:
-                            pass
+                        # sent receipt will be sent only if message is not coming from storage
+                        if not xmlstream2.has_element(stanza, xmlstream2.NS_XMPP_STORAGE, 'storage'):
+                            # send ack only for chat messages (if requested)
+                            if stanza.getAttribute('type') == 'chat' and xmlstream2.extract_receipt(stanza, 'request'):
+                                self.send_ack(stanza, 'sent', stamp)
+                            # send receipt to originating server, if requested
+                            try:
+                                origin = stanza.request.getAttribute['origin']
+                                stanza['to'] = origin
+                                self.send_ack(stanza, 'sent', stamp)
+                            except:
+                                pass
 
                     else:
                         # deliver local stanza

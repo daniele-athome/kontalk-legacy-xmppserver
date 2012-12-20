@@ -109,9 +109,8 @@ class IQHandler(XMPPHandler):
                 return fn(stanza)
 
     def roster(self, stanza):
-        items = stanza.query.elements(name='item')
         # requesting items lookup, forward to resolver
-        if items:
+        if xmlstream2.has_element(stanza.query, name='item'):
             self.parent.forward(stanza)
         # requesting initial roster - no action
         else:
@@ -315,6 +314,10 @@ class C2SManager(xmlstream2.StreamManager):
 
     def send(self, stanza, force=False):
         """Send stanza to client, setting to and id attributes if not present."""
+        # FIXME using deepcopy is not safe
+        from copy import deepcopy
+        stanza = deepcopy(stanza)
+
         util.resetNamespace(stanza, component.NS_COMPONENT_ACCEPT, self.namespace)
 
         # translate sender to network JID

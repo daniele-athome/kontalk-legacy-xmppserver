@@ -2,6 +2,7 @@
 [ ] client-side acknowledgement
    [x] stanza storage must be accessed by one component only
       [x] sm alerts c2s about local initial presence
+   [ ] FIXME in resolver.py/MessageHandler#message
 
 == TODO ==
 [ ] JIDCache: cache expiration and invalidation (instead of one big timeout)

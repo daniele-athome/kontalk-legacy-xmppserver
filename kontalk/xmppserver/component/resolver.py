@@ -242,7 +242,11 @@ class MessageHandler(XMPPHandler):
                 stanza['to'] = jid.JID(stanza['from']).userhost()
 
             # generate message id if client is requesting server receipts
-            if xmlstream2.extract_receipt(stanza, 'request'):
+            """
+            FIXME it is safe here to check if request has already been generated?
+            It could be forged by client!!!
+            """
+            if xmlstream2.extract_receipt(stanza, 'request') and not stanza.request.hasAttribute('id'):
                 stanza.request['id'] = util.rand_str(30, util.CHARSBOX_AZN_LOWERCASE)
 
             # send to router (without implicitly consuming)
@@ -621,6 +625,7 @@ class Resolver(component.Component):
 
     def __init__(self, config):
         router_cfg = config['router']
+        print router_cfg
         component.Component.__init__(self, router_cfg['host'], router_cfg['port'], router_cfg['jid'], router_cfg['secret'])
         self.config = config
 

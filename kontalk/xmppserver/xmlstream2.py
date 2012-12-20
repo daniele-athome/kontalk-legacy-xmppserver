@@ -24,6 +24,7 @@ NS_XMPP_PING = 'urn:xmpp:ping'
 
 NS_XMPP_STANZA_GROUP = 'urn:xmpp:stanza-group'
 NS_XMPP_SERVER_RECEIPTS = 'urn:xmpp:server-receipts'
+NS_XMPP_STORAGE = 'urn:xmpp:storage'
 
 
 XMPP_STAMP_FORMAT = '%Y-%m-%dT%H:%M:%SZ'
@@ -44,6 +45,11 @@ def extract_receipt(stanza, rtype=None):
     for receipt in stanza.elements(NS_XMPP_SERVER_RECEIPTS):
         if not rtype or (rtype and (receipt.name in rtype if type(rtype) in (list, tuple) else receipt.name == rtype)):
             return receipt
+
+def has_element(stanza, uri=None, name=None):
+    for elem in stanza.elements(uri, name):
+        return elem
+    return None
 
 
 class IXMPPUser(Interface):
