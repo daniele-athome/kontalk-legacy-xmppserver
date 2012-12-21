@@ -404,7 +404,7 @@ class MessageHandler(XMPPHandler):
         if message.getAttribute('type') == 'chat':
             self.send_ack(message, 'sent')
 
-    def dispatch(self, stanza, skip_storage=False):
+    def dispatch(self, stanza):
         if not stanza.consumed:
             log.debug("incoming stanza: %s" % (stanza.toXml().encode('utf-8')))
             stanza.consumed = True
@@ -416,32 +416,34 @@ class MessageHandler(XMPPHandler):
                 # process only our JIDs
                 if to.host == self.parent.servername:
                     if to.user is not None:
+                        receipt = xmlstream2.extract_receipt(stanza, ('request', 'received'))
                         try:
                             """
                             We are deliberately ignoring messages with sent
                             receipt because they are assumed to be volatile.
                             """
-                            # store message only if not coming from storage already
-                            if not xmlstream2.has_element(stanza, xmlstream2.NS_XMPP_STORAGE, 'storage') and \
-                                    xmlstream2.extract_receipt(stanza, ('request', 'received')):
-                                # store message to storage just to be safe
+                            if receipt:
+                                # send message to offline storage just to be safe
                                 stanza['id'] = self.message_offline(stanza)
                             # send message to sm
                             self.parent.sfactory.dispatch(stanza)
-                            
+
                             """
-                            If message is a received receipt, we have delivered it.
+                            If message is a received receipt, we have just delivered it.
                             It's not really a big deal if a receipt is lost...
                             """
-                            receipt = xmlstream2.extract_receipt(stanza, 'received')
-                            if receipt:
+                            received = xmlstream2.extract_receipt(stanza, 'received')
+                            if received:
                                 # delete the receipt
                                 self.parent.stanzadb.delete(stanza['id'])
                                 # delete the received message
-                                self.parent.stanzadb.delete(receipt['id'])
+                                self.parent.stanzadb.delete(received['id'])
                         except:
                             # manager not found - send error or send to offline storage
                             log.debug("c2s manager for %s not found" % (stanza['to'], ))
+                            # receipt not present - send to offline storage
+                            if not receipt:
+                                stanza['id'] = self.message_offline(stanza)
 
                         stamp = time.time()
 
@@ -673,11 +675,20 @@ class C2SComponent(component.Component):
                     if msg['stanza'].request:
                         msg['stanza'].request['origin'] = self.servername
 
-                    self.send(msg['stanza'])
                     """
-                    We don't delete the message from storage now; we must be
-                    sure client has received it.
+                    We use direct delivery here: it's faster and does not
+                    involve JID resolution
                     """
+                    msg['stanza']['to'] = self.resolveJID(jid.JID(msg['stanza']['to'])).full()
+                    self.dispatch(msg['stanza'])
+
+                    """
+                    If a receipt is requested, we won't delete the message from
+                    storage now; we must be sure client has received it.
+                    Otherwise just delete the message.
+                    """
+                    if not xmlstream2.extract_receipt(stanza, ('request', 'received')):
+                        self.stanzadb.delete(msgId)
                 except:
                     import traceback
                     traceback.print_exc()
@@ -685,3 +696,12 @@ class C2SComponent(component.Component):
 
         d = self.stanzadb.get_by_recipient(user)
         d.addCallback(output)
+
+    def resolveJID(self, _jid):
+        """Transform host attribute of JID from network name to server name."""
+        if isinstance(_jid, jid.JID):
+            return jid.JID(tuple=(_jid.user, self.servername, _jid.resource))
+        else:
+            _jid = jid.JID(_jid)
+            _jid.host = self.servername
+            return _jid

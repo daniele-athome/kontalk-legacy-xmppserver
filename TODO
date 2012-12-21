@@ -1,13 +1,9 @@
 == URGENT ==
-[ ] client-side acknowledgement
-   [x] stanza storage must be accessed by one component only
-      [x] sm alerts c2s about local initial presence
-   [ ] FIXME in resolver.py/MessageHandler#message
+[ ] encoding problems in router?!?!?
 
 == TODO ==
 [ ] JIDCache: cache expiration and invalidation (instead of one big timeout)
 [ ] connectionLost: unavailable presence should be sent only if client did not
-[ ] delivery receipts (s2s) - this might actually be done using server-receipts
 
 == ALPHA ==
 [ ] JIDCache: presence observers (might be used with subscriptions too)
@@ -16,6 +12,8 @@
 [ ] stanza storage should be a component (?)
 
 == COMPLETED ==
+[x] delivery receipts (s2s) - achieved through server-receipts
+[x] client-side acknowledgement
 [x] c2s resource conflict (sm)
 [x] presence storage: remove <group> elements when storing
 [x] stanza re-delivery when available presence

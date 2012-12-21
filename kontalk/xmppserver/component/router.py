@@ -118,6 +118,9 @@ class Router(component.Router):
             log.debug("broadcasting stanza %s" % (stanza.toXml().encode('utf-8'), ))
             self.broadcast(stanza)
         else:
+            """
+            FIXME we have encoding problems here... (why not in other components?!?!?)
+            """
             log.debug("routing stanza %s" % (stanza.toXml().encode('utf-8'), ))
             try:
                 destination = jid.JID(stanza['to'])

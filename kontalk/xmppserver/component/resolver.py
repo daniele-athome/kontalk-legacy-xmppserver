@@ -241,14 +241,6 @@ class MessageHandler(XMPPHandler):
             if not stanza.hasAttribute('to'):
                 stanza['to'] = jid.JID(stanza['from']).userhost()
 
-            # generate message id if client is requesting server receipts
-            """
-            FIXME it is safe here to check if request has already been generated?
-            It could be forged by client!!!
-            """
-            if xmlstream2.extract_receipt(stanza, 'request') and not stanza.request.hasAttribute('id'):
-                stanza.request['id'] = util.rand_str(30, util.CHARSBOX_AZN_LOWERCASE)
-
             # send to router (without implicitly consuming)
             self.parent.send(stanza, force_unavailable=False, force_delivery=(stanza.sent is not None or stanza.received is not None))
 

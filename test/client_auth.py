@@ -223,8 +223,7 @@ class Client(object):
             else:
                 message['to'] = jid.userhost()
             message.addElement((None, 'body'), content='test message')
-            req = message.addElement(('urn:xmpp:server-receipts', 'request'))
-            req['id'] = 'stocazzo'
+            message.addElement(('urn:xmpp:server-receipts', 'request'))
             xs.send(message)
             #xs.sendFooter()
 
@@ -236,7 +235,7 @@ class Client(object):
 
     def message(self, stanza, xs):
         print "message from %s" % (stanza['from'], )
-        if stanza.request and stanza.request.uri == 'urn:xmpp:server-receipts':
+        if stanza.type == 'chat' and stanza.request and stanza.request.uri == 'urn:xmpp:server-receipts':
             def sendReceipt(stanza):
                 receipt = domish.Element((None, 'message'))
                 receipt['to'] = stanza['from']

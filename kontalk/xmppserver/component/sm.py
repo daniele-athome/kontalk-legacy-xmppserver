@@ -284,6 +284,10 @@ class C2SManager(xmlstream2.StreamManager):
         return self.handle(stanza)
 
     def message(self, stanza):
+        # generate message id if receipt is requested by client
+        if xmlstream2.extract_receipt(stanza, 'request'):
+            stanza.request['id'] = util.rand_str(30, util.CHARSBOX_AZN_LOWERCASE)
+
         # no to address, presume sender bare JID
         if not stanza.hasAttribute('to'):
             stanza['to'] = self.xmlstream.otherEntity.userhost()
@@ -326,6 +330,10 @@ class C2SManager(xmlstream2.StreamManager):
             sender = jid.JID(stanza['from'])
             sender.host = self.network
             stanza['from'] = sender.full()
+
+        # remove reserved elements
+        if stanza.name == 'message' and stanza.storage and stanza.storage.uri == xmlstream2.NS_XMPP_STORAGE:
+            stanza.children.remove(stanza.storage)
 
         # force destination address
         stanza['to'] = self.xmlstream.otherEntity.full()
