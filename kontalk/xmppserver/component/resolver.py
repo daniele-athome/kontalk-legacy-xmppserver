@@ -617,7 +617,6 @@ class Resolver(component.Component):
 
     def __init__(self, config):
         router_cfg = config['router']
-        print router_cfg
         component.Component.__init__(self, router_cfg['host'], router_cfg['port'], router_cfg['jid'], router_cfg['secret'])
         self.config = config
 

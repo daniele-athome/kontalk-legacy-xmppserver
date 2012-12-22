@@ -96,6 +96,7 @@ class IQHandler(XMPPHandler):
             fn=self.parent.forward, componentfn=self.last_activity)
         self.xmlstream.addObserver("/iq/query[@xmlns='%s']" % (xmlstream2.NS_IQ_VERSION), self.forward_check, 100,
             fn=self.parent.forward, componentfn=self.version)
+        self.xmlstream.addObserver("/iq/query[@xmlns='%s']" % (xmlstream2.NS_IQ_REGISTER), self.register, 100)
         self.xmlstream.addObserver("/iq[@type='result']", self.parent.forward, 100)
 
         # fallback: service unavailable
@@ -132,13 +133,27 @@ class IQHandler(XMPPHandler):
         response.addChild(query)
         self.send(response)
 
+    def register(self, stanza):
+        if not self.parent.router.registration:
+            return self.parent.error(stanza)
+
+        log.debug("client requested registration: %s" % (stanza.toXml(), ))
+        stanza.consumed = True
+        if stanza['type'] == 'get':
+            self.parent.router.registration.request(self.parent, stanza)
+        elif stanza['type'] == 'set':
+            self.parent.router.registration.register(self.parent, stanza)
+
     def features(self):
-        return (
-            xmlstream2.NS_IQ_REGISTER,
+        ft = [
             xmlstream2.NS_IQ_VERSION,
             xmlstream2.NS_IQ_ROSTER,
             xmlstream2.NS_IQ_LAST,
-        )
+        ]
+        if self.parent.router.registration:
+            ft.append(xmlstream2.NS_IQ_REGISTER)
+
+        return ft
 
 
 class MessageHandler(XMPPHandler):

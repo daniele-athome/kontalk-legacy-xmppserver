@@ -554,12 +554,15 @@ class C2SComponent(component.Component):
         self.network = config['network']
         self.servername = config['host']
         self.start_time = time.time()
+        self.registration = None
 
         # protocol handlers here!!
         for handler in self.protocolHandlers:
             handler().setHandlerParent(self)
 
     def setup(self):
+        # initialize storage
+        # doing it here because it's needed by the c2s server factory
         storage.init(self.config['database'])
         self.stanzadb = storage.MySQLStanzaStorage()
         self.presencedb = storage.MySQLPresenceStorage()
@@ -573,6 +576,25 @@ class C2SComponent(component.Component):
 
         return strports.service('tcp:' + str(self.config['bind'][1]) +
             ':interface=' + str(self.config['bind'][0]), self.sfactory)
+
+    def startService(self):
+        component.Component.startService(self)
+
+        # register the registration provider if configured.
+        if 'registration' in self.config:
+            from kontalk.xmppserver import register
+            provider = self.config['registration']['provider']
+            try:
+                prov_class = register.providers[provider]
+                self.registration = prov_class(self, self.config['registration'])
+            except:
+                import traceback
+                log.warn(traceback.format_exc())
+
+        if self.registration:
+            log.info("using registration provider %s" % (self.registration.name))
+        else:
+            log.info("disabling registration")
 
     def uptime(self):
         return time.time() - self.start_time

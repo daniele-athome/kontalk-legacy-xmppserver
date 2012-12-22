@@ -181,6 +181,10 @@ class Client(object):
         ver.addElement((xmlstream2.NS_IQ_VERSION, 'query'))
         ver.send(self.network)
 
+        info = client.IQ(xs, 'get')
+        info.addElement((xmlstream2.NS_DISCO_INFO, 'query'))
+        info.send(self.network)
+
         def testProbe():
             if self.peer is not None:
                 userid, resource = util.split_userid(self.peer)
@@ -227,10 +231,57 @@ class Client(object):
             xs.send(message)
             #xs.sendFooter()
 
+        def testRegisterRequest():
+            reg = client.IQ(xs, 'get')
+            reg.addElement((xmlstream2.NS_IQ_REGISTER, 'query'))
+            reg.send(self.network)
+
+        def testRegister():
+            reg = client.IQ(xs, 'set')
+            query = reg.addElement((xmlstream2.NS_IQ_REGISTER, 'query'))
+            form = query.addElement(('jabber:x:data', 'x'))
+            form['type'] = 'submit'
+
+            hidden = form.addElement((None, 'field'))
+            hidden['type'] = 'hidden'
+            hidden['var'] = 'FORM_TYPE'
+            hidden.addElement((None, 'value'), content=xmlstream2.NS_IQ_REGISTER)
+
+            phone = form.addElement((None, 'field'))
+            phone['type'] = 'text-single'
+            phone['label'] = 'Phone number'
+            phone['var'] = 'phone'
+            phone.addElement((None, 'value'), content='+39123456')
+
+            reg.send(self.network)
+
+        def testValidate():
+            reg = client.IQ(xs, 'set')
+            query = reg.addElement((xmlstream2.NS_IQ_REGISTER, 'query'))
+            form = query.addElement(('jabber:x:data', 'x'))
+            form['type'] = 'submit'
+
+            hidden = form.addElement((None, 'field'))
+            hidden['type'] = 'hidden'
+            hidden['var'] = 'FORM_TYPE'
+            hidden.addElement((None, 'value'), content='http://kontalk.org/protocol/register#code')
+
+            code = form.addElement((None, 'field'))
+            code['type'] = 'text-single'
+            code['label'] = 'Validation code'
+            code['var'] = 'code'
+            code.addElement((None, 'value'), content='TODO')
+
+            reg.send(self.network)
+
+
         #reactor.callLater(1, testProbe)
         #reactor.callLater(1, testSubscribe)
-        reactor.callLater(1, testMessage)
+        #reactor.callLater(1, testMessage)
         #reactor.callLater(1, testRoster)
+        reactor.callLater(1, testRegisterRequest)
+        reactor.callLater(2, testRegister)
+        reactor.callLater(3, testValidate)
         reactor.callLater(30, xs.sendFooter)
 
     def message(self, stanza, xs):
