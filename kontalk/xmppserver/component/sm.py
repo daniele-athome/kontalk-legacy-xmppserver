@@ -133,6 +133,7 @@ class IQHandler(XMPPHandler):
         response.addChild(query)
         self.send(response)
 
+    # TODO this should be an initializer
     def register(self, stanza):
         if not self.parent.router.registration:
             return self.parent.error(stanza)
@@ -237,10 +238,11 @@ class C2SManager(xmlstream2.StreamManager):
 
     def _connected(self, xs):
         xmlstream2.StreamManager._connected(self, xs)
-        # add an observer for unauthorized stanzas
+        # add observers for unauthorized stanzas
         xs.addObserver("/iq", self._unauthorized)
         xs.addObserver("/presence", self._unauthorized)
         xs.addObserver("/message", self._unauthorized)
+        # everything else is handled by initializers
 
     def conflict(self):
         self.xmlstream.sendStreamError(error.StreamError('conflict'))
