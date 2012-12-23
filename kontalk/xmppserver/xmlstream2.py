@@ -200,6 +200,39 @@ class SessionInitializer(BaseFeatureReceivingInitializer):
         self.xmlstream.dispatch(self, INIT_SUCCESS_EVENT)
 
 
+class RegistrationInitializer(BaseFeatureReceivingInitializer):
+    """
+    Initializer that implements in-band registration for the receiving entity.
+
+    This protocol is defined in U{XEP-0077<http://xmpp.org/extensions/xep-0077.html>}.
+    """
+
+    def feature(self):
+        return domish.Element(('http://jabber.org/features/iq-register', 'register'))
+
+    def initialize(self):
+        self.xmlstream.addObserver("/iq[@type='get']/query[@xmlns='%s']" % (NS_IQ_REGISTER), self.onRequest, 100)
+        self.xmlstream.addObserver("/iq[@type='set']/query[@xmlns='%s']" % (NS_IQ_REGISTER), self.onRegister, 100)
+
+    def deinitialize(self):
+        self.xmlstream.removeObserver("/iq[@type='get']/query[@xmlns='%s']" % (NS_IQ_REGISTER), self.onRequest)
+        self.xmlstream.removeObserver("/iq[@type='set']/query[@xmlns='%s']" % (NS_IQ_REGISTER), self.onRegister)
+
+    def onRequest(self, stanza):
+        if not self.canInitialize(self):
+            return
+
+        stanza.consumed = True
+        self.xmlstream.manager.router.registration.request(self.xmlstream, stanza)
+
+    def onRegister(self, stanza):
+        if not self.canInitialize(self):
+            return
+
+        stanza.consumed = True
+        self.xmlstream.manager.router.registration.register(self.xmlstream, stanza)
+
+
 class ISASLServerMechanism(Interface):
     """
     The server-side of ISASLMechanism. Could perhaps be integrated into

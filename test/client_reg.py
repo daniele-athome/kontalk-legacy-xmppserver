@@ -98,6 +98,20 @@ class KontalkSASLInitiatingInitializer(xmlstream.BaseFeatureInitiatingInitialize
         self._deferred.errback(sasl.SASLAuthError(condition))
 
 
+class RegistrationInitializer(xmlstream.BaseFeatureInitiatingInitializer):
+    feature = ('http://jabber.org/features/iq-register', 'register')
+
+    def start(self):
+        """
+        Start SASL authentication exchange.
+        """
+
+        self.xmlstream.addObserver("/iq[@type='result']/query[xmlns='%s']" % (xmlstream2.NS_IQ_REGISTER), self.onRequestData)
+
+    def onRequestData(self, stanza):
+        print "on request data: %r" % (stanza.toXml(), )
+
+
 class KontalkXMPPAuthenticator(xmlstream.ConnectAuthenticator):
     namespace = 'jabber:client'
 
@@ -121,6 +135,7 @@ class KontalkXMPPAuthenticator(xmlstream.ConnectAuthenticator):
 
         xs.initializers = [CheckVersionInitializer(xs)]
         inits = [
+            (RegistrationInitializer, True),
             (KontalkSASLInitiatingInitializer, True),
             (BindInitializer, True),
             (SessionInitializer, True),
@@ -137,7 +152,7 @@ class Client(object):
     logTrafficIn = True
 
     def __init__(self, network, token, peer=None):
-        a = KontalkXMPPAuthenticator(network, token)
+        a = xmlstream.ConnectAuthenticator(network)
         f = xmlstream.XmlStreamFactory(a)
         f.addBootstrap(xmlstream.STREAM_CONNECTED_EVENT, self.connected)
         f.addBootstrap(xmlstream.STREAM_END_EVENT, self.disconnected)
@@ -172,64 +187,6 @@ class Client(object):
     def authenticated(self, xs):
         print "Authenticated."
         xs.addObserver('/*', self.stanza, xs=xs)
-        xs.addObserver('/message', self.message, xs=xs)
-
-        presence = xmppim.AvailablePresence(statuses={None: 'status message'})
-        xs.send(presence)
-
-        ver = client.IQ(xs, 'get')
-        ver.addElement((xmlstream2.NS_IQ_VERSION, 'query'))
-        ver.send(self.network)
-
-        info = client.IQ(xs, 'get')
-        info.addElement((xmlstream2.NS_DISCO_INFO, 'query'))
-        info.send(self.network)
-
-        def testProbe():
-            if self.peer is not None:
-                userid, resource = util.split_userid(self.peer)
-                presence = xmppim.Presence(jid.JID(tuple=(userid, self.network, resource)), 'probe')
-                xs.send(presence)
-
-        def testRoster():
-            if self.peer is not None:
-                _jid = util.userid_to_jid(self.peer, self.network)
-                r = domish.Element((None, 'iq'))
-                r['type'] = 'get'
-                r['id'] = util.rand_str(8)
-                q = r.addElement((xmppim.NS_ROSTER, 'query'))
-                item = q.addElement((None, 'item'))
-                item['jid'] = _jid.userhost()
-                xs.send(r)
-
-        def testSubscribe():
-            # subscription request
-            self.index = 0
-            if self.peer is not None:
-                userid, resource = util.split_userid(self.peer)
-                presence = xmppim.Presence(jid.JID(tuple=(userid, self.network, None)), 'subscribe')
-                xs.send(presence)
-            else:
-                def pres():
-                    self.index += 1
-                    presence = xmppim.AvailablePresence(statuses={None: 'status message (%d)' % (self.index, )})
-                    xs.send(presence)
-
-                LoopingCall(pres).start(2, False)
-
-        def testMessage():
-            jid = xs.authenticator.jid
-            message = domish.Element((None, 'message'))
-            message['id'] = 'kontalk' + util.rand_str(8, util.CHARSBOX_AZN_LOWERCASE)
-            message['type'] = 'chat'
-            if self.peer:
-                message['to'] = util.userid_to_jid(self.peer, self.network).full()
-            else:
-                message['to'] = jid.userhost()
-            message.addElement((None, 'body'), content='test message')
-            message.addElement(('urn:xmpp:server-receipts', 'request'))
-            xs.send(message)
-            #xs.sendFooter()
 
         def testRegisterRequest():
             reg = client.IQ(xs, 'get')
@@ -270,9 +227,11 @@ class Client(object):
             code['type'] = 'text-single'
             code['label'] = 'Validation code'
             code['var'] = 'code'
-            code.addElement((None, 'value'), content='686129')
+            code.addElement((None, 'value'), content='726321')
 
             reg.send(self.network)
+
+            reactor.callLater(1, xs.reset)
 
 
         #reactor.callLater(1, testProbe)
@@ -283,17 +242,6 @@ class Client(object):
         #reactor.callLater(1, testRegister)
         reactor.callLater(1, testValidate)
         reactor.callLater(30, xs.sendFooter)
-
-    def message(self, stanza, xs):
-        print "message from %s" % (stanza['from'], )
-        if stanza.type == 'chat' and stanza.request and stanza.request.uri == 'urn:xmpp:server-receipts':
-            def sendReceipt(stanza):
-                receipt = domish.Element((None, 'message'))
-                receipt['to'] = stanza['from']
-                child = receipt.addElement(('urn:xmpp:server-receipts', 'received'))
-                child['id'] = stanza.request['id']
-                xs.send(receipt)
-            reactor.callLater(5, sendReceipt, stanza)
 
     def stanza(self, stanza, xs):
         print 'STANZA: %r' % (stanza.toXml().encode('utf-8'), )

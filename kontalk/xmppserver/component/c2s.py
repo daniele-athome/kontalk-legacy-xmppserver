@@ -158,6 +158,7 @@ class XMPPListenAuthenticator(xmlstream.ListenAuthenticator):
         inits = (
             #(xmlstream.TLSInitiatingInitializer, False),
             (xmlstream2.SASLReceivingInitializer, True, True),
+            (xmlstream2.RegistrationInitializer, True, True),
             (xmlstream2.BindInitializer, True, False),
             (xmlstream2.SessionInitializer, True, False),
         )
@@ -186,13 +187,26 @@ class XMPPListenAuthenticator(xmlstream.ListenAuthenticator):
         if self.xmlstream.version >= (1, 0):
             features = domish.Element((xmlstream.NS_STREAMS, 'features'))
 
+            """
+            FIXME RegistrationInitializer has a special behavior, meaning it is
+            an exclusive feature (together with SASL) and must be took out from
+            features after authentication. Use of the exclusive attribute must
+            be changed to support more than one exclusive feature.
+            """
+            required = False
             for initializer in self.xmlstream.initializers:
+                if required and (not hasattr(initializer, 'exclusive') or not initializer.exclusive):
+                    log.debug("skipping %r" % (initializer, ))
+                    continue
+
                 feature = initializer.feature()
                 if feature is not None:
                     features.addChild(feature)
                 if hasattr(initializer, 'required') and initializer.required and \
-                    hasattr(initializer, 'exclusive') and initializer.exclusive:
-                    break
+                        hasattr(initializer, 'exclusive') and initializer.exclusive:
+                    log.debug("required and exclusive: %r" % (initializer, ))
+                    if not required:
+                        required = True
 
             self.xmlstream.send(features)
 
@@ -200,9 +214,10 @@ class XMPPListenAuthenticator(xmlstream.ListenAuthenticator):
         inits = self.xmlstream.initializers[0:self.xmlstream.initializers.index(initializer)]
 
         # check if there are required inits that should have been run first
-        for init in inits:
-            if hasattr(init, 'required') and init.required:
-                return False
+        if not hasattr(initializer, 'exclusive') or not initializer.exclusive:
+            for init in inits:
+                if hasattr(init, 'required') and init.required:
+                    return False
 
         # remove the skipped inits
         for init in inits:
@@ -215,10 +230,18 @@ class XMPPListenAuthenticator(xmlstream.ListenAuthenticator):
         self.xmlstream.initializers.remove(initializer)
 
         required = False
+        remove = []
         for init in self.xmlstream.initializers:
+            if hasattr(init, 'exclusive') and init.exclusive:
+                remove.append(init)
             if hasattr(init, 'required') and init.required:
                 required = True
 
+        for init in remove:
+            log.debug("removing initializer %r" % (init, ))
+            self.xmlstream.initializers.remove(init)
+
+        log.debug("initializers=%r" % (self.xmlstream.initializers, ))
         if not required:
             self.xmlstream.dispatch(self.xmlstream, xmlstream.STREAM_AUTHD_EVENT)
 
