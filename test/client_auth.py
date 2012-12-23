@@ -270,7 +270,7 @@ class Client(object):
             code['type'] = 'text-single'
             code['label'] = 'Validation code'
             code['var'] = 'code'
-            code.addElement((None, 'value'), content='TODO')
+            code.addElement((None, 'value'), content='686129')
 
             reg.send(self.network)
 
@@ -279,9 +279,9 @@ class Client(object):
         #reactor.callLater(1, testSubscribe)
         #reactor.callLater(1, testMessage)
         #reactor.callLater(1, testRoster)
-        reactor.callLater(1, testRegisterRequest)
-        reactor.callLater(2, testRegister)
-        reactor.callLater(3, testValidate)
+        #reactor.callLater(1, testRegisterRequest)
+        #reactor.callLater(1, testRegister)
+        reactor.callLater(1, testValidate)
         reactor.callLater(30, xs.sendFooter)
 
     def message(self, stanza, xs):

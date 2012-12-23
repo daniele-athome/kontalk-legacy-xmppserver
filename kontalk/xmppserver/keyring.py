@@ -21,6 +21,9 @@
 # pyme
 from pyme import core
 from pyme.constants.keylist import mode as keymode
+from pyme.constants.sig import mode as sigmode
+
+import base64
 
 
 class Keyring:
@@ -122,3 +125,26 @@ class Keyring:
     def hostlist(self):
         """List of host servers."""
         return self._list.values()
+
+    def generate_user_token(self, userid):
+        """Generates a user token."""
+
+        """
+        A token is made up of the hashed phone number (the user id)
+        plus the resource (in one big string, 40+8 characters),
+        and the fingerprint of the server he registered to
+        """
+        fp = str(self.fingerprint)
+        string = '%s|%s' % (str(userid), fp)
+        plain = core.Data(string)
+        cipher = core.Data()
+        ctx = core.Context()
+        ctx.set_armor(0)
+
+        # signing key
+        ctx.signers_add(ctx.get_key(fp, True))
+
+        ctx.op_sign(plain, cipher, sigmode.NORMAL)
+        cipher.seek(0, 0)
+        token = cipher.read()
+        return base64.b64encode(token)

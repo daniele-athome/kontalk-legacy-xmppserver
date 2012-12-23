@@ -19,6 +19,7 @@
 """
 
 
+from twisted.internet import defer
 from twisted.enterprise import adbapi
 from twisted.words.protocols.jabber import jid
 
@@ -38,7 +39,7 @@ def init(config):
 """ interfaces """
 
 
-class StanzaStorage():
+class StanzaStorage:
     """Stanza storage system."""
 
     def store(self, stanza):
@@ -62,7 +63,7 @@ class StanzaStorage():
         pass
 
 
-class PresenceStorage():
+class PresenceStorage:
     """Presence cache storage."""
 
     def get(self, user_jid):
@@ -78,13 +79,27 @@ class PresenceStorage():
         pass
 
 
-class NetworkStorage():
+class NetworkStorage:
     """Network info storage."""
 
     def get_list(self):
         """Retrieve the list of servers in this network."""
         pass
 
+
+class UserValidationStorage:
+    """User validation storage."""
+
+    """Validation code length."""
+    VALIDATION_CODE_LENGTH = 6
+
+    def register(self, key, code=None):
+        """Registers a validation code for a user."""
+        pass
+
+    def validate(self, code):
+        """Check if code is valid and deletes it."""
+        pass
 
 
 """ implementations """
@@ -179,7 +194,6 @@ class MySQLPresenceStorage(PresenceStorage):
         def _fetchall(tx, query, args):
             tx.execute(query, args)
             data = tx.fetchall()
-            print data
             out = []
             for d in data:
                 out.append({
@@ -214,9 +228,50 @@ class MySQLPresenceStorage(PresenceStorage):
             return None
 
         values = (userid, encode_not_empty(stanza.status), util.str_none(stanza.show))
-        dbpool.runOperation('REPLACE INTO presence VALUES(?, UTC_TIMESTAMP(), ?, ?)', values)
+        return dbpool.runOperation('REPLACE INTO presence VALUES(?, UTC_TIMESTAMP(), ?, ?)', values)
 
     def touch(self, user_jid):
         global dbpool
         userid = util.jid_to_userid(user_jid)
-        dbpool.runOperation('UPDATE presence SET timestamp = UTC_TIMESTAMP() WHERE userid = ?', (userid, ))
+        return dbpool.runOperation('UPDATE presence SET timestamp = UTC_TIMESTAMP() WHERE userid = ?', (userid, ))
+
+
+class MySQLUserValidationStorage(UserValidationStorage):
+    """User validation storage."""
+
+    TEXT_INVALID_CODE = 'Invalid validation code.'
+
+    def register(self, key, code=None):
+        global dbpool
+
+        if not code:
+            code = util.rand_str(self.VALIDATION_CODE_LENGTH, util.CHARSBOX_NUMBERS)
+
+        def _callback(result, callback, code):
+            callback.callback(code)
+        def _errback(failure, callback):
+            callback.errback(failure)
+
+        callback = defer.Deferred()
+        d = dbpool.runOperation('INSERT INTO validations VALUES (?, ?, sysdate())', (key, code, ))
+        d.addCallback(_callback, callback, code)
+        d.addErrback(_errback, callback)
+        return callback
+
+    def validate(self, code):
+        global dbpool
+
+        if len(code) != self.VALIDATION_CODE_LENGTH or not code.isdigit():
+            return defer.fail(RuntimeError(self.TEXT_INVALID_CODE))
+
+        def _fetch(tx, code):
+            tx.execute('SELECT userid FROM validations WHERE code = ?', (code, ))
+            data = tx.fetchone()
+            if data:
+                # delete code immediately
+                tx.execute('DELETE FROM validations WHERE code = ?', (code, ))
+                return data[0]
+            else:
+                raise RuntimeError(self.TEXT_INVALID_CODE)
+
+        return dbpool.runInteraction(_fetch, code)

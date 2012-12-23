@@ -18,7 +18,7 @@
  along with this program.  If not, see <http://www.gnu.org/licenses/>.
 '''
 
-import random
+import random, hashlib
 
 from twisted.words.protocols.jabber import jid
 from wokkel import generic
@@ -92,3 +92,7 @@ def str_none(obj, encoding='utf-8'):
         if len(data) > 0:
             return data
     return None
+
+def sha1(text):
+    hashed = hashlib.sha1(text)
+    return hashed.hexdigest()

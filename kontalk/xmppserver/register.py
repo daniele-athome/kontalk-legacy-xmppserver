@@ -19,10 +19,10 @@
 """
 
 
-from twisted.words.protocols.jabber import xmlstream
+from twisted.words.protocols.jabber import xmlstream, error
 from twisted.words.xish import domish
 
-from kontalk.xmppserver import log, xmlstream2
+from kontalk.xmppserver import log, xmlstream2, util
 
 
 class XMPPRegistrationProvider:
@@ -46,21 +46,20 @@ class XMPPRegistrationProvider:
         """
         Registers a user (iq set).
         @param manager: session manager
-        @param stanza: registration request stanza
+        @param stanza: registration submit stanza
         """
         pass
 
 
-class AndroidEmulatorRegistrationProvider(XMPPRegistrationProvider):
+class AndroidEmulatorSMSRegistrationProvider(XMPPRegistrationProvider):
     """
     This provider uses adb to send sms to the Android emulator.
     """
 
-    name = 'android_emu'
+    name = 'android_emu_sms'
+    type = 'sms'
 
     def __init__(self, component, config):
-        if config['type'] != 'sms':
-            raise NotImplementedError('only sms registration is supported')
         XMPPRegistrationProvider.__init__(self, component, config)
 
     def request(self, manager, stanza):
@@ -88,54 +87,115 @@ class AndroidEmulatorRegistrationProvider(XMPPRegistrationProvider):
         # TODO some checking would be nice :)
         fields = stanza.query.x.elements(uri='jabber:x:data', name='field')
         for f in fields:
+            # validation code request
             if f['var'] == 'phone':
-                # TODO generate validation code
-                import os
-                os.system('adb emu sms send %s %s' % (self.config['from'], 'TODO'))
+                def _bad_phone():
+                    e = error.StanzaError('bad-request', 'modify', 'Bad phone number.')
+                    iq = xmlstream.toResponse(stanza, 'error')
+                    iq.addChild(e.getElement())
+                    return manager.send(iq)
 
-                # send response with sms sender number
-                iq = xmlstream.toResponse(stanza, 'result')
-                query = iq.addElement((xmlstream2.NS_IQ_REGISTER, 'query'))
-                query.addElement((None, 'instructions'), content='A SMS containing a validation code will be sent to the emulator.')
+                n = f.value.__str__().encode('utf-8')
 
-                form = query.addElement(('jabber:x:data', 'x'))
-                form['type'] = 'form'
+                # validate phone number syntax
+                if not n or len(n.strip()) == 0:
+                    log.debug("number empty - %s" % n)
+                    return _bad_phone()
 
-                hidden = form.addElement((None, 'field'))
-                hidden['type'] = 'hidden'
-                hidden['var'] = 'FORM_TYPE'
-                hidden.addElement((None, 'value'), content=xmlstream2.NS_IQ_REGISTER)
+                phone = phone_num = n.strip()
+                # exclude the initial plus to verify the digits
+                if (phone[0] == '+'):
+                    phone_num = phone[1:]
 
-                phone = form.addElement((None, 'field'), content=self.config['from'])
-                phone['type'] = 'text-single'
-                phone['label'] = 'SMS sender'
-                phone['var'] = 'from'
+                # not all digits...
+                if not phone_num.isdigit():
+                    log.debug("number is not all-digits - %s" % phone_num)
+                    return _bad_phone()
 
-                return manager.send(iq)
+                # replace double-zero with plus
+                if phone[0:2] == '00':
+                    phone = '+' + phone[2:]
 
+                # generate userid
+                userid = util.sha1(phone) + util.rand_str(8, util.CHARSBOX_AZN_UPPERCASE)
+                d = self.component.validationdb.register(userid)
+
+                def _continue(code, stanza):
+                    import os
+                    os.system('sleep 1; adb emu sms send %s %s' % (self.config['from'], code))
+
+                    # send response with sms sender number
+                    iq = xmlstream.toResponse(stanza, 'result')
+                    query = iq.addElement((xmlstream2.NS_IQ_REGISTER, 'query'))
+                    query.addElement((None, 'instructions'), content='A SMS containing a validation code will be sent to the emulator.')
+
+                    form = query.addElement(('jabber:x:data', 'x'))
+                    form['type'] = 'form'
+
+                    hidden = form.addElement((None, 'field'))
+                    hidden['type'] = 'hidden'
+                    hidden['var'] = 'FORM_TYPE'
+                    hidden.addElement((None, 'value'), content=xmlstream2.NS_IQ_REGISTER)
+
+                    phone = form.addElement((None, 'field'), content=self.config['from'])
+                    phone['type'] = 'text-single'
+                    phone['label'] = 'SMS sender'
+                    phone['var'] = 'from'
+
+                    return manager.send(iq)
+
+                def _error(failure, stanza):
+                    log.debug("error: %s" % (failure, ))
+                    e = error.StanzaError('service-unavailable', 'wait', failure.getErrorMessage())
+                    iq = xmlstream.toResponse(stanza, 'error')
+                    iq.addChild(e.getElement())
+                    manager.send(iq)
+
+                d.addCallback(_continue, stanza)
+                d.addErrback(_error, stanza)
+
+            # code validation
             elif f['var'] == 'code':
-                # TODO check validation code from database
-                iq = xmlstream.toResponse(stanza, 'result')
-                query = iq.addElement((xmlstream2.NS_IQ_REGISTER, 'query'))
+                # check validation code from database
+                code = f.value.__str__().encode('utf-8')
+                d = self.component.validationdb.validate(code)
 
-                form = query.addElement(('jabber:x:data', 'x'))
-                form['type'] = 'form'
+                def _continue(userid):
+                    iq = xmlstream.toResponse(stanza, 'result')
+                    query = iq.addElement((xmlstream2.NS_IQ_REGISTER, 'query'))
 
-                hidden = form.addElement((None, 'field'))
-                hidden['type'] = 'hidden'
-                hidden['var'] = 'FORM_TYPE'
-                hidden.addElement((None, 'value'), content='http://kontalk.org/protocol/register#code')
+                    form = query.addElement(('jabber:x:data', 'x'))
+                    form['type'] = 'form'
 
-                token = form.addElement((None, 'field'))
-                token['type'] = 'text-single'
-                token['label'] = 'Authentication token'
-                token['var'] = 'token'
-                token.addElement((None, 'value'), content='TOKEN-TODO')
+                    hidden = form.addElement((None, 'field'))
+                    hidden['type'] = 'hidden'
+                    hidden['var'] = 'FORM_TYPE'
+                    hidden.addElement((None, 'value'), content='http://kontalk.org/protocol/register#code')
 
-                return manager.send(iq)
+                    str_token = self.component.keyring.generate_user_token(userid)
+                    token = form.addElement((None, 'field'))
+                    token['type'] = 'text-single'
+                    token['label'] = 'Authentication token'
+                    token['var'] = 'token'
+                    token.addElement((None, 'value'), content=str_token)
+
+                    return manager.send(iq)
+
+                def _error(failure):
+                    log.debug("error: %s" % (failure, ))
+                    if isinstance(failure.value, RuntimeError):
+                        e = error.StanzaError('bad-request', 'modify', failure.getErrorMessage())
+                    else:
+                        e = error.StanzaError('service-unavailable', 'wait', failure.getErrorMessage())
+                    iq = xmlstream.toResponse(stanza, 'error')
+                    iq.addChild(e.getElement())
+                    manager.send(iq)
+
+                d.addCallback(_continue)
+                d.addErrback(_error)
 
 
 
 providers = {
-    'android_emu': AndroidEmulatorRegistrationProvider
+    'android_emu_sms': AndroidEmulatorSMSRegistrationProvider
 }

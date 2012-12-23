@@ -566,10 +566,11 @@ class C2SComponent(component.Component):
         storage.init(self.config['database'])
         self.stanzadb = storage.MySQLStanzaStorage()
         self.presencedb = storage.MySQLPresenceStorage()
+        self.validationdb = storage.MySQLUserValidationStorage()
 
+        self.keyring = keyring.Keyring(storage.MySQLNetworkStorage(), self.config['fingerprint'], self.servername)
         authrealm = auth.SASLRealm("Kontalk")
-        ring = keyring.Keyring(storage.MySQLNetworkStorage(), self.config['fingerprint'], self.servername)
-        authportal = portal.Portal(authrealm, [auth.AuthKontalkToken(self.config['fingerprint'], ring)])
+        authportal = portal.Portal(authrealm, [auth.AuthKontalkToken(self.config['fingerprint'], self.keyring)])
 
         self.sfactory = XMPPServerFactory(authportal, self, self.network, self.servername)
         self.sfactory.logTraffic = self.config['debug']
@@ -592,7 +593,7 @@ class C2SComponent(component.Component):
                 log.warn(traceback.format_exc())
 
         if self.registration:
-            log.info("using registration provider %s" % (self.registration.name))
+            log.info("using registration provider %s (type=%s)" % (self.registration.name, self.registration.type))
         else:
             log.info("disabling registration")
 
