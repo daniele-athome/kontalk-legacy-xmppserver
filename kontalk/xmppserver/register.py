@@ -19,6 +19,7 @@
 """
 
 
+from twisted.internet import reactor
 from twisted.words.protocols.jabber import xmlstream, error
 from twisted.words.xish import domish
 
@@ -121,8 +122,10 @@ class AndroidEmulatorSMSRegistrationProvider(XMPPRegistrationProvider):
                 d = self.component.validationdb.register(userid)
 
                 def _continue(code, stanza):
-                    import os
-                    os.system('sleep 1; adb emu sms send %s %s' % (self.config['from'], code))
+                    def _send(code):
+                        import os
+                        os.system('adb emu sms send %s %s' % (self.config['from'], code))
+                    reactor.callLater(2, _send, code)
 
                     # send response with sms sender number
                     iq = xmlstream.toResponse(stanza, 'result')
@@ -137,10 +140,11 @@ class AndroidEmulatorSMSRegistrationProvider(XMPPRegistrationProvider):
                     hidden['var'] = 'FORM_TYPE'
                     hidden.addElement((None, 'value'), content=xmlstream2.NS_IQ_REGISTER)
 
-                    phone = form.addElement((None, 'field'), content=self.config['from'])
+                    phone = form.addElement((None, 'field'))
                     phone['type'] = 'text-single'
                     phone['label'] = 'SMS sender'
                     phone['var'] = 'from'
+                    phone.addElement((None, 'value'), content=self.config['from'])
 
                     return manager.send(iq)
 
