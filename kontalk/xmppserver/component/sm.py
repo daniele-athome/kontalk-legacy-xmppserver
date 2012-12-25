@@ -111,7 +111,7 @@ class IQHandler(XMPPHandler):
 
     def roster(self, stanza):
         # requesting items lookup, forward to resolver
-        if xmlstream2.has_element(stanza.query, name='item'):
+        if xmlstream2.has_element(stanza.query, uri=xmlstream2.NS_IQ_ROSTER, name='item'):
             self.parent.forward(stanza)
         # requesting initial roster - no action
         else:

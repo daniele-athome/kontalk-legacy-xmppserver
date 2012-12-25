@@ -101,10 +101,10 @@ class IQHandler(XMPPHandler):
             def _roster(data, stanza):
                 log.debug("roster result: %r" % (data, ))
                 response = xmlstream2.toResponse(stanza, 'result')
+                roster = response.addElement((xmlstream2.NS_IQ_ROSTER, 'query'))
                 unique = set([e.userhostJID() for entry in data for e in entry])
                 if len(unique) > 0:
                     log.debug("roster output: %r" % (unique, ))
-                    roster = response.addElement((xmlstream2.NS_IQ_ROSTER, 'query'))
                     for e in unique:
                         item = roster.addElement((None, 'item'))
                         item['jid'] = self.parent.translateJID(e).userhost()
