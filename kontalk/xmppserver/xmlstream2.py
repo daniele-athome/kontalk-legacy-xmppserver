@@ -125,6 +125,40 @@ class BaseFeatureReceivingInitializer(object):
         self.canInitialize = canInitialize
 
 
+class TLSReceivingInitializer(BaseFeatureReceivingInitializer):
+    """
+    TLS stream initializer for the receiving entity.
+    """
+
+    def feature(self):
+        if self.xmlstream.factory.tls_ctx is None:
+            print "TLS not supported"
+            return
+
+        feature = domish.Element((xmlstream.NS_XMPP_TLS, 'starttls'), defaultUri=xmlstream.NS_XMPP_TLS)
+        if self.required:
+            feature.addElement((xmlstream.NS_XMPP_TLS, 'required'))
+        return feature
+
+    def initialize(self):
+        self.xmlstream.addOnetimeObserver('/starttls', self.onStartTLS)
+
+    def deinitialize(self):
+        self.xmlstream.removeObserver('/starttls', self.onStartTLS)
+
+    def onStartTLS(self, element):
+        if self.xmlstream.factory.tls_ctx is None:
+            failure = domish.Element((sasl.NS_XMPP_SASL, 'failure'), defaultUri=xmlstream.NS_XMPP_TLS)
+            self.xmlstream.send(failure)
+            self.xmlstream.sendFooter()
+
+        if self.canInitialize(self):
+            self.xmlstream.dispatch(self, INIT_SUCCESS_EVENT)
+            self.xmlstream.send(domish.Element((xmlstream.NS_XMPP_TLS, 'proceed')))
+            self.xmlstream.transport.startTLS(self.xmlstream.factory.tls_ctx)
+            self.xmlstream.reset()
+
+
 class BindInitializer(BaseFeatureReceivingInitializer):
     """
     Initializer that implements Resource Binding for the receiving entity.
@@ -412,6 +446,7 @@ class SASLMechanismError(sasl.SASLError):
     Something went wrong in the mechanism. Could be caused by user (e.g. sending
     an initial response for DIGEST-MD5) or by the server.
     """
+
 
 class StreamManager(xmlstream.XMPPHandlerCollection):
     """

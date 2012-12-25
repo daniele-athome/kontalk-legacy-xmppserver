@@ -121,6 +121,7 @@ class KontalkXMPPAuthenticator(xmlstream.ConnectAuthenticator):
 
         xs.initializers = [CheckVersionInitializer(xs)]
         inits = [
+            (xmlstream.TLSInitiatingInitializer, False),
             (KontalkSASLInitiatingInitializer, True),
             (BindInitializer, True),
             (SessionInitializer, True),

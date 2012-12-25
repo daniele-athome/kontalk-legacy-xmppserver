@@ -29,6 +29,14 @@ from twisted.words.protocols.jabber import xmlstream, jid, error
 from twisted.words.protocols.jabber.xmlstream import XMPPHandler
 from twisted.words.xish import domish, xmlstream as xish_xmlstream
 
+try:
+    from OpenSSL import crypto
+    from twisted.internet import ssl
+except ImportError:
+    ssl = None
+if ssl and not ssl.supported:
+    ssl = None
+
 from wokkel import component
 
 from kontalk.xmppserver import log, auth, keyring, util, storage
@@ -52,6 +60,21 @@ class XMPPServerFactory(xish_xmlstream.XmlStreamFactoryMixin, ServerFactory):
         self.network = network
         self.servername = servername
         self.streams = {}
+
+    def loadPEM(self, certfile, keyfile):
+        if ssl is None:
+            raise xmlstream.TLSNotSupported()
+
+        cert = open(certfile, 'rb')
+        cert_buf = cert.read()
+        cert.close()
+        cert = open(keyfile, 'rb')
+        key_buf = cert.read()
+        cert.close()
+
+        pkey = crypto.load_privatekey(crypto.FILETYPE_PEM, key_buf)
+        cert = crypto.load_certificate(crypto.FILETYPE_PEM, cert_buf)
+        self.tls_ctx = ssl.CertificateOptions(privateKey=pkey, certificate=cert)
 
     def buildProtocol(self, addr):
         xs = self.protocol(XMPPListenAuthenticator(self.network))
@@ -113,6 +136,7 @@ class XMPPServerFactory(xish_xmlstream.XmlStreamFactoryMixin, ServerFactory):
                 manager.send(stanza)
 
 
+# TODO this class need to be tested extensively
 class XMPPListenAuthenticator(xmlstream.ListenAuthenticator):
     """
     Initializes an XmlStream accepted from an XMPP client as a Server.
@@ -156,7 +180,7 @@ class XMPPListenAuthenticator(xmlstream.ListenAuthenticator):
 
         xs.initializers = []
         inits = (
-            #(xmlstream.TLSInitiatingInitializer, False),
+            (xmlstream2.TLSReceivingInitializer, False, False),
             (xmlstream2.SASLReceivingInitializer, True, True),
             (xmlstream2.RegistrationInitializer, True, True),
             (xmlstream2.BindInitializer, True, False),
@@ -187,12 +211,6 @@ class XMPPListenAuthenticator(xmlstream.ListenAuthenticator):
         if self.xmlstream.version >= (1, 0):
             features = domish.Element((xmlstream.NS_STREAMS, 'features'))
 
-            """
-            FIXME RegistrationInitializer has a special behavior, meaning it is
-            an exclusive feature (together with SASL) and must be took out from
-            features after authentication. Use of the exclusive attribute must
-            be changed to support more than one exclusive feature.
-            """
             required = False
             for initializer in self.xmlstream.initializers:
                 if required and (not hasattr(initializer, 'exclusive') or not initializer.exclusive):
@@ -232,7 +250,7 @@ class XMPPListenAuthenticator(xmlstream.ListenAuthenticator):
         required = False
         remove = []
         for init in self.xmlstream.initializers:
-            if hasattr(init, 'exclusive') and init.exclusive:
+            if hasattr(initializer, 'exclusive') and initializer.exclusive and hasattr(init, 'exclusive') and init.exclusive:
                 remove.append(init)
             if hasattr(init, 'required') and init.required:
                 required = True
@@ -597,6 +615,8 @@ class C2SComponent(component.Component):
 
         self.sfactory = XMPPServerFactory(authportal, self, self.network, self.servername)
         self.sfactory.logTraffic = self.config['debug']
+        if 'ssl_key' in self.config and 'ssl_cert' in self.config:
+            self.sfactory.loadPEM(self.config['ssl_cert'], self.config['ssl_key'])
 
         return strports.service('tcp:' + str(self.config['bind'][1]) +
             ':interface=' + str(self.config['bind'][0]), self.sfactory)
