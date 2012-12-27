@@ -282,7 +282,7 @@ class Client(object):
         #reactor.callLater(1, testRoster)
         #reactor.callLater(1, testRegisterRequest)
         #reactor.callLater(1, testRegister)
-        reactor.callLater(1, testValidate)
+        #reactor.callLater(1, testValidate)
         reactor.callLater(30, xs.sendFooter)
 
     def message(self, stanza, xs):

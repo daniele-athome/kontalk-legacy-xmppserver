@@ -40,6 +40,7 @@ class PresenceHandler(XMPPHandler):
         self.xmlstream.addObserver("/presence[not(@type)]", self.onPresenceAvailable, 100)
         self.xmlstream.addObserver("/presence[@type='unavailable']", self.onPresenceUnavailable, 100)
         self.xmlstream.addObserver("/presence[@type='subscribe']", self.onSubscribe, 100)
+        self.xmlstream.addObserver("/presence[@type='unsubscribe']", self.onUnsubscribe, 100)
 
     def onPresenceAvailable(self, stanza):
         """Handle availability presence stanzas."""
@@ -74,6 +75,20 @@ class PresenceHandler(XMPPHandler):
         jid_from = jid.JID(stanza['from'])
 
         self.parent.subscribe(jid_to, jid_from)
+
+    def onUnsubscribe(self, stanza):
+        """Handle unsubscription requests."""
+
+        if stanza.consumed:
+            return
+
+        log.debug("unsubscription request: %s" % (stanza.toXml(), ))
+
+        # extract jid the user wants to subscribe to
+        jid_to = jid.JID(stanza['to'])
+        jid_from = jid.JID(stanza['from'])
+
+        self.parent.unsubscribe(jid_to, jid_from)
 
 
 class IQHandler(XMPPHandler):
@@ -808,6 +823,13 @@ class Resolver(component.Component):
         roster.addChild(query)
         self.send(roster)
         """
+
+    def unsubscribe(self, to, subscriber):
+        """Unsubscribe a given user from events from another one."""
+        try:
+            self.subscriptions[to].remove(subscriber)
+        except:
+            pass
 
     def broadcastSubscribers(self, stanza):
         """Broadcast stanza to JID subscribers."""
