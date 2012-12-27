@@ -3,9 +3,9 @@
 -- http://www.phpmyadmin.net
 --
 -- Host: localhost
--- Generato il: Nov 06, 2012 alle 23:14
--- Versione del server: 5.5.24
--- Versione PHP: 5.4.4-7
+-- Generato il: Dic 27, 2012 alle 18:59
+-- Versione del server: 5.5.28
+-- Versione PHP: 5.4.4-10
 
 SET SQL_MODE="NO_AUTO_VALUE_ON_ZERO";
 SET time_zone = "+00:00";
@@ -60,6 +60,20 @@ CREATE TABLE `stanzas` (
   `timestamp` datetime NOT NULL COMMENT 'Stanza timestamp',
   PRIMARY KEY (`id`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8 COLLATE=utf8_bin COMMENT='Pending stanzas';
+
+-- --------------------------------------------------------
+
+--
+-- Struttura della tabella `validations`
+--
+
+CREATE TABLE `validations` (
+  `userid` char(48) NOT NULL COMMENT 'User ID',
+  `code` char(20) NOT NULL COMMENT 'Verification code',
+  `timestamp` datetime DEFAULT NULL COMMENT 'Validation code timestamp',
+  PRIMARY KEY (`userid`),
+  UNIQUE KEY `code` (`code`)
+) ENGINE=MyISAM DEFAULT CHARSET=ascii COMMENT='Verification codes';
 
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
 /*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;
