@@ -404,7 +404,7 @@ class LastActivityHandler(XMPPHandler):
                 else:
                     latest = None
                     for user in presence:
-                        if latest is None or max['timestam'] > user['timestamp']:
+                        if latest is None or latest['timestamp'] > user['timestamp']:
                             latest = user
                     # TODO timediff from latest
                     log.debug("max timestamp: %r" % (max, ))

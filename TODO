@@ -1,4 +1,5 @@
 == URGENT ==
+[ ] check for stanza loops (in particular with iq errors)
 [ ] encoding problems in router?!?!?
 
 == TODO ==
