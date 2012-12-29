@@ -109,12 +109,15 @@ class IQHandler(XMPPHandler):
         if items:
             stanza.consumed = True
             dlist = []
+            t1 = time.time()
             for item in items:
                 #log.debug("checking for roster: %s" % (item['jid'], ))
                 dlist.append(self.parent.cache.lookup(jid.JID(item['jid']), refresh=True))
+            log.debug("roster request added in %.2f seconds" % ((time.time() - t1), ))
 
             def _roster(data, stanza):
-                #log.debug("roster result: %r" % (data, ))
+                log.debug("roster result: %r" % (data, ))
+                log.debug("roster returned in %.2f seconds" % ((time.time() - t1), ))
                 response = xmlstream2.toResponse(stanza, 'result')
                 roster = response.addElement((xmlstream2.NS_IQ_ROSTER, 'query'))
                 unique = set([e.userhostJID() for entry in data for e in entry])
@@ -537,73 +540,74 @@ class JIDCache(XMPPHandler):
 
             # cumulative response
             clientDeferred = defer.Deferred()
-            def _cb(result):
-                #log.debug("result = %r" % (result, ))
-                out = set()
-                # TODO this is always true since errbacks are not really used
-                if not isinstance(result, failure.Failure):
-                    # FIXME this is really a messy algorithm
-                    for hit in result:
-                        if hit:
-                            for x in hit:
-                                added = False
-                                for cur in out:
-                                    if cur.user == x.user and cur.resource == x.resource and cur.host != x.host:
-                                        log.debug("duplicate found: %r/%r" % (cur, x))
-                                        """
-                                        Take the most recent presence:
-                                        1. available presence is always the most recent (without type)
-                                        2. difference between <delay/> extensions
-                                        2. unavailable presences without <delay/> are considered
-                                           only if 1 and 2 are not a match
-                                        """
-                                        def _presencecmp(p1, p2):
-                                            """
-                                            strcmp for presence stanzas :)
-                                            """
 
-                                            # available presence is always the most recent (without type)
-                                            if not p1.getAttribute('type'):
-                                                return 1
-                                            elif not p2.getAttribute('type'):
-                                                return -1
-
-                                            # difference between <delay/> extensions
-                                            if p1.delay and p2.delay:
-                                                # both delay present, compare them
-                                                p1_time = datetime.strptime(p1.delay['stamp'], xmlstream2.XMPP_STAMP_FORMAT)
-                                                p2_time = datetime.strptime(p2.delay['stamp'], xmlstream2.XMPP_STAMP_FORMAT)
-                                                if p1_time > p2_time:
-                                                    return 1
-                                                elif p1_time < p2_time:
-                                                    return -1
-                                                return 0
-
-                                            # only p1 has <delay/>
-                                            if p1.delay:
-                                                return 1
-                                            # only p2 has <delay/>
-                                            elif p2.delay:
-                                                return -1
-
-                                            # no <delay/> found on both stanzas
-                                            # no way to compare stanzas
-                                            return 0
-
-                                        # already found, discard obsolete value
-                                        if _presencecmp(self.presence_cache[cur], self.presence_cache[x]) < 0:
-                                            #log.debug("discarding %s and adding %s" % (cur.full(), x.full()))
-                                            out.discard(cur)
-                                            out.add(x)
-                                        added = True
-
-                                if not added:
-                                    out.add(x)
-
-                clientDeferred.callback(out)
-
-            d.addBoth(_cb)
+            d.addBoth(self._cb, clientDeferred)
             return clientDeferred
+
+    def _cb(self, result, clientDeferred):
+        #log.debug("result = %r" % (result, ))
+        out = set()
+        # TODO this is always true since errbacks are not really used
+        if not isinstance(result, failure.Failure):
+            # FIXME this is really a messy algorithm
+            for hit in result:
+                if hit:
+                    for x in hit:
+                        added = False
+                        for cur in out:
+                            if cur.user == x.user and cur.resource == x.resource and cur.host != x.host:
+                                log.debug("duplicate found: %r/%r" % (cur, x))
+                                """
+                                Take the most recent presence:
+                                1. available presence is always the most recent (without type)
+                                2. difference between <delay/> extensions
+                                2. unavailable presences without <delay/> are considered
+                                   only if 1 and 2 are not a match
+                                """
+                                def _presencecmp(p1, p2):
+                                    """
+                                    strcmp for presence stanzas :)
+                                    """
+
+                                    # available presence is always the most recent (without type)
+                                    if not p1.getAttribute('type'):
+                                        return 1
+                                    elif not p2.getAttribute('type'):
+                                        return -1
+
+                                    # difference between <delay/> extensions
+                                    if p1.delay and p2.delay:
+                                        # both delay present, compare them
+                                        p1_time = datetime.strptime(p1.delay['stamp'], xmlstream2.XMPP_STAMP_FORMAT)
+                                        p2_time = datetime.strptime(p2.delay['stamp'], xmlstream2.XMPP_STAMP_FORMAT)
+                                        if p1_time > p2_time:
+                                            return 1
+                                        elif p1_time < p2_time:
+                                            return -1
+                                        return 0
+
+                                    # only p1 has <delay/>
+                                    if p1.delay:
+                                        return 1
+                                    # only p2 has <delay/>
+                                    elif p2.delay:
+                                        return -1
+
+                                    # no <delay/> found on both stanzas
+                                    # no way to compare stanzas
+                                    return 0
+
+                                # already found, discard obsolete value
+                                if _presencecmp(self.presence_cache[cur], self.presence_cache[x]) < 0:
+                                    #log.debug("discarding %s and adding %s" % (cur.full(), x.full()))
+                                    out.discard(cur)
+                                    out.add(x)
+                                added = True
+
+                        if not added:
+                            out.add(x)
+
+        clientDeferred.callback(out)
 
 
 class Resolver(component.Component):
