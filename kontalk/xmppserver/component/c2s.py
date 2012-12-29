@@ -323,7 +323,7 @@ class PresenceProbeHandler(XMPPHandler):
         stanza.consumed = True
 
         def _db(presence, stanza):
-            log.debug("presence: %r" % (presence, ))
+            #log.debug("presence: %r" % (presence, ))
             if type(presence) == list:
                 chain = domish.Element((xmlstream2.NS_XMPP_STANZA_GROUP, 'group'))
                 chain['id'] = stanza['id']
@@ -407,7 +407,7 @@ class LastActivityHandler(XMPPHandler):
                         if latest is None or latest['timestamp'] > user['timestamp']:
                             latest = user
                     # TODO timediff from latest
-                    log.debug("max timestamp: %r" % (max, ))
+                    #log.debug("max timestamp: %r" % (max, ))
                     query['seconds'] = '123456'
 
                 self.send(response)

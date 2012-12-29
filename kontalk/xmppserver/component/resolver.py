@@ -110,11 +110,11 @@ class IQHandler(XMPPHandler):
             stanza.consumed = True
             dlist = []
             for item in items:
-                log.debug("checking for roster: %s" % (item['jid'], ))
+                #log.debug("checking for roster: %s" % (item['jid'], ))
                 dlist.append(self.parent.cache.lookup(jid.JID(item['jid']), refresh=True))
 
             def _roster(data, stanza):
-                log.debug("roster result: %r" % (data, ))
+                #log.debug("roster result: %r" % (data, ))
                 response = xmlstream2.toResponse(stanza, 'result')
                 roster = response.addElement((xmlstream2.NS_IQ_ROSTER, 'query'))
                 unique = set([e.userhostJID() for entry in data for e in entry])
@@ -431,7 +431,7 @@ class JIDCache(XMPPHandler):
                     callback.callback(buf)
 
         def _abort(stanzaId, callback, buf):
-            log.debug("presence broadcast request timed out!")
+            #log.debug("presence broadcast request timed out!")
             self.xmlstream.removeObserver("/presence/group[@id='%s']" % (stanzaId, ), _presence)
             if not callback.called:
                 #callback.errback(failure.Failure(internet_error.TimeoutError()))
@@ -509,21 +509,21 @@ class JIDCache(XMPPHandler):
         @rtype: L{Deferred}
         """
 
-        log.debug("[%s] looking up" % (_jid.full(), ))
+        #log.debug("[%s] looking up" % (_jid.full(), ))
 
         # force refresh is cache is too old
         now = time.time()
         diff = now - self._last_lookup
-        log.debug("[%s] now=%d, last=%d, diff=%.2f" % (_jid.full(), now, self._last_lookup, diff))
+        #log.debug("[%s] now=%d, last=%d, diff=%.2f" % (_jid.full(), now, self._last_lookup, diff))
         if diff > self.MAX_CACHE_REFRESH_DELAY:
             refresh = True
 
         if not refresh:
             hits = self.cache_lookup(_jid)
-            log.debug("[%s] local cache hits: %r (%r)" % (_jid.full(), hits, self.jid_cache))
+            #log.debug("[%s] local cache hits: %r (%r)" % (_jid.full(), hits, self.jid_cache))
 
             if hits:
-                log.debug("[%s] found: %r" % (_jid.full(), hits))
+                #log.debug("[%s] found: %r" % (_jid.full(), hits))
                 return defer.succeed(hits)
             else:
                 refresh = True
@@ -538,7 +538,7 @@ class JIDCache(XMPPHandler):
             # cumulative response
             clientDeferred = defer.Deferred()
             def _cb(result):
-                log.debug("result = %r" % (result, ))
+                #log.debug("result = %r" % (result, ))
                 out = set()
                 # TODO this is always true since errbacks are not really used
                 if not isinstance(result, failure.Failure):
@@ -592,7 +592,7 @@ class JIDCache(XMPPHandler):
 
                                         # already found, discard obsolete value
                                         if _presencecmp(self.presence_cache[cur], self.presence_cache[x]) < 0:
-                                            log.debug("discarding %s and adding %s" % (cur.full(), x.full()))
+                                            #log.debug("discarding %s and adding %s" % (cur.full(), x.full()))
                                             out.discard(cur)
                                             out.add(x)
                                         added = True
