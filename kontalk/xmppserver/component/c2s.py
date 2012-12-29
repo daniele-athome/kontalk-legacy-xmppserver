@@ -319,7 +319,7 @@ class PresenceProbeHandler(XMPPHandler):
 
     def probe(self, stanza):
         """Handle presence probes from router."""
-        log.debug("local presence probe: %s" % (stanza.toXml(), ))
+        #log.debug("local presence probe: %s" % (stanza.toXml(), ))
         stanza.consumed = True
 
         def _db(presence, stanza):
@@ -771,3 +771,34 @@ class C2SComponent(component.Component):
             _jid = jid.JID(_jid)
             _jid.host = self.servername
             return _jid
+
+
+if __name__ == '__main__':
+    # a small performance test :)
+    from twisted.internet import reactor
+
+    storage.init({
+        'host': 'localhost',
+        'port': 3306,
+        'user': 'root',
+        'password': 'ciao',
+        'dbname': 'xmppmessenger',
+        'dbmodule': 'oursql'
+    })
+    presencedb = storage.MySQLPresenceStorage()
+    num = 400
+    global count
+    count = 0
+
+    def _done(data):
+        global count
+        count += 1
+        if count >= num:
+            reactor.stop()
+
+    for n in range(num):
+        userid = util.rand_str(util.USERID_LENGTH, util.CHARSBOX_HEX_LOWERCASE);
+        d = presencedb.get(jid.JID(tuple=(userid, 'kontalk.net', None)))
+        d.addCallback(_done)
+
+    reactor.run()

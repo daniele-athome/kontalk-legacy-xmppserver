@@ -208,11 +208,12 @@ class MySQLPresenceStorage(PresenceStorage):
         if user_jid.resource:
             interaction = _fetchone
             query = 'SELECT `timestamp`, `status`, `show` FROM presence WHERE userid = ?'
+            args = (userid, )
         else:
             interaction = _fetchall
-            query = 'SELECT `userid`, `timestamp`, `status`, `show` FROM presence WHERE SUBSTR(userid, 1, 40) = ? ORDER BY `timestamp` DESC'
+            query = 'SELECT `userid`, `timestamp`, `status`, `show` FROM presence WHERE userid LIKE ? ORDER BY `timestamp` DESC'
+            args = (userid + '%', )
 
-        args = (userid, )
         return dbpool.runInteraction(interaction, query, args)
 
     def presence(self, stanza):
