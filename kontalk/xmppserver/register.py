@@ -52,12 +52,11 @@ class XMPPRegistrationProvider:
         pass
 
 
-class AndroidEmulatorSMSRegistrationProvider(XMPPRegistrationProvider):
+class SMSRegistrationProvider(XMPPRegistrationProvider):
     """
-    This provider uses adb to send sms to the Android emulator.
+    Abstract provider for generic SMS-based registration.
     """
 
-    name = 'android_emu_sms'
     type = 'sms'
 
     def __init__(self, component, config):
@@ -66,7 +65,7 @@ class AndroidEmulatorSMSRegistrationProvider(XMPPRegistrationProvider):
     def request(self, manager, stanza):
         iq = xmlstream.toResponse(stanza, 'result')
         query = iq.addElement((xmlstream2.NS_IQ_REGISTER, 'query'))
-        query.addElement((None, 'instructions'), content='Please supply a valid phone number. A SMS will be sent to the Android emulator.')
+        query.addElement((None, 'instructions'), content=self.request_instructions)
 
         form = query.addElement(('jabber:x:data', 'x'))
         form['type'] = 'form'
@@ -121,11 +120,8 @@ class AndroidEmulatorSMSRegistrationProvider(XMPPRegistrationProvider):
                 userid = util.sha1(phone) + util.rand_str(8, util.CHARSBOX_AZN_UPPERCASE)
                 d = self.component.validationdb.register(userid)
 
-                def _continue(code, stanza):
-                    def _send(code):
-                        import os
-                        os.system('adb emu sms send %s %s' % (self.config['from'], code))
-                    reactor.callLater(2, _send, code)
+                def _continue(code, stanza, phone):
+                    self.send_sms(phone, code)
 
                     # send response with sms sender number
                     iq = xmlstream.toResponse(stanza, 'result')
@@ -155,7 +151,7 @@ class AndroidEmulatorSMSRegistrationProvider(XMPPRegistrationProvider):
                     iq.addChild(e.getElement())
                     manager.send(iq)
 
-                d.addCallback(_continue, stanza)
+                d.addCallback(_continue, stanza, phone)
                 d.addErrback(_error, stanza)
 
             # code validation
@@ -198,8 +194,54 @@ class AndroidEmulatorSMSRegistrationProvider(XMPPRegistrationProvider):
                 d.addCallback(_continue)
                 d.addErrback(_error)
 
+    def send_sms(self, number, code):
+        """Implement this with the actual SMS sending logic."""
+        raise NotImplementedError()
+
+
+class AndroidEmulatorSMSRegistrationProvider(SMSRegistrationProvider):
+    """
+    This provider uses adb to send sms to the Android emulator.
+    """
+
+    name = 'android_emu_sms'
+    request_instructions = 'Please supply a valid phone number. A SMS will be sent to the Android emulator.'
+
+
+    def send_sms(self, number, code):
+        def _send(code):
+            import os
+            os.system('adb emu sms send %s %s' % (self.config['from'], code))
+        # simulate some delay :)
+        reactor.callLater(2, _send, code)
+
+
+class NexmoSMSRegistrationProvider(SMSRegistrationProvider):
+    """
+    SMS registration provider using Nexmo API.
+    """
+
+    name = 'nexmo'
+    request_instructions = 'Please supply a valid phone number. A SMS will be sent to you with a validation code.'
+
+    def send_sms(self, number, code):
+        from nexmomessage import NexmoMessage
+        msg = {
+            'reqtype' : 'json',
+            'username' : self.config['nx.username'],
+            'password': self.config['nx.password'],
+            'from': self.config['from'],
+            'to': number,
+        }
+        sms = NexmoMessage(msg)
+        # FIXME send just the code for now
+        sms.set_text_info(code)
+        js = sms.send_request()
+        log.debug("sms sent [response=%s]" % js)
+
 
 
 providers = {
-    'android_emu_sms': AndroidEmulatorSMSRegistrationProvider
+    'android_emu_sms': AndroidEmulatorSMSRegistrationProvider,
+    'nexmo': NexmoSMSRegistrationProvider,
 }
