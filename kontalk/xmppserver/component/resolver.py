@@ -105,14 +105,22 @@ class IQHandler(XMPPHandler):
         self.xmlstream.addObserver("/iq/query", self.parent.error, 80)
 
     def roster(self, stanza):
-        items = stanza.query.elements(uri=xmlstream2.NS_IQ_ROSTER, name='item')
-        if items:
+        _items = stanza.query.elements(uri=xmlstream2.NS_IQ_ROSTER, name='item')
+        if _items:
+            items = []
+            for item in _items:
+                items.append(jid.internJID(item['jid']))
+
             stanza.consumed = True
             dlist = []
+            if len(items) > 200:
+                wait_factor = len(items) / 200
+            else:
+                wait_factor = 1
             t1 = time.time()
             for item in items:
-                #log.debug("checking for roster: %s" % (item['jid'], ))
-                dlist.append(self.parent.cache.lookup(jid.internJID(item['jid']), refresh=True))
+                #log.debug("checking for roster: %s" % (item, ))
+                dlist.append(self.parent.cache.lookup(item, refresh=True, wait_factor=wait_factor))
             log.debug("roster request added in %.2f seconds" % ((time.time() - t1), ))
 
             def _roster(data, stanza):
@@ -424,7 +432,7 @@ class JIDCache(XMPPHandler):
 
         return idList
 
-    def find(self, _jid):
+    def find(self, _jid, wait_factor=1.0):
         """
         Send a presence probe to the network and wait for responses.
         @return a L{Deferred} which will be fired with the JID of the probed
@@ -463,7 +471,7 @@ class JIDCache(XMPPHandler):
             buf = []
 
             # timeout of request
-            timeout = reactor.callLater(self.MAX_LOOKUP_TIMEOUT, _abort, stanzaId=stanzaId, callback=d, buf=buf)
+            timeout = reactor.callLater(self.MAX_LOOKUP_TIMEOUT*wait_factor*len(idList), _abort, stanzaId=stanzaId, callback=d, buf=buf)
 
             self.xmlstream.addObserver("/presence/group[@id='%s']" % (stanzaId, ), _presence, callback=d, timeout=timeout, buf=buf)
 
@@ -516,7 +524,7 @@ class JIDCache(XMPPHandler):
 
         return None
 
-    def lookup(self, _jid, refresh=False):
+    def lookup(self, _jid, refresh=False, wait_factor=1.0):
         """
         Lookup a L{JID} in the network.
         @param refresh: if true lookup is started over the whole network
@@ -549,7 +557,7 @@ class JIDCache(XMPPHandler):
         # evaluate refresh again
         if refresh:
             # refreshing, lookup the network
-            d = self.find(_jid)
+            d = self.find(_jid, wait_factor)
 
             self._last_lookup = now
 
