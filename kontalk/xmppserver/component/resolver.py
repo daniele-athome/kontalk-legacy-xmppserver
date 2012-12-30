@@ -116,7 +116,7 @@ class IQHandler(XMPPHandler):
             log.debug("roster request added in %.2f seconds" % ((time.time() - t1), ))
 
             def _roster(data, stanza):
-                log.debug("roster result: %r" % (data, ))
+                #log.debug("roster result: %r" % (data, ))
                 log.debug("roster returned in %.2f seconds" % ((time.time() - t1), ))
                 response = xmlstream2.toResponse(stanza, 'result')
                 roster = response.addElement((xmlstream2.NS_IQ_ROSTER, 'query'))
@@ -395,6 +395,7 @@ class JIDCache(XMPPHandler):
         @return: a list of stanza IDs sent to the network that can be watched to
         for responses
         """
+        """
         presence = domish.Element((None, 'presence'))
         presence['type'] = 'probe'
         presence['from'] = self.parent.network
@@ -409,6 +410,17 @@ class JIDCache(XMPPHandler):
             #presence['id'] = util.rand_str(8, util.CHARSBOX_AZN_LOWERCASE)
             self.send(presence)
             idList.append(presence['id'])
+        """
+        # we need to be fast here
+        idList = []
+        presence = "<presence type='probe' from='%s' to='%%s' id='%%s'/>" % (self.parent.network, )
+        for server in self.parent.keyring.hostlist():
+            packetId = util.rand_str(8, util.CHARSBOX_AZN_LOWERCASE)
+            dest = to.user + '@' + server
+            if to.resource:
+                dest += '/' + to.resource
+            self.send(presence % (dest, packetId))
+            idList.append(packetId)
 
         return idList
 
@@ -418,9 +430,7 @@ class JIDCache(XMPPHandler):
         @return a L{Deferred} which will be fired with the JID of the probed
         entity.
         """
-        #t1 = time.time()
         idList = self.network_presence_probe(_jid)
-        #log.debug("probe broadcast in %.5f seconds" % (time.time() - t1))
         def _presence(stanza, callback, timeout, buf):
             # check if stanza is for the requested user
             sender = jid.JID(stanza['from'])
@@ -546,10 +556,10 @@ class JIDCache(XMPPHandler):
             # cumulative response
             clientDeferred = defer.Deferred()
 
-            d.addBoth(self._cb, clientDeferred)
+            d.addBoth(self._lookup_cb, clientDeferred)
             return clientDeferred
 
-    def _cb(self, result, clientDeferred):
+    def _lookup_cb(self, result, clientDeferred):
         #log.debug("result = %r" % (result, ))
         out = set()
         # TODO this is always true since errbacks are not really used
@@ -715,6 +725,10 @@ class Resolver(component.Component):
         Resolves stanza recipient and send the stanza to the router.
         @todo document parameters
         """
+
+        # send raw xml if you really know what you are doing
+        if not domish.IElement.providedBy(stanza):
+            return component.Component.send(self, stanza)
 
         util.resetNamespace(stanza, component.NS_COMPONENT_ACCEPT)
 
