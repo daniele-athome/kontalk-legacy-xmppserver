@@ -112,7 +112,7 @@ class IQHandler(XMPPHandler):
             t1 = time.time()
             for item in items:
                 #log.debug("checking for roster: %s" % (item['jid'], ))
-                dlist.append(self.parent.cache.lookup(jid.JID(item['jid']), refresh=True))
+                dlist.append(self.parent.cache.lookup(jid.internJID(item['jid']), refresh=True))
             log.debug("roster request added in %.2f seconds" % ((time.time() - t1), ))
 
             def _roster(data, stanza):
@@ -399,11 +399,14 @@ class JIDCache(XMPPHandler):
         presence['type'] = 'probe'
         presence['from'] = self.parent.network
         idList = []
-        to = jid.JID(tuple=(to.user, to.host, to.resource))
+        #to = jid.JID(tuple=(to.user, to.host, to.resource))
         for server in self.parent.keyring.hostlist():
-            to.host = server
-            presence['to'] = to.full()
-            presence['id'] = util.rand_str(8, util.CHARSBOX_AZN_LOWERCASE)
+            #to.host = server
+            presence['to'] = to.user + '@' + server
+            if to.resource:
+                presence['to'] += '/' + to.resource
+            presence.addUniqueId()
+            #presence['id'] = util.rand_str(8, util.CHARSBOX_AZN_LOWERCASE)
             self.send(presence)
             idList.append(presence['id'])
 
@@ -415,7 +418,9 @@ class JIDCache(XMPPHandler):
         @return a L{Deferred} which will be fired with the JID of the probed
         entity.
         """
+        #t1 = time.time()
         idList = self.network_presence_probe(_jid)
+        #log.debug("probe broadcast in %.5f seconds" % (time.time() - t1))
         def _presence(stanza, callback, timeout, buf):
             # check if stanza is for the requested user
             sender = jid.JID(stanza['from'])

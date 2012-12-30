@@ -187,12 +187,48 @@ class Client(object):
         info.send(self.network)
 
         def testProbe():
+            global count, num
+            num = 400
+            count = 0
+            def _presence(stanza):
+                global count, num
+                count += 1
+                if count >= 400:
+                    print 'received all presence'
+            xs.addObserver('/presence', _presence)
+
+            for n in range(num):
+                userid = util.rand_str(util.USERID_LENGTH, util.CHARSBOX_HEX_LOWERCASE)
+                presence = xmppim.Presence(jid.JID(tuple=(userid, self.network, None)), 'probe')
+                xs.send(presence)
+
             if self.peer is not None:
                 userid, resource = util.split_userid(self.peer)
                 presence = xmppim.Presence(jid.JID(tuple=(userid, self.network, resource)), 'probe')
                 xs.send(presence)
 
         def testRoster():
+            global count, num
+            num = 400
+            count = 0
+            def _presence(stanza):
+                global count, num
+                count += 1
+                if count >= 400:
+                    print 'received all presence'
+            xs.addObserver('/presence', _presence)
+
+            _jid = jid.JID(tuple=(None, self.network, None))
+            r = domish.Element((None, 'iq'))
+            r.addUniqueId()
+            r['type'] = 'get'
+            q = r.addElement((xmppim.NS_ROSTER, 'query'))
+            for n in range(num):
+                _jid.user = util.rand_str(util.USERID_LENGTH, util.CHARSBOX_HEX_LOWERCASE)
+                item = q.addElement((None, 'item'))
+                item['jid'] = _jid.userhost()
+            xs.send(r)
+
             if self.peer is not None:
                 _jid = util.userid_to_jid(self.peer, self.network)
                 r = domish.Element((None, 'iq'))
@@ -279,7 +315,7 @@ class Client(object):
         #reactor.callLater(1, testProbe)
         #reactor.callLater(1, testSubscribe)
         #reactor.callLater(1, testMessage)
-        #reactor.callLater(1, testRoster)
+        reactor.callLater(1, testRoster)
         #reactor.callLater(1, testRegisterRequest)
         #reactor.callLater(1, testRegister)
         #reactor.callLater(1, testValidate)
