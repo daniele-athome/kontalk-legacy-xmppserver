@@ -49,7 +49,7 @@ def extract_receipt(stanza, rtype):
     for receipt in stanza.elements(uri=NS_XMPP_SERVER_RECEIPTS, name=rtype):
         return receipt
 
-def has_element(stanza, uri=None, name=None):
+def has_element(stanza, uri, name):
     for elem in stanza.elements(uri, name):
         return elem
     return None
