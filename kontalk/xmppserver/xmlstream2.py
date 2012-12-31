@@ -46,7 +46,7 @@ def extract_receipt(stanza, rtype):
     """
     Extract the requested type of server receipt.
     """
-    for receipt in stanza.elements(rtype, NS_XMPP_SERVER_RECEIPTS):
+    for receipt in stanza.elements(uri=NS_XMPP_SERVER_RECEIPTS, name=rtype):
         return receipt
 
 def has_element(stanza, uri=None, name=None):
