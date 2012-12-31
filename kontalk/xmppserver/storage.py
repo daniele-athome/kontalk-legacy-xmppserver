@@ -26,7 +26,7 @@ from twisted.words.protocols.jabber import jid
 from wokkel import generic
 
 import base64
-import util, xmlstream2
+import util, xmlstream2, log
 
 dbpool = None
 
@@ -163,6 +163,8 @@ class MySQLStanzaStorage(StanzaStorage):
 
     def delete(self, stanzaId):
         global dbpool
+        import traceback
+        log.debug("deleting stanza %s -- traceback:\n%s" % (stanzaId, ''.join(traceback.format_stack())))
         return dbpool.runOperation('DELETE FROM stanzas WHERE id = ?', (stanzaId, ))
 
 class MySQLNetworkStorage(NetworkStorage):
