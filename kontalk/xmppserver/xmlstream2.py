@@ -34,17 +34,20 @@ def strip_server_receipt(stanza):
     """
     Strips server receipt elements from the given stanza.
     """
-    for receipt in stanza.elements(NS_XMPP_SERVER_RECEIPTS):
-        stanza.children.remove(receipt)
+    if stanza.request and stanza.request.uri == NS_XMPP_SERVER_RECEIPTS:
+        stanza.children.remove(stanza.request)
+    if stanza.sent and stanza.sent.uri == NS_XMPP_SERVER_RECEIPTS:
+        stanza.children.remove(stanza.sent)
+    if stanza.received and stanza.received.uri == NS_XMPP_SERVER_RECEIPTS:
+        stanza.children.remove(stanza.received)
 
 
-def extract_receipt(stanza, rtype=None):
+def extract_receipt(stanza, rtype):
     """
-    Extract the requested type of server receipt, or the first found if None.
+    Extract the requested type of server receipt.
     """
-    for receipt in stanza.elements(NS_XMPP_SERVER_RECEIPTS):
-        if not rtype or (rtype and (receipt.name in rtype if type(rtype) in (list, tuple) else receipt.name == rtype)):
-            return receipt
+    for receipt in stanza.elements(rtype, NS_XMPP_SERVER_RECEIPTS):
+        return receipt
 
 def has_element(stanza, uri=None, name=None):
     for elem in stanza.elements(uri, name):

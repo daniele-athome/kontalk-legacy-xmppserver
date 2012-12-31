@@ -457,7 +457,8 @@ class MessageHandler(XMPPHandler):
                 # process only our JIDs
                 if to.host == self.parent.servername:
                     if to.user is not None:
-                        receipt = xmlstream2.extract_receipt(stanza, ('request', 'received'))
+                        receipt = xmlstream2.extract_receipt(stanza, ('request')) or \
+                            xmlstream2.extract_receipt(stanza, ('received'))
                         try:
                             """
                             We are deliberately ignoring messages with sent
@@ -753,7 +754,8 @@ class C2SComponent(component.Component):
                     storage now; we must be sure client has received it.
                     Otherwise just delete the message.
                     """
-                    if not xmlstream2.extract_receipt(stanza, ('request', 'received')):
+                    if not xmlstream2.extract_receipt(stanza, 'request') and \
+                            not xmlstream2.extract_receipt(stanza, 'received'):
                         self.stanzadb.delete(msgId)
                 except:
                     import traceback
