@@ -33,7 +33,7 @@ dbpool = None
 def init(config):
     global dbpool
     dbpool = adbapi.ConnectionPool(config['dbmodule'], host=config['host'], port=config['port'],
-        user=config['user'], passwd=config['password'], db=config['dbname'])
+        user=config['user'], passwd=config['password'], db=config['dbname'], autoreconnect=True)
 
 
 """ interfaces """
