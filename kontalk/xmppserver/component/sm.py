@@ -21,6 +21,7 @@
 
 import time
 
+from twisted.internet import reactor
 from twisted.words.protocols.jabber import error, jid, component
 from twisted.words.protocols.jabber.xmlstream import XMPPHandler
 from twisted.words.xish import domish
@@ -74,14 +75,63 @@ class PingHandler(XMPPHandler):
     http://xmpp.org/extensions/xep-0199.html
     """
 
+    PING_DELAY = 30
+    PING_TIMEOUT = 30
+
+    def __init__(self):
+        XMPPHandler.__init__(self)
+        self.ping_timeout = None
+        self.pinger = None
+
     def connectionInitialized(self):
         self.xmlstream.addObserver("/iq[@type='get']/ping[@xmlns='%s']" % (xmlstream2.NS_XMPP_PING, ), self.ping, 100)
+        self.xmlstream.addObserver("/iq[@type='result']/ping[@xmlns='%s']" % (xmlstream2.NS_XMPP_PING, ), self.pong, 100)
+        # first ping request
+        self.pinger = reactor.callLater(self.PING_DELAY, self._ping)
+
+    def connectionLost(self, reason):
+        XMPPHandler.connectionLost(self, reason)
+        # stop pinger
+        if self.pinger:
+            self.pinger.cancel()
+        # stop ping timeout
+        if self.ping_timeout:
+            self.ping_timeout.cancel()
+
+    def _ping(self):
+        """Sends a ping request to client."""
+        ping = domish.Element((None, 'iq'))
+        ping['from'] = self.parent.network
+        ping['type'] = 'get'
+        ping['id'] = util.rand_str(8, util.CHARSBOX_AZN_LOWERCASE)
+        ping.addElement((xmlstream2.NS_XMPP_PING, 'ping'))
+        self.send(ping)
+        # setup ping timeout
+        self.pinger = None
+        self.ping_timeout = reactor.callLater(self.PING_TIMEOUT, self._timeout)
+        # observe pong
+        self.xmlstream.addObserver("/iq[@type='result'][@id='%s']" % (ping['id'], ), self.pong, 100)
+
+    def _timeout(self):
+        self.ping_timeout = None
+        # send stream error
+        e = error.StreamError('connection-timeout')
+        self.xmlstream.sendStreamError(e)
 
     def ping(self, stanza):
         if not stanza.hasAttribute('to') or stanza['to'] == self.parent.network:
             self.parent.bounce(stanza)
         else:
             self.parent.forward(stanza)
+
+    def pong(self, stanza):
+        """Client replied to ping: abort timeout."""
+        self.ping_timeout.cancel()
+        self.ping_timeout = None
+        # unobserve pong
+        self.xmlstream.removeObserver("/iq[@type='result'][@id='%s']" % (stanza['id'], ), self.pong)
+        # restart pinger
+        self.pinger = reactor.callLater(self.PING_DELAY, self._ping)
 
     def features(self):
         return (xmlstream2.NS_XMPP_PING, )
@@ -343,10 +393,11 @@ class C2SManager(xmlstream2.StreamManager):
 
         # translate sender to network JID
         sender = stanza.getAttribute('from')
-        if sender:
+        if sender and sender != self.network:
             sender = jid.JID(stanza['from'])
             sender.host = self.network
             stanza['from'] = sender.full()
+        # TODO should we force self.network if no sender?
 
         # remove reserved elements
         if stanza.name == 'message' and stanza.storage and stanza.storage.uri == xmlstream2.NS_XMPP_STORAGE:

@@ -315,11 +315,11 @@ class Client(object):
         #reactor.callLater(1, testProbe)
         #reactor.callLater(1, testSubscribe)
         #reactor.callLater(1, testMessage)
-        reactor.callLater(1, testRoster)
+        #reactor.callLater(1, testRoster)
         #reactor.callLater(1, testRegisterRequest)
         #reactor.callLater(1, testRegister)
         #reactor.callLater(1, testValidate)
-        reactor.callLater(30, xs.sendFooter)
+        #reactor.callLater(30, xs.sendFooter)
 
     def message(self, stanza, xs):
         print "message from %s" % (stanza['from'], )
@@ -334,6 +334,9 @@ class Client(object):
 
     def stanza(self, stanza, xs):
         print 'STANZA: %r' % (stanza.toXml().encode('utf-8'), )
+        if stanza.name == 'iq' and stanza['type'] == 'get' and stanza.ping:
+            r = xmlstream.toResponse(stanza, 'result')
+            xs.send(r)
 
     def init_failed(self, failure):
         print "Initialization failed."
