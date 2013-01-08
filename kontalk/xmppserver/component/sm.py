@@ -47,7 +47,10 @@ class PresenceHandler(XMPPHandler):
             self.parent.forward(stanza, True)
 
     def features(self):
-        return tuple()
+        pass
+
+    def items(self):
+        pass
 
     def send_ack(self, stanza, status, stamp=None):
         request = xmlstream2.extract_receipt(stanza, 'request')
@@ -84,8 +87,8 @@ class PingHandler(XMPPHandler):
         self.pinger = None
 
     def connectionInitialized(self):
-        self.xmlstream.addObserver("/iq[@type='get']/ping[@xmlns='%s']" % (xmlstream2.NS_XMPP_PING, ), self.ping, 100)
-        self.xmlstream.addObserver("/iq[@type='result']/ping[@xmlns='%s']" % (xmlstream2.NS_XMPP_PING, ), self.pong, 100)
+        self.xmlstream.addObserver("/iq[@type='get'][@to='%s']/ping[@xmlns='%s']" % (self.parent.network, xmlstream2.NS_XMPP_PING, ), self.ping, 100)
+        self.xmlstream.addObserver("/iq[@type='result'][@to='%s']/ping[@xmlns='%s']" % (self.parent.network, xmlstream2.NS_XMPP_PING, ), self.pong, 100)
         # first ping request
         self.pinger = reactor.callLater(self.PING_DELAY, self._ping)
 
@@ -135,6 +138,78 @@ class PingHandler(XMPPHandler):
 
     def features(self):
         return (xmlstream2.NS_XMPP_PING, )
+
+    def items(self):
+        pass
+
+
+class ServerListCommand():
+    def __init__(self, handler):
+        self.handler = handler
+
+    def commands(self):
+        return ({
+            'jid': self.handler.parent.network,
+            'node': 'serverlist',
+            'name': 'Retrieve server list',
+        }, )
+
+    def execute(self, stanza):
+        # TODO actually send implement the command :)
+        stanza.consumed = True
+        res = xmlstream2.toResponse(stanza, 'result')
+        cmd = res.addElement((xmlstream2.NS_PROTO_COMMANDS, 'command'))
+        cmd['node'] = stanza.command['node']
+        cmd['status'] = 'completed'
+        self.handler.send(res)
+
+
+class CommandsHandler(XMPPHandler):
+    """
+    XEP-0050: Ad-Hoc Commands
+    http://xmpp.org/extensions/xep-0050.html
+    """
+    
+    commandHandlers = (
+        ServerListCommand,
+    )
+
+    def __init__(self):
+        XMPPHandler.__init__(self)
+        # command list for quick access
+        self.commands = []
+        # command handlers for execution
+        self.cmd_handlers = {}
+
+    def connectionInitialized(self):
+        self.xmlstream.addObserver("/iq[@type='set'][@to='%s']/command[@xmlns='%s']" % (self.parent.network, xmlstream2.NS_PROTO_COMMANDS), self.command, 100)
+
+        for h in self.commandHandlers:
+            cmd = h(self)
+            cmdlist = cmd.commands()
+            self.commands.extend(cmdlist)
+            for c in cmdlist:
+                self.cmd_handlers[c['node']] = cmd
+
+    def command(self, stanza):
+        node = stanza.command.getAttribute('node')
+        action = stanza.command.getAttribute('action')
+        log.debug("command received: %s/%s" % (node, action))
+        if action and node and node in self.cmd_handlers:
+            try:
+                func = getattr(self.cmd_handlers[node], action)
+                log.debug("found command handler %s" % (func, ))
+                func(stanza)
+            except:
+                self.parent.error(stanza)
+        else:
+            self.parent.error(stanza)
+
+    def features(self):
+        return (xmlstream2.NS_PROTO_COMMANDS, )
+
+    def items(self):
+        return ({'node': xmlstream2.NS_PROTO_COMMANDS, 'items': self.commands }, )
 
 
 class IQHandler(XMPPHandler):
@@ -197,6 +272,8 @@ class IQHandler(XMPPHandler):
 
     def features(self):
         ft = [
+            xmlstream2.NS_DISCO_INFO,
+            xmlstream2.NS_DISCO_ITEMS,
             xmlstream2.NS_IQ_VERSION,
             xmlstream2.NS_IQ_ROSTER,
             xmlstream2.NS_IQ_LAST,
@@ -205,6 +282,9 @@ class IQHandler(XMPPHandler):
             ft.append(xmlstream2.NS_IQ_REGISTER)
 
         return ft
+
+    def items(self):
+        pass
 
 
 class MessageHandler(XMPPHandler):
@@ -216,24 +296,47 @@ class MessageHandler(XMPPHandler):
         pass
 
     def features(self):
-        return tuple()
+        pass
+
+    def items(self):
+        pass
 
 
 class DiscoveryHandler(XMPPHandler):
     """Handle iq stanzas for discovery."""
 
     def __init__(self):
+        self.post_handlers = []
         self.supportedFeatures = []
+        # key is node attribute of <query/>
+        self.items = {}
 
     def connectionInitialized(self):
         self.xmlstream.addObserver("/iq[@type='get'][@to='%s']/query[@xmlns='%s']" % (self.parent.network, xmlstream2.NS_DISCO_ITEMS), self.onDiscoItems, 100)
         self.xmlstream.addObserver("/iq[@type='get'][@to='%s']/query[@xmlns='%s']" % (self.parent.network, xmlstream2.NS_DISCO_INFO), self.onDiscoInfo, 100)
+        # add items now
+        for h in self.post_handlers:
+            items = h.items()
+            if items:
+                for i in items:
+                    node = i['node']
+                    if node not in self.items:
+                        self.items[node] = []
+                    self.items[node].extend(i['items'])
 
     def onDiscoItems(self, stanza):
         if not stanza.consumed:
             stanza.consumed = True
             response = xmlstream2.toResponse(stanza, 'result')
-            response.addElement((xmlstream2.NS_DISCO_ITEMS, 'query'))
+            query = response.addElement((xmlstream2.NS_DISCO_ITEMS, 'query'))
+            node = stanza.query.getAttribute('node')
+            if node and node in self.items:
+                for item in self.items[node]:
+                    n = query.addElement((None, 'item'))
+                    n['jid'] = item['jid']
+                    n['node'] = item['node']
+                    n['name'] = item['name']
+
             self.send(response)
 
     def onDiscoInfo(self, stanza):
@@ -263,6 +366,7 @@ class C2SManager(xmlstream2.StreamManager):
     init_handlers = (
         PresenceHandler,
         PingHandler,
+        CommandsHandler,
         IQHandler,
         MessageHandler,
     )
@@ -279,12 +383,18 @@ class C2SManager(xmlstream2.StreamManager):
         the other handlers.
         """
         disco = self.disco_handler()
-        disco.setHandlerParent(self)
 
         for handler in self.init_handlers:
             h = handler()
             h.setHandlerParent(self)
-            disco.supportedFeatures.extend(h.features())
+            info = h.features()
+            if info:
+                disco.supportedFeatures.extend(info)
+            # we will use this later
+            disco.post_handlers.append(h)
+
+        # disco is added at last element so onConnectionInitialized will be called last
+        disco.setHandlerParent(self)
 
     def _connected(self, xs):
         xmlstream2.StreamManager._connected(self, xs)

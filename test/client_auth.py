@@ -186,6 +186,11 @@ class Client(object):
         info.addElement((xmlstream2.NS_DISCO_INFO, 'query'))
         info.send(self.network)
 
+        items = client.IQ(xs, 'get')
+        q = items.addElement((xmlstream2.NS_DISCO_ITEMS, 'query'))
+        q['node'] = xmlstream2.NS_PROTO_COMMANDS
+        items.send(self.network)
+
         def testProbe():
             global count, num
             num = 400
@@ -311,6 +316,12 @@ class Client(object):
 
             reg.send(self.network)
 
+        def testCommand():
+            cmd = client.IQ(xs, 'set')
+            ch = cmd.addElement((xmlstream2.NS_PROTO_COMMANDS, 'command'))
+            ch['node'] = 'serverlist'
+            ch['action'] = 'execute'
+            cmd.send(self.network)
 
         #reactor.callLater(1, testProbe)
         #reactor.callLater(1, testSubscribe)
@@ -319,6 +330,7 @@ class Client(object):
         #reactor.callLater(1, testRegisterRequest)
         #reactor.callLater(1, testRegister)
         #reactor.callLater(1, testValidate)
+        reactor.callLater(1, testCommand)
         #reactor.callLater(30, xs.sendFooter)
 
     def message(self, stanza, xs):

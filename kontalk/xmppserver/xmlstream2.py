@@ -21,6 +21,7 @@ NS_IQ_ROSTER = 'jabber:iq:roster'
 NS_IQ_LAST = 'jabber:iq:last'
 
 NS_XMPP_PING = 'urn:xmpp:ping'
+NS_PROTO_COMMANDS = 'http://jabber.org/protocol/commands'
 
 NS_XMPP_STANZA_GROUP = 'urn:xmpp:stanza-group'
 NS_XMPP_SERVER_RECEIPTS = 'urn:xmpp:server-receipts'
