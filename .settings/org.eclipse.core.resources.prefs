@@ -9,6 +9,7 @@ encoding//kontalk/xmppserver/component/sm.py=utf-8
 encoding//kontalk/xmppserver/database.py=utf-8
 encoding//kontalk/xmppserver/keyring.py=utf-8
 encoding//kontalk/xmppserver/log.py=utf-8
+encoding//kontalk/xmppserver/push.py=utf-8
 encoding//kontalk/xmppserver/register.py=utf-8
 encoding//kontalk/xmppserver/storage.py=utf-8
 encoding//kontalk/xmppserver/util.py=utf-8

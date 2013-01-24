@@ -20,6 +20,7 @@
 
 
 import time
+import traceback
 
 from twisted.application import strports
 from twisted.cred import portal
@@ -300,7 +301,6 @@ class InitialPresenceHandler(XMPPHandler):
                     sure remote sm has received it.
                     """
                 except:
-                    import traceback
                     traceback.print_exc()
                     log.debug("offline message delivery failed (%s)" % (msgId, ))
 
@@ -486,6 +486,8 @@ class MessageHandler(XMPPHandler):
                             # receipt not present - send to offline storage
                             if not receipt:
                                 stanza['id'] = self.message_offline(stanza)
+                            if self.parent.push_manager and (not receipt or receipt.name == 'request'):
+                                self.parent.push_manager.notify(to)
 
                         stamp = time.time()
 
@@ -569,7 +571,6 @@ class MessageHandler(XMPPHandler):
         try:
             self.parent.stanzadb.store(stanza)
         except:
-            import traceback
             traceback.print_exc()
 
         return stanza['id']
@@ -597,6 +598,7 @@ class C2SComponent(component.Component):
         self.servername = config['host']
         self.start_time = time.time()
         self.registration = None
+        self.push_manager = None
 
         # protocol handlers here!!
         for handler in self.protocolHandlers:
@@ -625,7 +627,7 @@ class C2SComponent(component.Component):
     def startService(self):
         component.Component.startService(self)
 
-        # register the registration provider if configured.
+        # register the registration provider if configured
         if 'registration' in self.config:
             from kontalk.xmppserver import register
             provider = self.config['registration']['provider']
@@ -633,13 +635,22 @@ class C2SComponent(component.Component):
                 prov_class = register.providers[provider]
                 self.registration = prov_class(self, self.config['registration'])
             except:
-                import traceback
                 log.warn(traceback.format_exc())
 
         if self.registration:
             log.info("using registration provider %s (type=%s)" % (self.registration.name, self.registration.type))
         else:
             log.info("disabling registration")
+
+        # register push notifications providers if configured
+        if 'push' in self.config:
+            from kontalk.xmppserver import push
+            self.push_manager = push.PushManager(self, self.config['push'])
+
+        if self.push_manager:
+            log.info("using push notifications providers: %s" % (', '.join(self.push_manager.providers.keys())))
+        else:
+            log.info("disabling push notifictions")
 
     def uptime(self):
         return time.time() - self.start_time
@@ -758,7 +769,6 @@ class C2SComponent(component.Component):
                             not xmlstream2.extract_receipt(stanza, 'received'):
                         self.stanzadb.delete(msgId)
                 except:
-                    import traceback
                     traceback.print_exc()
                     log.debug("offline message delivery failed (%s)" % (msgId, ))
 

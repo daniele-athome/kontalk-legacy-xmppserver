@@ -28,7 +28,7 @@ from twisted.words.xish import domish
 
 from wokkel import xmppim
 
-from kontalk.xmppserver import log, xmlstream2, version, util
+from kontalk.xmppserver import log, xmlstream2, version, util, push
 
 
 class PresenceHandler(XMPPHandler):
@@ -162,6 +162,44 @@ class ServerListCommand():
         cmd['node'] = stanza.command['node']
         cmd['status'] = 'completed'
         self.handler.send(res)
+
+
+class PushNotificationsHandler(XMPPHandler):
+    """Support for push notifications."""
+
+    pushHandlers = (
+        push.GCMPushNotifications,
+    )
+
+    def __init__(self):
+        XMPPHandler.__init__(self)
+        # push handler for items quick access
+        self.handler_items = []
+        # push handlers
+        self.push_handlers = {}
+
+    def connectionInitialized(self):
+        self.xmlstream.addObserver("/presence/c[@xmlns='%s']" % (xmlstream2.NS_PRESENCE_PUSH), self.push_regid, 100)
+
+        for h in self.pushHandlers:
+            inst = h(self)
+            nodes = inst.supports()
+            self.handler_items.extend(nodes)
+            for c in nodes:
+                self.push_handlers[c['node']] = inst
+
+    def push_regid(self, stanza):
+        for child in stanza.children:
+            if child.name == 'c' and child.uri == xmlstream2.NS_PRESENCE_PUSH:
+                regid = str(child)
+                if regid:
+                    log.debug("registering %s with %s" % (self.xmlstream.otherEntity, regid))
+
+    def features(self):
+        return (xmlstream2.NS_PRESENCE_PUSH, )
+
+    def items(self):
+        return ({'node': xmlstream2.NS_PRESENCE_PUSH, 'items': self.handler_items }, )
 
 
 class CommandsHandler(XMPPHandler):
@@ -367,6 +405,7 @@ class C2SManager(xmlstream2.StreamManager):
         PresenceHandler,
         PingHandler,
         CommandsHandler,
+        PushNotificationsHandler,
         IQHandler,
         MessageHandler,
     )
@@ -385,6 +424,10 @@ class C2SManager(xmlstream2.StreamManager):
         disco = self.disco_handler()
 
         for handler in self.init_handlers:
+            # skip push notifications handler if no push manager is registered
+            if handler == PushNotificationsHandler and not self.router.push_manager:
+                continue
+
             h = handler()
             h.setHandlerParent(self)
             info = h.features()
