@@ -192,6 +192,12 @@ class Client(object):
         items.send(self.network)
 
         def testProbe():
+            if self.peer is not None:
+                userid, resource = util.split_userid(self.peer)
+                presence = xmppim.Presence(jid.JID(tuple=(userid, self.network, resource)), 'probe')
+                xs.send(presence)
+
+        def testMassProbe():
             global count, num
             num = 400
             count = 0
@@ -205,11 +211,6 @@ class Client(object):
             for n in range(num):
                 userid = util.rand_str(util.USERID_LENGTH, util.CHARSBOX_HEX_LOWERCASE)
                 presence = xmppim.Presence(jid.JID(tuple=(userid, self.network, None)), 'probe')
-                xs.send(presence)
-
-            if self.peer is not None:
-                userid, resource = util.split_userid(self.peer)
-                presence = xmppim.Presence(jid.JID(tuple=(userid, self.network, resource)), 'probe')
                 xs.send(presence)
 
         def testRoster():
@@ -323,14 +324,15 @@ class Client(object):
             ch['action'] = 'execute'
             cmd.send(self.network)
 
-        #reactor.callLater(1, testProbe)
+        reactor.callLater(1, testProbe)
+        reactor.callLater(1, testProbe)
         #reactor.callLater(1, testSubscribe)
         #reactor.callLater(1, testMessage)
         #reactor.callLater(1, testRoster)
         #reactor.callLater(1, testRegisterRequest)
         #reactor.callLater(1, testRegister)
         #reactor.callLater(1, testValidate)
-        reactor.callLater(1, testCommand)
+        #reactor.callLater(1, testCommand)
         #reactor.callLater(30, xs.sendFooter)
 
     def message(self, stanza, xs):

@@ -1,4 +1,7 @@
 == URGENT ==
+[ ] performance and timeout issues (!!!)
+    [ ] XML parsing takes too much
+    [ ] using/parsing JID objects uses much time and memory
 [ ] check for stanza loops (in particular with iq errors)
 [ ] encoding problems in router?!?!?
 
@@ -13,6 +16,7 @@
 [ ] stanza storage should be a component (?)
 
 == COMPLETED ==
+[x] JIDCache: reuse lookups (prevents multiple requests for the same JID)
 [x] delivery receipts (s2s) - achieved through server-receipts
 [x] client-side acknowledgement
 [x] c2s resource conflict (sm)

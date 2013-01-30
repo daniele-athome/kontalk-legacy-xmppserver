@@ -153,6 +153,9 @@ class IQHandler(XMPPHandler):
                             i -= 1
                             self.send(presence)
 
+                # used for the next callback in chain
+                return data
+
             d = defer.gatherResults(dlist)
             d.addCallback(_roster, stanza)
 
@@ -288,6 +291,7 @@ class JIDCache(XMPPHandler):
 
     def __init__(self):
         XMPPHandler.__init__(self)
+        self.lookups = {}
         self.jid_cache = {}
         self.presence_cache = {}
         self._last_lookup = 0
@@ -356,6 +360,8 @@ class JIDCache(XMPPHandler):
                         i -= 1
 
                     self.send(presence)
+            # used for the next callback in chain
+            return data
 
         d = self.lookup(to, refresh=True)
         d.addCallback(_lookup, gid=stanza.getAttribute('id'))
@@ -556,6 +562,9 @@ class JIDCache(XMPPHandler):
 
         # evaluate refresh again
         if refresh:
+            if _jid in self.lookups:
+                return self.lookups[_jid]
+
             # refreshing, lookup the network
             d = self.find(_jid, wait_factor)
 
@@ -564,12 +573,15 @@ class JIDCache(XMPPHandler):
             # cumulative response
             clientDeferred = defer.Deferred()
 
-            d.addBoth(self._lookup_cb, clientDeferred)
+            d.addBoth(self._lookup_cb, _jid, clientDeferred)
+
+            self.lookups[_jid] = clientDeferred
             return clientDeferred
 
-    def _lookup_cb(self, result, clientDeferred):
-        #log.debug("result = %r" % (result, ))
+    def _lookup_cb(self, result, _jid, clientDeferred):
+        log.debug("result = %r" % (result, ))
         out = set()
+        del self.lookups[_jid]
         # TODO this is always true since errbacks are not really used
         if not isinstance(result, failure.Failure):
             # FIXME this is really a messy algorithm
@@ -808,6 +820,9 @@ class Resolver(component.Component):
                             if self.cache.jid_available(_to):
                                 stanza['to'] = _to.full()
                                 component.Component.send(self, stanza)
+
+                # used for the next callback in chain
+                return rcpts
 
             sent = set()
             d = self.cache.lookup(to, refresh=False)
