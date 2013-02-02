@@ -338,20 +338,19 @@ class JIDCache(XMPPHandler):
         if stanza.consumed:
             return
 
-        log.debug("probe request: %s" % (stanza.toXml(), ))
+        #log.debug("probe request: %s" % (stanza.toXml(), ))
         stanza.consumed = True
-        sender = jid.JID(stanza['from'])
         to = jid.JID(stanza['to'])
 
-        def _lookup(data, gid):
-            log.debug("onProbe(%s): found %r" % (gid, data, ))
+        def _lookup(data, gid, sender):
+            #log.debug("onProbe(%s): found %r" % (gid, data, ))
             if data:
                 # TEST using deepcopy is not safe
                 from copy import deepcopy
                 i = len(data)
                 for user in data:
                     presence = deepcopy(self.presence_cache[user])
-                    presence['to'] = sender.full()
+                    presence['to'] = sender
                     if gid:
                         # FIXME this will duplicate group elements - actually in storage there should be no group element!!!
                         group = presence.addElement((xmlstream2.NS_XMPP_STANZA_GROUP, 'group'))
@@ -364,7 +363,7 @@ class JIDCache(XMPPHandler):
             return data
 
         d = self.lookup(to, refresh=True)
-        d.addCallback(_lookup, gid=stanza.getAttribute('id'))
+        d.addCallback(_lookup, gid=stanza.getAttribute('id'), sender=stanza['from'])
 
     def user_available(self, stanza):
         """Called when receiving a presence stanza."""
@@ -579,7 +578,7 @@ class JIDCache(XMPPHandler):
             return clientDeferred
 
     def _lookup_cb(self, result, _jid, clientDeferred):
-        log.debug("result = %r" % (result, ))
+        #log.debug("result = %r" % (result, ))
         out = set()
         del self.lookups[_jid]
         # TODO this is always true since errbacks are not really used
@@ -763,7 +762,7 @@ class Resolver(component.Component):
         # network JID - resolve and send to router
         elif to.host == self.network:
             def _lookup(rcpts, stanza, sent):
-                log.debug("rcpts = %r" % (rcpts, ))
+                #log.debug("rcpts = %r" % (rcpts, ))
                 if rcpts is None or len(rcpts) == 0:
                     if not stanza.consumed:
                         stanza.consumed = True
@@ -889,7 +888,7 @@ class Resolver(component.Component):
             # other JIDs, use unchaged
             watched = user
 
-        log.debug("checking subscriptions to %s" % (watched.full(), ))
+        #log.debug("checking subscriptions to %s" % (watched.full(), ))
         bareWatched = watched.userhostJID()
         if bareWatched in self.subscriptions:
             #stanza['from'] = watched.full()
