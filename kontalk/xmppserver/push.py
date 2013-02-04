@@ -64,9 +64,9 @@ class GooglePush(PushServer):
         self.token = config['apikey']
         self.sender = config['projectid']
 
-    def notify(self, userid):
+    def notify(self, regid):
         params = urllib.urlencode({
-            'registration_id' : self.regid,
+            'registration_id' : regid,
             'collapse_key' : 'new',
             'data.action' : 'org.kontalk.CHECK_MESSAGES'
         })
@@ -98,13 +98,21 @@ class PushManager:
                 log.warn(traceback.format_exc())
 
     def register(self, _jid, provider, regid):
-        userid = util.jid_to_userid(_jid)
-        self._cache[userid][provider] = regid
+        if _jid.user not in self._cache:
+            self._cache[_jid.user] = {}
+        if _jid.resource not in self._cache[_jid.user]:
+            self._cache[_jid.user][_jid.resource] = {}
+        self._cache[_jid.user][_jid.resource][provider] = regid
 
     def notify(self, _jid):
         log.debug("sending push notification to %s" % (_jid.full(), ))
-        userid = util.jid_to_userid(_jid)
-        if userid in self._cache:
-            for prov in self._cache[userid]:
-                log.debug("push notifying via %s" % (prov, ))
-                self.providers[prov].notify(userid)
+        if _jid.user in self._cache:
+            if _jid.resource and _jid.resource in self._cache[_jid.user]:
+                for name, regid in self._cache[_jid.user][_jid.resource].iteritems():
+                    log.debug("push notifying via %s" % (name, ))
+                    self.providers[name].notify(regid)
+            else:
+                for providers in self._cache[_jid.user].itervalues():
+                    for name, regid in providers.iteritems():
+                        log.debug("push notifying via %s" % (name, ))
+                        self.providers[name].notify(regid)
