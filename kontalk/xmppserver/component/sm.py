@@ -192,8 +192,10 @@ class PushNotificationsHandler(XMPPHandler):
         for child in stanza.children:
             if child.name == 'c' and child.uri == xmlstream2.NS_PRESENCE_PUSH:
                 regid = str(child)
-                if regid:
-                    log.debug("registering %s with %s" % (self.xmlstream.otherEntity, regid))
+                provider = child.getAttribute('provider')
+                if regid and provider:
+                    log.debug("registering %s using %s with %s" % (self.xmlstream.otherEntity, provider, regid))
+                    self.parent.router.push_manager.register(self.xmlstream.otherEntity, provider, regid)
 
     def features(self):
         return (xmlstream2.NS_PRESENCE_PUSH, )
