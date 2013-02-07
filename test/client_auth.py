@@ -324,8 +324,8 @@ class Client(object):
             ch['action'] = 'execute'
             cmd.send(self.network)
 
-        reactor.callLater(1, testProbe)
-        reactor.callLater(1, testProbe)
+        #reactor.callLater(1, testProbe)
+        #reactor.callLater(1, testProbe)
         #reactor.callLater(1, testSubscribe)
         #reactor.callLater(1, testMessage)
         #reactor.callLater(1, testRoster)
@@ -337,17 +337,18 @@ class Client(object):
 
     def message(self, stanza, xs):
         print "message from %s" % (stanza['from'], )
-        if stanza.type == 'chat' and stanza.request and stanza.request.uri == 'urn:xmpp:server-receipts':
+        if stanza.getAttribute('type') == 'chat' and stanza.request and stanza.request.uri == 'urn:xmpp:server-receipts':
             def sendReceipt(stanza):
                 receipt = domish.Element((None, 'message'))
                 receipt['to'] = stanza['from']
                 child = receipt.addElement(('urn:xmpp:server-receipts', 'received'))
                 child['id'] = stanza.request['id']
                 xs.send(receipt)
+            print "queueing ack"
             reactor.callLater(5, sendReceipt, stanza)
 
     def stanza(self, stanza, xs):
-        print 'STANZA: %r' % (stanza.toXml().encode('utf-8'), )
+        #print 'STANZA: %r' % (stanza.toXml().encode('utf-8'), )
         if stanza.name == 'iq' and stanza['type'] == 'get' and stanza.ping:
             r = xmlstream.toResponse(stanza, 'result')
             xs.send(r)
