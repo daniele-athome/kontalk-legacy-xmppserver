@@ -195,6 +195,7 @@ class Client(object):
             if self.peer is not None:
                 userid, resource = util.split_userid(self.peer)
                 presence = xmppim.Presence(jid.JID(tuple=(userid, self.network, resource)), 'probe')
+                presence['id'] = util.rand_str(8)
                 xs.send(presence)
 
         def testMassProbe():
@@ -251,6 +252,7 @@ class Client(object):
             if self.peer is not None:
                 userid, resource = util.split_userid(self.peer)
                 presence = xmppim.Presence(jid.JID(tuple=(userid, self.network, None)), 'subscribe')
+                presence['id'] = util.rand_str(8)
                 xs.send(presence)
             else:
                 def pres():
@@ -324,9 +326,9 @@ class Client(object):
             ch['action'] = 'execute'
             cmd.send(self.network)
 
+        reactor.callLater(2, testProbe)
         #reactor.callLater(1, testProbe)
-        #reactor.callLater(1, testProbe)
-        #reactor.callLater(1, testSubscribe)
+        reactor.callLater(1, testSubscribe)
         #reactor.callLater(1, testMessage)
         #reactor.callLater(1, testRoster)
         #reactor.callLater(1, testRegisterRequest)

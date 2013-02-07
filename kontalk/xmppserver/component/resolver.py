@@ -76,6 +76,17 @@ class PresenceHandler(XMPPHandler):
 
         self.parent.subscribe(jid_to, jid_from)
 
+        # simulate a presence probe
+        """
+        probe = domish.Element((None, 'presence'))
+        probe['type'] = 'probe'
+        probe['from'] = stanza['from']
+        probe['to'] = stanza['to']
+        if stanza.hasAttribute('id'):
+            probe['id'] = stanza['id']
+        self.send(probe)
+        """
+
     def onUnsubscribe(self, stanza):
         """Handle unsubscription requests."""
 
@@ -454,6 +465,7 @@ class JIDCache(XMPPHandler):
             chain = stanza.group
             # end of presence chain!!!
             if not chain or int(chain['count']) == len(buf):
+                # higher priority than normal presence since we don't want to notify subscribers of a presence probe
                 self.xmlstream.removeObserver("/presence/group[@id='%s']" % (stanza['id'], ), _presence)
                 if not callback.called:
                     # cancel timeout
@@ -478,7 +490,7 @@ class JIDCache(XMPPHandler):
             # timeout of request
             timeout = reactor.callLater(self.MAX_LOOKUP_TIMEOUT*wait_factor*len(idList), _abort, stanzaId=stanzaId, callback=d, buf=buf)
 
-            self.xmlstream.addObserver("/presence/group[@id='%s']" % (stanzaId, ), _presence, callback=d, timeout=timeout, buf=buf)
+            self.xmlstream.addObserver("/presence/group[@id='%s']" % (stanzaId, ), _presence, 150, callback=d, timeout=timeout, buf=buf)
 
         # gather all returned presence from the network
         return defer.gatherResults(deferList, True)
