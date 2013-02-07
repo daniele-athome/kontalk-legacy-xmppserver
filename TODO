@@ -8,6 +8,15 @@
 == TODO ==
 [ ] JIDCache: cache expiration and invalidation (instead of one big timeout)
 [ ] connectionLost: unavailable presence should be sent only if client did not
+[ ] concurrency problem in offline delivery
+    If Alice sends a message to Bob while Bob is connecting, there could be an
+    exact moment when c2s sees the initial presence and deliver the message to
+    Bob, but soom before Alice's c2s has already sent the message to offline
+    storage for safety. Bob hasn't already ack'd the message yet, so it gets
+    delivered twice: one from direct delivery (Alice->c2s->resolver->c2s->Bob),
+    one from offline storage (offline->c2s->Bob). This can't be avoided without
+    removing offline safety storing. However, clients could easily ignore
+    duplicated messages...
 
 == ALPHA ==
 [ ] JIDCache: presence observers (might be used with subscriptions too)
