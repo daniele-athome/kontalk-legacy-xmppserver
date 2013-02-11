@@ -549,6 +549,10 @@ class C2SManager(xmlstream2.StreamManager):
         # remove reserved elements
         if stanza.name == 'message' and stanza.storage and stanza.storage.uri == xmlstream2.NS_XMPP_STORAGE:
             stanza.children.remove(stanza.storage)
+        if stanza.name == 'presence':
+            for c in stanza.elements(name='c', uri=xmlstream2.NS_PRESENCE_PUSH):
+                stanza.children.remove(c)
+                break
 
         # force destination address
         stanza['to'] = self.xmlstream.otherEntity.full()
