@@ -38,7 +38,8 @@ class PresenceHandler(XMPPHandler):
     """
 
     def connectionInitialized(self):
-        self.xmlstream.addObserver("/presence[not(@type)]", self.presence)
+        # initial presence is... well, initial :)
+        self.xmlstream.addOnetimeObserver("/presence[not(@type)]", self.presence)
 
     def connectionLost(self, reason):
         if self.xmlstream.otherEntity is not None:
@@ -51,15 +52,6 @@ class PresenceHandler(XMPPHandler):
 
     def items(self):
         pass
-
-    def send_ack(self, stanza, status, stamp=None):
-        request = xmlstream2.extract_receipt(stanza, 'request')
-        ack = xmlstream2.toResponse(stanza, stanza.getAttribute('type'))
-        rec = ack.addElement((xmlstream2.NS_XMPP_SERVER_RECEIPTS, status))
-        rec['id'] = request['id']
-        if stamp:
-            rec['stamp'] = time.strftime(xmlstream2.XMPP_STAMP_FORMAT, time.gmtime(stamp))
-        self.parent.forward(ack)
 
     def presence(self, stanza):
         """
@@ -209,7 +201,7 @@ class CommandsHandler(XMPPHandler):
     XEP-0050: Ad-Hoc Commands
     http://xmpp.org/extensions/xep-0050.html
     """
-    
+
     commandHandlers = (
         ServerListCommand,
     )
