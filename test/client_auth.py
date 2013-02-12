@@ -275,6 +275,25 @@ class Client(object):
             message.addElement(('urn:xmpp:server-receipts', 'request'))
             xs.send(message)
             #xs.sendFooter()
+        
+        def testMsgLoop():
+            global counter
+            counter = 0
+            def _loop():
+                global counter
+                counter += 1
+                jid = xs.authenticator.jid
+                message = domish.Element((None, 'message'))
+                message['id'] = 'kontalk' + util.rand_str(8, util.CHARSBOX_AZN_LOWERCASE)
+                message['type'] = 'chat'
+                if self.peer:
+                    message['to'] = util.userid_to_jid(self.peer, self.network).full()
+                else:
+                    message['to'] = jid.userhost()
+                message.addElement((None, 'body'), content=('%d' % counter))
+                message.addElement(('urn:xmpp:server-receipts', 'request'))
+                xs.send(message)
+            LoopingCall(_loop).start(1)
 
         def testRegisterRequest():
             reg = client.IQ(xs, 'get')
@@ -326,10 +345,11 @@ class Client(object):
             ch['action'] = 'execute'
             cmd.send(self.network)
 
-        reactor.callLater(2, testProbe)
+        #reactor.callLater(2, testProbe)
         #reactor.callLater(1, testProbe)
-        reactor.callLater(1, testSubscribe)
+        #reactor.callLater(1, testSubscribe)
         #reactor.callLater(1, testMessage)
+        #reactor.callLater(1, testMsgLoop)
         #reactor.callLater(1, testRoster)
         #reactor.callLater(1, testRegisterRequest)
         #reactor.callLater(1, testRegister)
