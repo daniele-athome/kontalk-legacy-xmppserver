@@ -505,10 +505,8 @@ class C2SManager(xmlstream2.StreamManager):
         # no to address, presume sender bare JID
         if not stanza.hasAttribute('to'):
             stanza['to'] = self.xmlstream.otherEntity.userhost()
-            # try again
-            self.message(stanza)
-        else:
-            self.handle(stanza)
+
+        self.handle(stanza)
 
     def _disconnected(self, reason):
         self.factory.connectionLost(self.xmlstream, reason)
