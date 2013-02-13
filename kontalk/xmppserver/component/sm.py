@@ -70,8 +70,8 @@ class PingHandler(XMPPHandler):
     http://xmpp.org/extensions/xep-0199.html
     """
 
-    PING_DELAY = 30
-    PING_TIMEOUT = 30
+    PING_DELAY = 60
+    PING_TIMEOUT = 60
 
     def __init__(self):
         XMPPHandler.__init__(self)
@@ -121,8 +121,9 @@ class PingHandler(XMPPHandler):
 
     def pong(self, stanza):
         """Client replied to ping: abort timeout."""
-        self.ping_timeout.cancel()
-        self.ping_timeout = None
+        if self.ping_timeout:
+            self.ping_timeout.cancel()
+            self.ping_timeout = None
         # unobserve pong
         self.xmlstream.removeObserver("/iq[@type='result'][@id='%s']" % (stanza['id'], ), self.pong)
         # restart pinger
