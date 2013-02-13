@@ -26,7 +26,12 @@ from twisted.words.protocols.jabber import jid
 from wokkel import generic
 
 import base64
-import collections
+
+try:
+    from collections import OrderedDict
+except:
+    from ordereddict import OrderedDict
+
 import util, xmlstream2, log
 
 dbpool = None
@@ -145,7 +150,7 @@ class MySQLStanzaStorage(StanzaStorage):
             userid, unused = util.jid_to_userid(recipient, True)
             tx.execute('SELECT id, timestamp, content FROM stanzas WHERE recipient = ? ORDER BY timestamp', (userid, ))
             data = tx.fetchall()
-            out = collections.OrderedDict()
+            out = OrderedDict()
             for row in data:
                 stanzaId = str(row[0])
                 d = { 'timestamp': row[1] }
