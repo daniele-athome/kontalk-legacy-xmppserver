@@ -765,8 +765,7 @@ class C2SComponent(component.Component):
                     storage now; we must be sure client has received it.
                     Otherwise just delete the message.
                     """
-                    if not xmlstream2.extract_receipt(msg['stanza'], 'request') and \
-                            not xmlstream2.extract_receipt(msg['stanza'], 'received'):
+                    if not xmlstream2.extract_receipt(msg['stanza'], 'request'):
                         self.stanzadb.delete(msgId)
                 except:
                     traceback.print_exc()
