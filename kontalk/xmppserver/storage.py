@@ -126,7 +126,7 @@ class MySQLStanzaStorage(StanzaStorage):
             msgId,
             util.jid_to_userid(jid.JID(stanza['from'])),
             util.jid_to_userid(jid.JID(stanza['to'])),
-            stanza.toXml().decode('utf-8'),
+            stanza.toXml().encode('utf-8').decode('utf-8'),
         )
         return dbpool.runOperation('INSERT INTO stanzas (id, sender, recipient, content, timestamp) VALUES(?, ?, ?, ?, UTC_TIMESTAMP())', args)
 
@@ -154,7 +154,7 @@ class MySQLStanzaStorage(StanzaStorage):
             for row in data:
                 stanzaId = str(row[0])
                 d = { 'timestamp': row[1] }
-                d['stanza'] = generic.parseXml(row[2].encode('utf-8'))
+                d['stanza'] = generic.parseXml(row[2].decode('utf-8').encode('utf-8'))
 
                 """
                 Add a <storage/> element to the stanza; this way components have
