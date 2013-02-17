@@ -487,7 +487,7 @@ class MessageHandler(XMPPHandler):
                             # receipt not present - send to offline storage
                             if not receipt:
                                 stanza['id'] = self.message_offline(stanza)
-                            if self.parent.push_manager and (not receipt or receipt.name == 'request'):
+                            if self.parent.push_manager and (stanza.body and (not receipt or receipt.name == 'request')):
                                 self.parent.push_manager.notify(to)
 
                         stamp = time.time()
