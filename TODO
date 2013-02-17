@@ -4,6 +4,7 @@
     [ ] using/parsing JID objects uses much time and memory
 [ ] check for stanza loops (in particular with iq errors)
 [ ] encoding problems in router?!?!?
+[ ] interserver conflicts
 
 == TODO ==
 [ ] JIDCache: cache expiration and invalidation (instead of one big timeout)
