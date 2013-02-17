@@ -805,7 +805,7 @@ class Resolver(component.Component):
                         # destination was a full JID
                         if to.resource:
                             # deliver anyway
-                            if force_delivery:
+                            if True: # TODO why this?? -- force_delivery:
                                 for _to in rcpts:
                                     stanza['to'] = _to.full()
                                     component.Component.send(self, stanza)
