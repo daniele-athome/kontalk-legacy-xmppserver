@@ -485,7 +485,7 @@ class MessageHandler(XMPPHandler):
                             # manager not found - send error or send to offline storage
                             log.debug("c2s manager for %s not found" % (stanza['to'], ))
                             # receipt not present - send to offline storage
-                            if not receipt:
+                            if not receipt and stanza.body:
                                 stanza['id'] = self.message_offline(stanza)
                             if self.parent.push_manager and (stanza.body and (not receipt or receipt.name == 'request')):
                                 self.parent.push_manager.notify(to)
