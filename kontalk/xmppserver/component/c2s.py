@@ -458,14 +458,14 @@ class MessageHandler(XMPPHandler):
                 # process only our JIDs
                 if to.host == self.parent.servername:
                     if to.user is not None:
-                        receipt = xmlstream2.extract_receipt(stanza, ('request')) or \
-                            xmlstream2.extract_receipt(stanza, ('received'))
+                        receipt = xmlstream2.extract_receipt(stanza, ('request'))
+                        received = xmlstream2.extract_receipt(stanza, 'received')
                         try:
                             """
                             We are deliberately ignoring messages with sent
                             receipt because they are assumed to be volatile.
                             """
-                            if receipt:
+                            if receipt or received:
                                 # send message to offline storage just to be safe
                                 stanza['id'] = self.message_offline(stanza)
                             # send message to sm
@@ -475,12 +475,10 @@ class MessageHandler(XMPPHandler):
                             If message is a received receipt, we have just delivered it.
                             It's not really a big deal if a receipt is lost...
                             """
-                            received = xmlstream2.extract_receipt(stanza, 'received')
                             if received:
                                 # delete the receipt
                                 self.parent.stanzadb.delete(stanza['id'])
-                                # delete the received message
-                                self.parent.stanzadb.delete(received['id'])
+
                         except:
                             # manager not found - send error or send to offline storage
                             log.debug("c2s manager for %s not found" % (stanza['to'], ))
@@ -489,6 +487,11 @@ class MessageHandler(XMPPHandler):
                                 stanza['id'] = self.message_offline(stanza)
                             if self.parent.push_manager and (stanza.body and (not receipt or receipt.name == 'request')):
                                 self.parent.push_manager.notify(to)
+
+                        # if message is a received receipt, we can delete the original message
+                        if received:
+                            # delete the received message
+                            self.parent.stanzadb.delete(received['id'])
 
                         stamp = time.time()
 
