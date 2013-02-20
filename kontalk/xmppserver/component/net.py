@@ -451,7 +451,7 @@ class NetService(object):
                 self.router.send(stanza)
 
 
-class NetComponent(component.Component):
+class NetComponent(xmlstream2.SocketComponent):
     """
     Kontalk server-to-server component with other Kontalk servers on this network.
     L{StreamManager} is for the connection with the router.
@@ -463,7 +463,11 @@ class NetComponent(component.Component):
 
     def __init__(self, config):
         router_cfg = config['router']
-        component.Component.__init__(self, router_cfg['host'], router_cfg['port'], router_cfg['jid'], router_cfg['secret'])
+        for key in ('socket', 'host', 'port'):
+            if key not in router_cfg:
+                router_cfg[key] = None
+
+        xmlstream2.SocketComponent.__init__(self, router_cfg['socket'], router_cfg['host'], router_cfg['port'], router_cfg['jid'], router_cfg['secret'])
         self.config = config
         self.logTraffic = config['debug']
         self.network = config['network']

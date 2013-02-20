@@ -1,9 +1,11 @@
 
 from twisted.cred import error as cred_error
-from twisted.internet import defer
+from twisted.internet import reactor, defer
 from twisted.words.protocols.jabber import client, ijabber, xmlstream, sasl
 from twisted.words.protocols.jabber.error import NS_XMPP_STANZAS
 from twisted.words.xish import domish
+
+from wokkel import component
 
 from zope.interface.declarations import implements
 from zope.interface.interface import Attribute, Interface
@@ -594,6 +596,19 @@ class StreamManager(xmlstream.XMPPHandlerCollection):
             self.xmlstream.send(obj)
         else:
             self._packetQueue.append(obj)
+
+
+class SocketComponent(component.Component):
+    def __init__(self, socket, host, port, jid, password):
+        component.Component.__init__(self, host, port, jid, password)
+        self.socket = socket
+
+    def _getConnection(self):
+        if self.socket:
+            return reactor.connectUNIX(self.socket, self.factory)
+        else:
+            return reactor.connectTCP(self.host, self.port, self.factory)
+
 
 def toResponse(stanza, stanzaType=None):
     """

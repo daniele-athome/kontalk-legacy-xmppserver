@@ -55,7 +55,7 @@ class KontalkRouterServiceMaker(object):
         factory = router.XMPPRouterFactory(engine, config['secret'])
         factory.logTraffic = config['debug']
 
-        return strports.service('tcp:' + str(config['bind'][1]) + ':interface=' + str(config['bind'][0]), factory)
+        return strports.service(str(config['bind']), factory)
 
 
 serviceMaker = KontalkRouterServiceMaker()

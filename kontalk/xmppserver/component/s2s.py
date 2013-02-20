@@ -28,7 +28,7 @@ from wokkel import component, server
 
 from zope.interface import Interface, implements
 
-from kontalk.xmppserver import log, util, keyring, storage
+from kontalk.xmppserver import log, util, keyring, storage, xmlstream2
 
 
 class IS2SService(Interface):
@@ -177,7 +177,7 @@ class S2SService(object):
                 self.router.send(stanza)
 
 
-class S2SComponent(component.Component):
+class S2SComponent(xmlstream2.SocketComponent):
     """
     Kontalk server-to-server component.
     L{StreamManager} is for the connection with the router.
@@ -185,7 +185,11 @@ class S2SComponent(component.Component):
 
     def __init__(self, config):
         router_cfg = config['router']
-        component.Component.__init__(self, router_cfg['host'], router_cfg['port'], router_cfg['jid'], router_cfg['secret'])
+        for key in ('socket', 'host', 'port'):
+            if key not in router_cfg:
+                router_cfg[key] = None
+
+        xmlstream2.SocketComponent.__init__(self, router_cfg['socket'], router_cfg['host'], router_cfg['port'], router_cfg['jid'], router_cfg['secret'])
         self.config = config
         self.logTraffic = config['debug']
         self.network = config['network']

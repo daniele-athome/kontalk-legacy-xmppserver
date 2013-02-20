@@ -1,14 +1,15 @@
 == URGENT ==
 [ ] performance and timeout issues (!!!)
-    [ ] XML parsing takes too much
+    [ ] XML parsing takes too much (binary XML?)
     [ ] using/parsing JID objects uses much time and memory
 [ ] check for stanza loops (in particular with iq errors)
 [ ] encoding problems in router?!?!?
-[ ] interserver conflicts
+[ ] interserver resource conflicts
 
 == TODO ==
 [ ] JIDCache: cache expiration and invalidation (instead of one big timeout)
 [ ] connectionLost: unavailable presence should be sent only if client did not
+[ ] stream compression
 [ ] concurrency problem in offline delivery
     If Alice sends a message to Bob while Bob is connecting, there could be an
     exact moment when c2s sees the initial presence and deliver the message to
@@ -19,13 +20,15 @@
     removing offline safety storing. However, clients could easily ignore
     duplicated messages...
 
-== ALPHA ==
+== FUTURE ==
 [ ] JIDCache: presence observers (might be used with subscriptions too)
 [ ] 2-steps (SMS) registration
 [ ] multi-user chat (without using MUC)
 [ ] stanza storage should be a component (?)
+[ ] high performance router (maybe in C/C++? Or jabberd2 based?)
 
 == COMPLETED ==
+[x] UNIX sockets in component communication
 [x] JIDCache: reuse lookups (prevents multiple requests for the same JID)
 [x] delivery receipts (s2s) - achieved through server-receipts
 [x] client-side acknowledgement

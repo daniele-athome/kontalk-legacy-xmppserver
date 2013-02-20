@@ -656,7 +656,7 @@ class JIDCache(XMPPHandler):
         clientDeferred.callback(out)
 
 
-class Resolver(component.Component):
+class Resolver(xmlstream2.SocketComponent):
     """
     Kontalk resolver XMPP handler.
     This component resolves network JIDs in stanzas (kontalk.net) into server
@@ -682,7 +682,11 @@ class Resolver(component.Component):
 
     def __init__(self, config):
         router_cfg = config['router']
-        component.Component.__init__(self, router_cfg['host'], router_cfg['port'], router_cfg['jid'], router_cfg['secret'])
+        for key in ('socket', 'host', 'port'):
+            if key not in router_cfg:
+                router_cfg[key] = None
+
+        xmlstream2.SocketComponent.__init__(self, router_cfg['socket'], router_cfg['host'], router_cfg['port'], router_cfg['jid'], router_cfg['secret'])
         self.config = config
 
         self.logTraffic = config['debug']
