@@ -443,7 +443,8 @@ class C2SManager(xmlstream2.StreamManager):
         # everything else is handled by initializers
 
     def conflict(self):
-        self.xmlstream.sendStreamError(error.StreamError('conflict'))
+        if self.xmlstream:
+            self.xmlstream.sendStreamError(error.StreamError('conflict'))
 
     def _unauthorized(self, stanza):
         if not stanza.consumed and (not stanza.hasAttribute('to') or stanza['to'] != self.network):
