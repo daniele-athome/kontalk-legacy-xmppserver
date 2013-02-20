@@ -105,10 +105,10 @@ class XMPPServerFactory(xish_xmlstream.XmlStreamFactoryMixin, ServerFactory):
         """Called from the handler when connection to a client is lost."""
         if xs.otherEntity is not None:
             userid, resource = util.jid_to_userid(xs.otherEntity, True)
-            if userid in self.streams and resource in self.streams[userid]:
+            if userid in self.streams and resource in self.streams[userid] and self.streams[userid][resource] == xs:
                 del self.streams[userid][resource]
-                if len(self.streams[userid]) == 0:
-                    del self.streams[userid]
+            if len(self.streams[userid]) == 0:
+                del self.streams[userid]
 
     def client_connected(self, _jid):
         """Return true if the given L{JID} is found connected locally."""
