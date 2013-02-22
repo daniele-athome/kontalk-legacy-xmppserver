@@ -64,7 +64,7 @@ class StanzaStorage:
         """Retrieve stanzas by recipient."""
         pass
 
-    def delete(self, stanzaId):
+    def delete(self, stanzaId, sender=None, recipient=None):
         """Delete a stanza by id."""
         pass
 
@@ -167,11 +167,20 @@ class MySQLStanzaStorage(StanzaStorage):
             return out
         return dbpool.runInteraction(_translate, recipient)
 
-    def delete(self, stanzaId):
+    def delete(self, stanzaId, sender=None, recipient=None):
         global dbpool
         import traceback
         log.debug("deleting stanza %s -- traceback:\n%s" % (stanzaId, ''.join(traceback.format_stack())))
-        return dbpool.runOperation('DELETE FROM stanzas WHERE id = ?', (stanzaId, ))
+        q = 'DELETE FROM stanzas WHERE id = ?'
+        args = [stanzaId]
+        if sender:
+            q += ' AND sender LIKE ?'
+            args.append(sender + '%')
+        if recipient:
+            q += ' AND recipient LIKE ?'
+            args.append(recipient + '%')
+
+        return dbpool.runOperation(q, args)
 
 class MySQLNetworkStorage(NetworkStorage):
 

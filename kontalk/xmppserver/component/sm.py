@@ -326,7 +326,21 @@ class MessageHandler(XMPPHandler):
     def connectionInitialized(self):
         # messages for the server
         #self.xmlstream.addObserver("/message[@to='%s']" % (self.parent.servername), self.parent.error, 100)
+        # ack is above stanza processing rules
+        self.xmlstream.addObserver("/message/ack[@xmlns='%s']" % (xmlstream2.NS_XMPP_SERVER_RECEIPTS), self.ack, 600)
         pass
+
+    def ack(self, stanza):
+        stanza.consumed = True
+        msgId = stanza.ack.getAttribute('id')
+        if msgId:
+            try:
+                to = jid.JID(stanza['to'])
+                sender = self.xmlstream.otherEntity
+                if to.host == self.parent.network and sender.host == self.parent.network:
+                    self.parent.router.stanzadb.delete(msgId, to.user, sender.user)
+            except:
+                pass
 
     def features(self):
         pass

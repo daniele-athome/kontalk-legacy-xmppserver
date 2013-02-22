@@ -471,14 +471,6 @@ class MessageHandler(XMPPHandler):
                             # send message to sm
                             self.parent.sfactory.dispatch(stanza)
 
-                            """
-                            If message is a received receipt, we have just delivered it.
-                            It's not really a big deal if a receipt is lost...
-                            """
-                            if received:
-                                # delete the receipt
-                                self.parent.stanzadb.delete(stanza['id'])
-
                         except:
                             # manager not found - send error or send to offline storage
                             log.debug("c2s manager for %s not found" % (stanza['to'], ))
@@ -491,6 +483,7 @@ class MessageHandler(XMPPHandler):
                         # if message is a received receipt, we can delete the original message
                         if received:
                             # delete the received message
+                            # TODO safe delete with sender/recipient
                             self.parent.stanzadb.delete(received['id'])
 
                         stamp = time.time()
@@ -527,6 +520,7 @@ class MessageHandler(XMPPHandler):
                         message - we can delete it now.
                         """
                         if sender.host != self.parent.servername:
+                            # TODO safe delete with sender/recipient
                             self.parent.stanzadb.delete(receipt['id'])
 
                 else:
@@ -771,7 +765,7 @@ class C2SComponent(xmlstream2.SocketComponent):
                     """
                     If a receipt is requested, we won't delete the message from
                     storage now; we must be sure client has received it.
-                    Otherwise just delete the message.
+                    Otherwise just delete the message immediately.
                     """
                     if not xmlstream2.extract_receipt(msg['stanza'], 'request'):
                         self.stanzadb.delete(msgId)
