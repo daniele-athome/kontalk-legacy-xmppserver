@@ -458,7 +458,7 @@ class MessageHandler(XMPPHandler):
                 # process only our JIDs
                 if to.host == self.parent.servername:
                     if to.user is not None:
-                        receipt = xmlstream2.extract_receipt(stanza, ('request'))
+                        receipt = xmlstream2.extract_receipt(stanza, 'request')
                         received = xmlstream2.extract_receipt(stanza, 'received')
                         try:
                             """
