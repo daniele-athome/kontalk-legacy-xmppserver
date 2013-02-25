@@ -755,6 +755,10 @@ class C2SComponent(xmlstream2.SocketComponent):
                     if msg['stanza'].request:
                         msg['stanza'].request['origin'] = self.servername
 
+                    # mark delayed delivery
+                    delay = msg['stanza'].addElement((xmlstream2.NS_XMPP_DELAY, 'delay'))
+                    delay['stamp'] = msg['timestamp'].strftime(xmlstream2.XMPP_STAMP_FORMAT)
+
                     """
                     We use direct delivery here: it's faster and does not
                     involve JID resolution
