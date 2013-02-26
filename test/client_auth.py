@@ -191,6 +191,11 @@ class Client(object):
         q['node'] = xmlstream2.NS_PROTO_COMMANDS
         items.send(self.network)
 
+        items = client.IQ(xs, 'get')
+        q = items.addElement((xmlstream2.NS_DISCO_ITEMS, 'query'))
+        q['node'] = xmlstream2.NS_MESSAGE_UPLOAD
+        items.send(self.network)
+
         def testProbe():
             if self.peer is not None:
                 userid, resource = util.split_userid(self.peer)
@@ -345,6 +350,14 @@ class Client(object):
             ch['action'] = 'execute'
             cmd.send(self.network)
 
+        def testUpload():
+            cmd = client.IQ(xs, 'set')
+            ch = cmd.addElement((xmlstream2.NS_MESSAGE_UPLOAD, 'upload'))
+            ch['node'] = 'kontalkbox'
+            media = ch.addElement((None, 'media'))
+            media['type'] = 'image/png'
+            cmd.send(self.network)
+
         #reactor.callLater(2, testProbe)
         #reactor.callLater(1, testProbe)
         #reactor.callLater(1, testSubscribe)
@@ -355,6 +368,7 @@ class Client(object):
         #reactor.callLater(1, testRegister)
         #reactor.callLater(1, testValidate)
         #reactor.callLater(1, testCommand)
+        reactor.callLater(1, testUpload)
         #reactor.callLater(30, xs.sendFooter)
 
     def message(self, stanza, xs):

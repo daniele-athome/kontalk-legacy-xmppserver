@@ -657,6 +657,9 @@ class C2SComponent(xmlstream2.SocketComponent):
     def uptime(self):
         return time.time() - self.start_time
 
+    def upload_enabled(self):
+        return 'upload' in self.config and 'enabled' in self.config['upload'] and self.config['upload']['enabled']
+
     """ Connection with router """
 
     def _connected(self, xs):

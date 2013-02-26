@@ -1,0 +1,98 @@
+== Delivery ==
+<message/> contains a out-of-band URL pointing to the big resource for download.
+Optional attribute on <url/> type to indicate a MIME type for the resource.
+Thumbnail (if applicable) is attached to the message using in-band bytestream
+with optional type attribute indicating a MIME type for the resource (which can
+be different from the MIME type of the downloadable resource).
+
+
+<message from='romeo@montague.net/orchard' 
+         id='dsw71gj3'
+         to='juliet@capulet.com/balcony'> 
+  <x xmlns='jabber:x:oob'>
+    <url type='mime_type'>http://prime.kontalk.net/media/filename_or_hash</url>
+  </x>
+  <data xmlns='http://jabber.org/protocol/ibb' seq='0' type='mime_type' sid='i781hf64'>
+    qANQR1DBwU4DX7jmYZnncmUQB/9KuKBddzQH+tZ1ZywKK0yHKnq57kWq+RFtQdCJ
+    WpdWpR0uQsuJe7+vh3NWn59/gTc5MDlX8dS9p0ovStmNcyLhxVgmqS8ZKhsblVeu
+    IpQ0JgavABqibJolc3BKrVtVV1igKiX/N7Pi8RtY1K18toaMDhdEfhBRzO/XB0+P
+    AQhYlRjNacGcslkhXqNjK5Va4tuOAPy2n1Q8UUrHbUd0g+xJ9Bm0G0LZXyvCWyKH
+    kuNEHFQiLuCY6Iv0myq6iX6tjuHehZlFSh80b5BVV9tNLwNR5Eqz1klxMhoghJOA
+  </data>
+</message>
+
+
+== Sending ==
+Client requests info at login:
+
+SEND:
+<iq to='kontalk.net' type='get' id='H_1'>
+  <query xmlns='http://jabber.org/protocol/disco#info'/>
+</iq>
+
+RECV:
+<iq from='kontalk.net' type='result' id='H_1' to='romeo@montague.net/orchard'>
+  <query xmlns='http://jabber.org/protocol/disco#info'>
+    <identity category='server' type='im' name='kontalk'/>
+    <feature ......
+    <feature var='http://www.kontalk.org/extensions/message#upload'/>
+  </query>
+</iq>
+
+Extension message#upload is present, request items for available upload services:
+
+SEND:
+<iq to='kontalk.net' type='get' id='H_2'>
+  <query xmlns='http://jabber.org/protocol/disco#items'
+         node='http://www.kontalk.org/extensions/message#upload'/>
+</iq>
+
+RECV:
+<iq from='kontalk.net' type='result' id='H_2' to='romeo@montague.net/orchard'>
+  <query xmlns='http://jabber.org/protocol/disco#items'
+         node='http://www.kontalk.org/extensions/message#upload'>
+    <item node='kontalkbox' jid='kontalk.net' name='Kontalk dropbox service'/>
+    <item node='dropbox' jid='kontalk.net' name='Dropbox service'/>
+    <item .......
+  </query>
+</iq>
+
+
+Request instructions for upload:
+
+SEND:
+<iq to='kontalk.net' type='set' id='H_3'>
+  <upload xmlns='http://www.kontalk.org/extensions/message#upload'
+          node='kontalkbox'>
+    <media type='image/png'/>
+  </upload>
+</iq>
+
+RECV:
+<iq from='kontalk.net' type='result' id='H_3' to='romeo@montague.net/orchard'>
+  <upload xmlns='http://www.kontalk.org/extensions/message#upload'
+          node='kontalkbox'>
+    <uri>http://www.kontalk.org/media/upload</uri>
+  </upload>
+</iq>
+
+
+Client then connects to the KontalkBox service for uploading the file. The
+upload service will return a URL pointing to the uploaded item.
+
+Sender sends a <message/> stanza containing as out-of-band URL the address
+received by the upload service:
+
+SEND:
+<message from='romeo@montague.net/orchard' 
+         id='dsw71gj3'
+         to='juliet@capulet.com/balcony'> 
+  <x xmlns='jabber:x:oob'>
+    <url type='image/png'>http://prime.kontalk.net/media/filename_or_hash</url>
+  </x>
+</message>
+
+
+Server can choose to generate a thumbnail and include it in the stanza before
+it's being sent to the recipient (of course content must not be encrypted by
+client).

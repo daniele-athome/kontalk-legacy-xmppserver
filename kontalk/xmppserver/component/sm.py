@@ -28,7 +28,7 @@ from twisted.words.xish import domish
 
 from wokkel import xmppim
 
-from kontalk.xmppserver import log, xmlstream2, version, util, push
+from kontalk.xmppserver import log, xmlstream2, version, util, push, upload
 
 
 class PresenceHandler(XMPPHandler):
@@ -148,7 +148,7 @@ class ServerListCommand():
         }, )
 
     def execute(self, stanza):
-        # TODO actually send implement the command :)
+        # TODO actually implement the command :)
         stanza.consumed = True
         res = xmlstream2.toResponse(stanza, 'result')
         cmd = res.addElement((xmlstream2.NS_PROTO_COMMANDS, 'command'))
@@ -243,6 +243,58 @@ class CommandsHandler(XMPPHandler):
 
     def items(self):
         return ({'node': xmlstream2.NS_PROTO_COMMANDS, 'items': self.commands }, )
+
+
+class UploadHandler(XMPPHandler):
+    """
+    Upload media extension.
+    """
+    
+    uploadHandlers = (
+        upload.KontalkBoxUploadService,
+    )
+
+    def __init__(self):
+        XMPPHandler.__init__(self)
+        self.services = []
+        self.serv_handlers = {}
+
+    def connectionInitialized(self):
+        for h in self.uploadHandlers:
+            name = h.name
+            try:
+                config = self.parent.router.config['upload'][name]
+            except:
+                return
+
+            if config['enabled']:
+                serv = h(self, config)
+                servinfo = serv.info()
+                self.services.append(servinfo)
+                self.serv_handlers[servinfo['node']] = serv
+
+        # add observer only if at least one service is enabled
+        if len(self.services):
+            self.xmlstream.addObserver("/iq[@type='set'][@to='%s']/upload[@xmlns='%s']" % (self.parent.network, xmlstream2.NS_MESSAGE_UPLOAD), self.upload, 100)
+
+    def upload(self, stanza):
+        node = stanza.upload.getAttribute('node')
+        log.debug("upload request received: %s" % (node, ))
+        if node and node in self.serv_handlers:
+            try:
+                return self.serv_handlers[node].upload(stanza)
+            except:
+                import traceback
+                traceback.print_exc()
+
+        self.parent.error(stanza)
+
+    def features(self):
+        return (xmlstream2.NS_MESSAGE_UPLOAD, )
+
+    def items(self):
+        return ({'node': xmlstream2.NS_MESSAGE_UPLOAD, 'items': self.services }, )
+
 
 
 class IQHandler(XMPPHandler):
@@ -417,6 +469,7 @@ class C2SManager(xmlstream2.StreamManager):
         PingHandler,
         CommandsHandler,
         PushNotificationsHandler,
+        UploadHandler,
         IQHandler,
         MessageHandler,
     )
@@ -437,6 +490,9 @@ class C2SManager(xmlstream2.StreamManager):
         for handler in self.init_handlers:
             # skip push notifications handler if no push manager is registered
             if handler == PushNotificationsHandler and not self.router.push_manager:
+                continue
+            # skip upload handler if disabled
+            if handler == UploadHandler and not self.router.upload_enabled():
                 continue
 
             h = handler()
