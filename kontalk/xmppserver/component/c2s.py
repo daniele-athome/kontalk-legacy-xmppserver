@@ -460,12 +460,13 @@ class MessageHandler(XMPPHandler):
                     if to.user is not None:
                         receipt = xmlstream2.extract_receipt(stanza, 'request')
                         received = xmlstream2.extract_receipt(stanza, 'received')
+                        chat_msg = (stanza.getAttribute('type') == 'chat')
                         try:
                             """
                             We are deliberately ignoring messages with sent
                             receipt because they are assumed to be volatile.
                             """
-                            if receipt or received:
+                            if chat_msg and (receipt or received):
                                 # send message to offline storage just to be safe
                                 stanza['id'] = self.message_offline(stanza)
                             # send message to sm
@@ -475,13 +476,13 @@ class MessageHandler(XMPPHandler):
                             # manager not found - send error or send to offline storage
                             log.debug("c2s manager for %s not found" % (stanza['to'], ))
                             # receipt not present - send to offline storage
-                            if not receipt and stanza.body:
+                            if chat_msg and not receipt and stanza.body:
                                 stanza['id'] = self.message_offline(stanza)
                             if self.parent.push_manager and (stanza.body and (not receipt or receipt.name == 'request')):
                                 self.parent.push_manager.notify(to)
 
                         # if message is a received receipt, we can delete the original message
-                        if received:
+                        if chat_msg and received:
                             # delete the received message
                             # TODO safe delete with sender/recipient
                             self.parent.stanzadb.delete(received['id'])
@@ -489,7 +490,7 @@ class MessageHandler(XMPPHandler):
                         stamp = time.time()
 
                         # sent receipt will be sent only if message is not coming from storage
-                        if not xmlstream2.has_element(stanza, xmlstream2.NS_XMPP_STORAGE, 'storage'):
+                        if chat_msg and not xmlstream2.has_element(stanza, xmlstream2.NS_XMPP_STORAGE, 'storage'):
                             # send ack only for chat messages (if requested)
                             if stanza.getAttribute('type') == 'chat' and xmlstream2.extract_receipt(stanza, 'request'):
                                 self.send_ack(stanza, 'sent', stamp)
