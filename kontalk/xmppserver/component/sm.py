@@ -377,12 +377,14 @@ class DiscoveryHandler(XMPPHandler):
             response = xmlstream2.toResponse(stanza, 'result')
             query = response.addElement((xmlstream2.NS_DISCO_ITEMS, 'query'))
             node = stanza.query.getAttribute('node')
-            if node and node in self.items:
-                for item in self.items[node]:
-                    n = query.addElement((None, 'item'))
-                    n['jid'] = item['jid']
-                    n['node'] = item['node']
-                    n['name'] = item['name']
+            if node:
+                query['node'] = node
+                if node in self.items:
+                    for item in self.items[node]:
+                        n = query.addElement((None, 'item'))
+                        n['jid'] = item['jid']
+                        n['node'] = item['node']
+                        n['name'] = item['name']
 
             self.send(response)
 
