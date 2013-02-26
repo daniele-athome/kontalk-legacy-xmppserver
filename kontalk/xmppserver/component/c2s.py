@@ -478,7 +478,7 @@ class MessageHandler(XMPPHandler):
                             # receipt not present - send to offline storage
                             if chat_msg and not receipt and stanza.body:
                                 stanza['id'] = self.message_offline(stanza)
-                            if self.parent.push_manager and (stanza.body and (not receipt or receipt.name == 'request')):
+                            if self.parent.push_manager and (chat_msg and stanza.body and (not receipt or receipt.name == 'request')):
                                 self.parent.push_manager.notify(to)
 
                         # if message is a received receipt, we can delete the original message
