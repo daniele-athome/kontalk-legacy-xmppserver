@@ -22,7 +22,7 @@
 import traceback
 import urllib, urllib2
 
-import log, util
+import log
 
 
 class GCMPushNotifications:
