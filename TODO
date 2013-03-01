@@ -6,6 +6,7 @@
 [ ] check for stanza loops (in particular with iq errors)
 [ ] encoding problems in router?!?!?
 [ ] interserver resource conflicts
+[ ] handle presence priority
 
 == TODO ==
 [ ] JIDCache: cache expiration and invalidation (instead of one big timeout)
