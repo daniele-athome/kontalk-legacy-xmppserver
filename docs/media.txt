@@ -6,9 +6,9 @@ with optional type attribute indicating a MIME type for the resource (which can
 be different from the MIME type of the downloadable resource).
 
 
-<message from='romeo@montague.net/orchard' 
+<message from='romeo@montague.net/orchard'
          id='dsw71gj3'
-         to='juliet@capulet.com/balcony'> 
+         to='juliet@capulet.com/balcony'>
   <x xmlns='jabber:x:oob'>
     <url type='mime_type'>http://prime.kontalk.net/media/filename_or_hash</url>
   </x>
@@ -61,7 +61,7 @@ RECV:
 Request instructions for upload:
 
 SEND:
-<iq to='kontalk.net' type='set' id='H_3'>
+<iq to='kontalk.net' type='get' id='H_3'>
   <upload xmlns='http://www.kontalk.org/extensions/message#upload'
           node='kontalkbox'>
     <media type='image/png'/>
@@ -84,9 +84,9 @@ Sender sends a <message/> stanza containing as out-of-band URL the address
 received by the upload service:
 
 SEND:
-<message from='romeo@montague.net/orchard' 
+<message from='romeo@montague.net/orchard'
          id='dsw71gj3'
-         to='juliet@capulet.com/balcony'> 
+         to='juliet@capulet.com/balcony'>
   <x xmlns='jabber:x:oob'>
     <url type='image/png'>http://prime.kontalk.net/media/filename_or_hash</url>
   </x>
