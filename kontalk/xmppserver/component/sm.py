@@ -249,7 +249,7 @@ class UploadHandler(XMPPHandler):
     """
     Upload media extension.
     """
-    
+
     uploadHandlers = (
         upload.KontalkBoxUploadService,
     )
@@ -275,7 +275,7 @@ class UploadHandler(XMPPHandler):
 
         # add observer only if at least one service is enabled
         if len(self.services):
-            self.xmlstream.addObserver("/iq[@type='set'][@to='%s']/upload[@xmlns='%s']" % (self.parent.network, xmlstream2.NS_MESSAGE_UPLOAD), self.upload, 100)
+            self.xmlstream.addObserver("/iq[@type='get'][@to='%s']/upload[@xmlns='%s']" % (self.parent.network, xmlstream2.NS_MESSAGE_UPLOAD), self.upload, 100)
 
     def upload(self, stanza):
         node = stanza.upload.getAttribute('node')
