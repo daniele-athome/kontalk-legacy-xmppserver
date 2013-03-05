@@ -61,6 +61,7 @@ class XMPPServerFactory(xish_xmlstream.XmlStreamFactoryMixin, ServerFactory):
         self.network = network
         self.servername = servername
         self.streams = {}
+        self.tls_ctx = None
 
     def loadPEM(self, certfile, keyfile):
         if ssl is None:
