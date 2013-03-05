@@ -373,15 +373,26 @@ class Client(object):
 
     def message(self, stanza, xs):
         print "message from %s" % (stanza['from'], )
-        if stanza.getAttribute('type') == 'chat' and stanza.request and stanza.request.uri == 'urn:xmpp:server-receipts':
-            def sendReceipt(stanza):
-                receipt = domish.Element((None, 'message'))
-                receipt['to'] = stanza['from']
-                child = receipt.addElement(('urn:xmpp:server-receipts', 'received'))
-                child['id'] = stanza.request['id']
-                xs.send(receipt)
-            print "queueing ack"
-            reactor.callLater(5, sendReceipt, stanza)
+        if stanza.getAttribute('type') == 'chat':
+            if stanza.request and stanza.request.uri == 'urn:xmpp:server-receipts':
+                def sendReceipt(stanza):
+                    receipt = domish.Element((None, 'message'))
+                    receipt['type'] = 'chat'
+                    receipt['to'] = stanza['from']
+                    child = receipt.addElement(('urn:xmpp:server-receipts', 'received'))
+                    child['id'] = stanza.request['id']
+                    xs.send(receipt)
+                print "queueing ack"
+                reactor.callLater(5, sendReceipt, stanza)
+
+            # received ack
+            elif stanza.received and stanza.received.uri == 'urn:xmpp:server-receipts':
+                ack = domish.Element((None, 'message'))
+                ack['to'] = stanza['from']
+                ack['type'] = 'chat'
+                child = ack.addElement(('urn:xmpp:server-receipts', 'ack'))
+                child['id'] = stanza['id']
+                xs.send(ack)
 
     def stanza(self, stanza, xs):
         #print 'STANZA: %r' % (stanza.toXml().encode('utf-8'), )
