@@ -111,6 +111,13 @@ class XMPPServerFactory(xish_xmlstream.XmlStreamFactoryMixin, ServerFactory):
                 if len(self.streams[userid]) == 0:
                     del self.streams[userid]
 
+    def check_conflict(self, _jid):
+        """Checks for local conflict and disconnects the conflicting local resource."""
+        if _jid.user and _jid.host in self.router.keyring.hostlist():
+            if _jid.user in self.streams and _jid.resource in self.streams[_jid.user]:
+                log.debug("network resource conflict for %s" % (_jid.full(), ))
+                self.streams[_jid.user][_jid.resource].conflict()
+
     def client_connected(self, _jid):
         """Return true if the given L{JID} is found connected locally."""
         userid, resource = util.jid_to_userid(_jid, True)
@@ -283,6 +290,9 @@ class InitialPresenceHandler(XMPPHandler):
         Here we are sending offline messages to the resolver which will deliver
         them through the actual route.
         """
+
+        # check for external conflict
+        self.parent.sfactory.check_conflict(jid.JID(stanza['from']))
 
         # initial presence - deliver offline storage
         def output(data):
