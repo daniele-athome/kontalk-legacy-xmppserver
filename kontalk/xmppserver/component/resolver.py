@@ -26,7 +26,7 @@ from twisted.python import failure
 from twisted.internet import defer, reactor
 from twisted.words.protocols.jabber.xmlstream import XMPPHandler
 from twisted.words.xish import domish
-from twisted.words.protocols.jabber import jid, error, xmlstream, client
+from twisted.words.protocols.jabber import jid, error
 
 from wokkel import component
 

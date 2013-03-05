@@ -280,7 +280,7 @@ class Client(object):
             message.addElement(('urn:xmpp:server-receipts', 'request'))
             xs.send(message)
             #xs.sendFooter()
-        
+
         def testMsgLoop():
             global counter
             counter = 0
@@ -368,7 +368,7 @@ class Client(object):
         #reactor.callLater(1, testRegister)
         #reactor.callLater(1, testValidate)
         #reactor.callLater(1, testCommand)
-        reactor.callLater(1, testUpload)
+        #reactor.callLater(1, testUpload)
         #reactor.callLater(30, xs.sendFooter)
 
     def message(self, stanza, xs):
