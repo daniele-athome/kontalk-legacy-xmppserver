@@ -273,7 +273,7 @@ class XMPPNetServerFactory(xmlstream.XmlStreamServerFactory):
             self.service.dispatch(xs, element)
 
 
-class IS2SService(Interface):
+class INetService(Interface):
 
     def validateConnection(xs):
         pass
@@ -288,7 +288,7 @@ class IS2SService(Interface):
 class NetService(object):
     """Net service. Used by Net component class."""
 
-    implements(IS2SService)
+    implements(INetService)
 
     def __init__(self, config, router, keyring):
         self.config = config
@@ -408,6 +408,7 @@ class NetService(object):
             stanza['origin'] = stanza['from']
             stanza['from'] = stanzaFrom.full()
 
+        log.debug("sending data to %s [%r]" % (otherHost, self._outgoingStreams, ))
         if otherHost not in self._outgoingStreams:
             # There is no connection with the destination (yet). Cache the
             # outgoing stanza until the connection has been established.
