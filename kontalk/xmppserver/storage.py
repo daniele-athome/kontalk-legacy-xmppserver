@@ -25,7 +25,7 @@ from twisted.words.protocols.jabber import jid
 
 from wokkel import generic
 
-import base64
+import base64, time, datetime
 
 try:
     from collections import OrderedDict
@@ -127,8 +127,9 @@ class MySQLStanzaStorage(StanzaStorage):
             util.jid_to_userid(jid.JID(stanza['from'])),
             util.jid_to_userid(jid.JID(stanza['to'])),
             stanza.toXml().encode('utf-8').decode('utf-8'),
+            int(time.time()*1000),
         )
-        return dbpool.runOperation('INSERT INTO stanzas (id, sender, recipient, content, timestamp) VALUES(?, ?, ?, ?, UTC_TIMESTAMP())', args)
+        return dbpool.runOperation('INSERT INTO stanzas (id, sender, recipient, content, timestamp) VALUES(?, ?, ?, ?, ?)', args)
 
     def get_by_id(self, stanzaId):
         global dbpool
@@ -153,7 +154,7 @@ class MySQLStanzaStorage(StanzaStorage):
             out = OrderedDict()
             for row in data:
                 stanzaId = str(row[0])
-                d = { 'timestamp': row[1] }
+                d = { 'timestamp': datetime.datetime.fromtimestamp(row[1] / 1e3) }
                 d['stanza'] = generic.parseXml(row[2].decode('utf-8').encode('utf-8'))
 
                 """

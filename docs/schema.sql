@@ -3,9 +3,9 @@
 -- http://www.phpmyadmin.net
 --
 -- Host: localhost
--- Generato il: Dic 27, 2012 alle 18:59
+-- Generato il: Mar 05, 2013 alle 21:26
 -- Versione del server: 5.5.28
--- Versione PHP: 5.4.4-10
+-- Versione PHP: 5.4.4-13
 
 SET SQL_MODE="NO_AUTO_VALUE_ON_ZERO";
 SET time_zone = "+00:00";
@@ -57,7 +57,7 @@ CREATE TABLE `stanzas` (
   `sender` varchar(48) CHARACTER SET ascii NOT NULL COMMENT 'From',
   `recipient` varchar(48) CHARACTER SET ascii NOT NULL COMMENT 'To',
   `content` mediumblob NOT NULL COMMENT 'Stanza content',
-  `timestamp` datetime NOT NULL COMMENT 'Stanza timestamp',
+  `timestamp` bigint(20) unsigned NOT NULL COMMENT 'Stanza timestamp',
   PRIMARY KEY (`id`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8 COLLATE=utf8_bin COMMENT='Pending stanzas';
 
