@@ -207,7 +207,8 @@ class MySQLPresenceStorage(PresenceStorage):
                 return {
                     'timestamp': data[0],
                     'status': base64.b64decode(data[1]).decode('utf-8') if data[1] is not None else '',
-                    'show': data[2]
+                    'show': data[2],
+                    'priority': data[3],
                 }
         def _fetchall(tx, query, args):
             tx.execute(query, args)
@@ -218,18 +219,19 @@ class MySQLPresenceStorage(PresenceStorage):
                     'userid': d[0],
                     'timestamp': d[1],
                     'status': base64.b64decode(d[2]).decode('utf-8') if d[2] is not None else '',
-                    'show': d[3]
+                    'show': d[3],
+                    'priority': d[4],
                 })
             return out
 
         userid = util.jid_to_userid(user_jid)
         if user_jid.resource:
             interaction = _fetchone
-            query = 'SELECT `timestamp`, `status`, `show` FROM presence WHERE userid = ?'
+            query = 'SELECT `timestamp`, `status`, `show`, `priority` FROM presence WHERE userid = ?'
             args = (userid, )
         else:
             interaction = _fetchall
-            query = 'SELECT `userid`, `timestamp`, `status`, `show` FROM presence WHERE userid LIKE ? ORDER BY `timestamp` DESC'
+            query = 'SELECT `userid`, `timestamp`, `status`, `show`, `priority` FROM presence WHERE userid LIKE ? ORDER BY `timestamp` DESC'
             args = (userid + '%', )
 
         return dbpool.runInteraction(interaction, query, args)
@@ -246,8 +248,13 @@ class MySQLPresenceStorage(PresenceStorage):
                     return base64.b64encode(val.__str__().encode('utf-8'))
             return None
 
-        values = (userid, encode_not_empty(stanza.status), util.str_none(stanza.show))
-        return dbpool.runOperation('REPLACE INTO presence VALUES(?, UTC_TIMESTAMP(), ?, ?)', values)
+        try:
+            priority = int(stanza.priority)
+        except:
+            priority = 0
+
+        values = (userid, encode_not_empty(stanza.status), util.str_none(stanza.show), priority)
+        return dbpool.runOperation('REPLACE INTO presence VALUES(?, UTC_TIMESTAMP(), ?, ?, ?)', values)
 
     def touch(self, user_jid):
         global dbpool
