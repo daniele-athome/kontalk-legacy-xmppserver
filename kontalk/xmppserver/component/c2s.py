@@ -480,7 +480,8 @@ class MessageHandler(XMPPHandler):
                             if chat_msg and (receipt or received):
                                 # send message to offline storage just to be safe
                                 stanza['id'] = self.message_offline(stanza)
-                            # send message to sm
+
+                            # send message to sm only to non-negative resources
                             self.parent.sfactory.dispatch(stanza)
 
                         except:

@@ -59,6 +59,9 @@ class PresenceHandler(XMPPHandler):
         which will do the rest.
         """
 
+        # store presence stanza in the stream manager
+        self.parent._presence = stanza
+
         # initial presence - tell c2s about it
         if not stanza.hasAttribute('to'):
             self.parent.router.local_presence(self.xmlstream.otherEntity, stanza)
@@ -479,6 +482,7 @@ class C2SManager(xmlstream2.StreamManager):
         self.router = router
         self.network = network
         self.servername = servername
+        self._presence = None
         xmlstream2.StreamManager.__init__(self, xs)
 
         """
@@ -604,6 +608,33 @@ class C2SManager(xmlstream2.StreamManager):
 
     def send(self, stanza, force=False):
         """Send stanza to client, setting to and id attributes if not present."""
+
+        if stanza.hasAttribute('original-to'):
+            origTo = stanza.getAttribute('original-to')
+            del stanza['original-to']
+
+            """
+            Extract original recipient from stanza.
+            If original-to is not present, we will assume that
+            stanza was intended to the full JID.
+            """
+            origTo = jid.JID(origTo)
+            log.debug("sending message to client %s (original was %s)" % (self.xmlstream.otherEntity, origTo))
+            if self._presence:
+                log.debug("_presence: %s" % (self._presence.toXml(), ))
+
+            # sending to bare JID
+            # initial presence found
+            # negative resource
+            # => DROP STANZA
+            try:
+                if not origTo.resource and self._presence and int(str(self._presence.priority)) < 0:
+                    return None
+            except:
+                # this is for int()
+                import traceback
+                traceback.print_exc()
+
         # FIXME using deepcopy is not safe
         from copy import deepcopy
         stanza = deepcopy(stanza)

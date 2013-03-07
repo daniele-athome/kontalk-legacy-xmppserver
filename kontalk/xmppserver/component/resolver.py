@@ -767,6 +767,8 @@ class Resolver(xmlstream2.SocketComponent):
 
         util.resetNamespace(stanza, component.NS_COMPONENT_ACCEPT)
 
+        # save original recipient for later
+        stanza['original-to'] = stanza['to']
         to = jid.JID(stanza['to'])
 
         # stanza is intended to the network

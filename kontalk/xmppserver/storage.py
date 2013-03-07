@@ -249,7 +249,7 @@ class MySQLPresenceStorage(PresenceStorage):
             return None
 
         try:
-            priority = int(stanza.priority)
+            priority = int(stanza.priority.__str__())
         except:
             priority = 0
 

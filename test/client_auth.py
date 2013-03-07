@@ -175,7 +175,7 @@ class Client(object):
         xs.addObserver('/*', self.stanza, xs=xs)
         xs.addObserver('/message', self.message, xs=xs)
 
-        presence = xmppim.AvailablePresence(statuses={None: 'status message'})
+        presence = xmppim.AvailablePresence(statuses={None: 'status message'}, priority=0)
         xs.send(presence)
 
         ver = client.IQ(xs, 'get')
