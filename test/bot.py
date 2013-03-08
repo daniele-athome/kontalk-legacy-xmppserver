@@ -5,10 +5,11 @@
 from twisted.internet import reactor
 from twisted.words.xish import domish
 
-import sys, json
+import sys, time, json
 
 from kontalk.xmppserver import util, xmlstream2
 import bot_utils
+
 
 class Handler:
     def __init__(self, config):
@@ -52,10 +53,9 @@ class Handler:
     def message(self, stanza):
         """Message stanza received."""
 
-        print "message from %s" % (stanza['from'], )
-        if self.config['behavior']['ack'] != False:
+        #print "message from %s" % (stanza['from'], )
+        if type(self.config['behavior']['ack']) == int:
             delay = self.config['behavior']['ack']
-
             if stanza.getAttribute('type') == 'chat':
                 if stanza.request and stanza.request.uri == 'urn:xmpp:server-receipts':
                     self.stats('messages:incoming')
@@ -118,11 +118,19 @@ class Handler:
         else:
             self.stats('messages:sent')
 
-    def bounceIncrement(self, peer, request=False, begin=False):
+    def bounceIncrement(self, peer, request=False, begin=False, delay=0, count=0):
+        self._bounceIncStart = time.time()
+        self._bounceIncAvg = 0
+        self._bounceCount = 0
         def _count(stanza):
             try:
                 i = int(str(stanza.body))
-                self.sendTextMessage(peer, str(i+1), request)
+                if count > 0 and i < count:
+                    self._bounceIncAvg += (time.time() - self._bounceIncStart)
+                    self._bounceCount += 1
+                    reactor.callLater(delay, self.sendTextMessage, peer, str(i+1), request)
+                else:
+                    self.stats('messages:bouncesPerSecond', self._bounceIncAvg / self._bounceCount)
             except:
                 pass
         self.client.xmlstream.addObserver("/message", _count)
