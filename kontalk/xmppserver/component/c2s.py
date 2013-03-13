@@ -374,6 +374,12 @@ class PresenceProbeHandler(XMPPHandler):
                 if presence['show'] is not None:
                     response.addElement((None, 'show'), content=presence['show'])
 
+                if not self.parent.sfactory.client_connected(response_from):
+                    response['type'] = 'unavailable'
+                    delay = domish.Element(('urn:xmpp:delay', 'delay'))
+                    delay['stamp'] = presence['timestamp'].strftime(xmlstream2.XMPP_STAMP_FORMAT)
+                    response.addChild(delay)
+
                 response.addChild(chain)
                 self.send(response)
                 log.debug("probe result sent: %s" % (response.toXml().encode('utf-8'), ))
