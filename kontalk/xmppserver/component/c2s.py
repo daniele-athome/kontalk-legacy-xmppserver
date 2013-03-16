@@ -374,6 +374,7 @@ class PresenceProbeHandler(XMPPHandler):
                 if presence['show'] is not None:
                     response.addElement((None, 'show'), content=presence['show'])
 
+                response_from = util.userid_to_jid(presence['userid'], self.parent.servername)
                 if not self.parent.sfactory.client_connected(response_from):
                     response['type'] = 'unavailable'
                     delay = domish.Element(('urn:xmpp:delay', 'delay'))
