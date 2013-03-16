@@ -460,6 +460,7 @@ class JIDCache(XMPPHandler):
             if stanza.getAttribute('type') == 'error':
                 # TODO duplicated code
                 self.xmlstream.removeObserver("/presence/group[@id='%s']" % (stanza['id'], ), _presence)
+                self.xmlstream.removeObserver("/presence[@type='error'][@id='%s']" % (stanza['id'], ), _presence)
                 if not callback.called:
                     # cancel timeout
                     timeout.cancel()
@@ -477,6 +478,7 @@ class JIDCache(XMPPHandler):
             if not chain or int(chain['count']) == len(buf):
                 # TODO duplicated code
                 self.xmlstream.removeObserver("/presence/group[@id='%s']" % (stanza['id'], ), _presence)
+                self.xmlstream.removeObserver("/presence[@type='error'][@id='%s']" % (stanza['id'], ), _presence)
                 if not callback.called:
                     # cancel timeout
                     timeout.cancel()
@@ -486,6 +488,7 @@ class JIDCache(XMPPHandler):
         def _abort(stanzaId, callback, buf):
             #log.debug("presence broadcast request timed out!")
             self.xmlstream.removeObserver("/presence/group[@id='%s']" % (stanzaId, ), _presence)
+            self.xmlstream.removeObserver("/presence[@type='error'][@id='%s']" % (stanzaId, ), _presence)
             if not callback.called:
                 #callback.errback(failure.Failure(internet_error.TimeoutError()))
                 callback.callback(buf if len(buf) > 0 else None)
@@ -500,7 +503,10 @@ class JIDCache(XMPPHandler):
             # timeout of request
             timeout = reactor.callLater(self.MAX_LOOKUP_TIMEOUT*wait_factor*len(idList), _abort, stanzaId=stanzaId, callback=d, buf=buf)
 
+            # add stanza group observer
             self.xmlstream.addObserver("/presence/group[@id='%s']" % (stanzaId, ), _presence, 150, callback=d, timeout=timeout, buf=buf)
+            # routing error observer
+            self.xmlstream.addObserver("/presence[@type='error'][@id='%s']" % (stanzaId, ), _presence, 150, callback=d, timeout=timeout, buf=buf)
 
         # gather all returned presence from the network
         return defer.gatherResults(deferList, True)
