@@ -335,8 +335,8 @@ class PresenceProbeHandler(XMPPHandler):
         stanza.consumed = True
 
         def _db(presence, stanza):
-            #log.debug("presence: %r" % (presence, ))
-            if type(presence) == list:
+            log.debug("presence: %r" % (presence, ))
+            if type(presence) == list and len(presence) > 0:
                 chain = domish.Element((xmlstream2.NS_XMPP_STANZA_GROUP, 'group'))
                 chain['id'] = stanza['id']
                 chain['count'] = str(len(presence))
@@ -362,7 +362,7 @@ class PresenceProbeHandler(XMPPHandler):
 
                     self.send(response)
                     log.debug("probe result sent: %s" % (response.toXml().encode('utf-8'), ))
-            elif presence is not None:
+            elif presence is not None and type(presence) != list:
                 chain = domish.Element((xmlstream2.NS_XMPP_STANZA_GROUP, 'group'))
                 chain['id'] = stanza['id']
                 chain['count'] = '1'
@@ -384,8 +384,16 @@ class PresenceProbeHandler(XMPPHandler):
                 self.send(response)
                 log.debug("probe result sent: %s" % (response.toXml().encode('utf-8'), ))
             else:
-                # TODO return error?
                 log.debug("probe: user not found")
+                # TODO return error?
+                response = xmlstream2.toResponse(stanza, 'error')
+
+                chain = domish.Element((xmlstream2.NS_XMPP_STANZA_GROUP, 'group'))
+                chain['id'] = stanza['id']
+                chain['count'] = '1'
+                response.addChild(chain)
+
+                self.send(response)
 
         to = jid.JID(stanza['to'])
         d = self.parent.presencedb.get(to)

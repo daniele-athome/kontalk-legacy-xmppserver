@@ -456,7 +456,17 @@ class JIDCache(XMPPHandler):
         """
         idList = self.network_presence_probe(_jid)
         def _presence(stanza, callback, timeout, buf):
-            # check if stanza is for the requested user
+            # presence probe error - finish here
+            if stanza.getAttribute('type') == 'error':
+                # TODO duplicated code
+                self.xmlstream.removeObserver("/presence/group[@id='%s']" % (stanza['id'], ), _presence)
+                if not callback.called:
+                    # cancel timeout
+                    timeout.cancel()
+                    # fire deferred
+                    callback.callback(buf)
+                return
+
             sender = jid.JID(stanza['from'])
             log.debug("JID %s found!" % (sender.full(), ))
             stanza.consumed = True
@@ -465,7 +475,7 @@ class JIDCache(XMPPHandler):
             chain = stanza.group
             # end of presence chain!!!
             if not chain or int(chain['count']) == len(buf):
-                # higher priority than normal presence since we don't want to notify subscribers of a presence probe
+                # TODO duplicated code
                 self.xmlstream.removeObserver("/presence/group[@id='%s']" % (stanza['id'], ), _presence)
                 if not callback.called:
                     # cancel timeout

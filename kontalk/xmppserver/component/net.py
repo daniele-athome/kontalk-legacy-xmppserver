@@ -346,7 +346,7 @@ class NetService(object):
                 for element in self._outgoingQueues[otherHost]:
                     log.debug("ERROR pre: %s" % (element.toXml().encode('utf-8'),))
                     # do not send routing errors for presence
-                    if element.name != 'presence':
+                    if element.name == 'message':
                         e = error.StanzaError('network-server-timeout', 'wait')
                         log.debug("ERROR back %s" % (e.toResponse(element).toXml(), ))
                         err = e.toResponse(element)
@@ -354,6 +354,19 @@ class NetService(object):
                         c = err.addElement((None, 'original'))
                         c.addChild(element)
                         self.router.send(err)
+                    # send back presence with type error for presence probes
+                    elif element.name == 'presence' and element.getAttribute('type') == 'probe':
+                        e = xmlstream2.toResponse(element, 'error')
+                        if e.hasAttribute('destination'):
+                            e['to'] = e['destination']
+                            del e['destination']
+
+                        gid = e.getAttribute('id')
+                        if gid:
+                            group = e.addElement((xmlstream2.NS_XMPP_STANZA_GROUP, 'group'))
+                            group['id'] = gid
+                            group['count'] = str(1)
+                        self.router.send(e)
                 del self._outgoingQueues[otherHost]
 
         if otherHost in self._outgoingConnecting:
