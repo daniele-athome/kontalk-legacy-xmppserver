@@ -548,6 +548,7 @@ class MessageHandler(XMPPHandler):
                         message - we can delete it now.
                         """
                         if sender.host != self.parent.servername:
+                            log.debug("remote server now has responsibility for message %s - deleting" % (receipt['id'], ))
                             # TODO safe delete with sender/recipient
                             self.parent.stanzadb.delete(receipt['id'])
 
@@ -761,7 +762,12 @@ class C2SComponent(xmlstream2.SocketComponent):
 
     def local(self, stanza):
         """Handle stanzas delivered to this component."""
-        pass
+        if stanza.name == 'message' and stanza['from'] == self.network and stanza.getAttribute('type') == 'chat':
+            log.debug("message stanza from resolver - CHECK!")
+            receipt = xmlstream2.extract_receipt(stanza, 'received')
+            if receipt:
+                self.stanzadb.delete(receipt['id'])
+
 
     def not_found(self, stanza):
         """Handle stanzas for unavailable resources."""

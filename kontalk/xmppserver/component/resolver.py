@@ -830,7 +830,7 @@ class Resolver(xmlstream2.SocketComponent):
                             if True: # TODO why this?? -- force_delivery:
                                 for _to in rcpts:
                                     stanza['to'] = _to.full()
-                                    component.Component.send(self, stanza)
+                                    self._send(stanza)
 
                         # destination was a bare JID
                         else:
@@ -839,20 +839,20 @@ class Resolver(xmlstream2.SocketComponent):
                                 if self.cache.jid_available(_to):
                                     avail += 1
                                     stanza['to'] = _to.full()
-                                    component.Component.send(self, stanza)
+                                    self._send(stanza)
 
                             # no available resources, send to first network bare JID
                             if avail == 0:
                                 for _to in rcpts:
                                     stanza['to'] = _to.userhost()
-                                    component.Component.send(self, stanza)
+                                    self._send(stanza)
                                     break
 
                     else:
                         for _to in rcpts:
                             if self.cache.jid_available(_to):
                                 stanza['to'] = _to.full()
-                                component.Component.send(self, stanza)
+                                self._send(stanza)
 
                 # used for the next callback in chain
                 return rcpts
@@ -863,7 +863,26 @@ class Resolver(xmlstream2.SocketComponent):
 
         # otherwise send to router
         else:
-            component.Component.send(self, stanza)
+            self._send(stanza)
+
+    def _send(self, stanza):
+        """Sends a stanza to the router. Handles other things in the way too."""
+
+        to = jid.JID(stanza['to'])
+        if stanza.name == 'message' and to.host != self.servername and to.host in self.keyring.hostlist():
+            log.debug("message to remote server - CHECK!")
+            received = xmlstream2.extract_receipt(stanza, 'received')
+            if received:
+                log.debug("message receipt going to server - sending notice to c2s to delete message %s" % (received['id'], ))
+                msg = domish.Element((None, 'message'))
+                msg['type'] = stanza['type']
+                msg['from'] = self.network
+                msg['to'] = self.servername
+                rec = msg.addElement((xmlstream2.NS_XMPP_SERVER_RECEIPTS, 'received'))
+                rec['id'] = received['id']
+                component.Component.send(self, msg)
+
+        return component.Component.send(self, stanza)
 
     def cancelSubscriptions(self, user):
         """Cancel all subscriptions requested by the given user."""
