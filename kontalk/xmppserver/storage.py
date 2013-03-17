@@ -127,7 +127,7 @@ class MySQLStanzaStorage(StanzaStorage):
             util.jid_to_userid(jid.JID(stanza['from'])),
             util.jid_to_userid(jid.JID(stanza['to'])),
             stanza.toXml().encode('utf-8').decode('utf-8'),
-            int(time.time()*1000),
+            int(time.time()*1e3),
         )
         return dbpool.runOperation('INSERT INTO stanzas (id, sender, recipient, content, timestamp) VALUES(?, ?, ?, ?, ?)', args)
 
@@ -154,7 +154,7 @@ class MySQLStanzaStorage(StanzaStorage):
             out = OrderedDict()
             for row in data:
                 stanzaId = str(row[0])
-                d = { 'timestamp': datetime.datetime.fromtimestamp(row[1] / 1e3) }
+                d = { 'timestamp': datetime.datetime.utcfromtimestamp(row[1] / 1e3) }
                 d['stanza'] = generic.parseXml(row[2].decode('utf-8').encode('utf-8'))
 
                 """
