@@ -205,10 +205,11 @@ class MySQLPresenceStorage(PresenceStorage):
             data = tx.fetchone()
             if data:
                 return {
-                    'timestamp': data[0],
-                    'status': base64.b64decode(data[1]).decode('utf-8') if data[1] is not None else '',
-                    'show': data[2],
-                    'priority': data[3],
+                    'userid': data[0],
+                    'timestamp': data[1],
+                    'status': base64.b64decode(data[2]).decode('utf-8') if data[2] is not None else '',
+                    'show': data[3],
+                    'priority': data[4],
                 }
         def _fetchall(tx, query, args):
             tx.execute(query, args)
@@ -227,7 +228,7 @@ class MySQLPresenceStorage(PresenceStorage):
         userid = util.jid_to_userid(user_jid)
         if user_jid.resource:
             interaction = _fetchone
-            query = 'SELECT `timestamp`, `status`, `show`, `priority` FROM presence WHERE userid = ?'
+            query = 'SELECT `userid`, `timestamp`, `status`, `show`, `priority` FROM presence WHERE userid = ?'
             args = (userid, )
         else:
             interaction = _fetchall
