@@ -297,8 +297,8 @@ class InitialPresenceHandler(XMPPHandler):
         # initial presence - deliver offline storage
         def output(data):
             log.debug("data: %r" % (data, ))
-            for msgId, msg in data.iteritems():
-                log.debug("msg[%s]=%s" % (msgId, msg['stanza'].toXml().encode('utf-8'), ))
+            for msg in data:
+                log.debug("msg[%s]=%s" % (msg['id'], msg['stanza'].toXml().encode('utf-8'), ))
                 try:
                     """
                     Mark the stanza with our server name, so we'll receive a
@@ -314,7 +314,7 @@ class InitialPresenceHandler(XMPPHandler):
                     """
                 except:
                     traceback.print_exc()
-                    log.debug("offline message delivery failed (%s)" % (msgId, ))
+                    log.debug("offline message delivery failed (%s)" % (msg['id'], ))
 
         d = self.parent.stanzadb.get_by_recipient(jid.JID(stanza['from']))
         d.addCallback(output)
@@ -782,8 +782,8 @@ class C2SComponent(xmlstream2.SocketComponent):
         # initial presence - deliver offline storage
         def output(data):
             log.debug("data: %r" % (data, ))
-            for msgId, msg in data.iteritems():
-                log.debug("msg[%s]=%s" % (msgId, msg['stanza'].toXml().encode('utf-8'), ))
+            for msg in data:
+                log.debug("msg[%s]=%s" % (msg['id'], msg['stanza'].toXml().encode('utf-8'), ))
                 try:
                     """
                     Mark the stanza with our server name, so we'll receive a
@@ -809,10 +809,10 @@ class C2SComponent(xmlstream2.SocketComponent):
                     Otherwise just delete the message immediately.
                     """
                     if not xmlstream2.extract_receipt(msg['stanza'], 'request'):
-                        self.stanzadb.delete(msgId)
+                        self.stanzadb.delete(msg['id'])
                 except:
                     traceback.print_exc()
-                    log.debug("offline message delivery failed (%s)" % (msgId, ))
+                    log.debug("offline message delivery failed (%s)" % (msg['id'], ))
 
         d = self.stanzadb.get_by_recipient(user)
         d.addCallback(output)

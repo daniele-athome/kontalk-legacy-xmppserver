@@ -151,10 +151,10 @@ class MySQLStanzaStorage(StanzaStorage):
             userid, unused = util.jid_to_userid(recipient, True)
             tx.execute('SELECT id, timestamp, content FROM stanzas WHERE recipient = ? ORDER BY timestamp', (userid, ))
             data = tx.fetchall()
-            out = OrderedDict()
+            out = []
             for row in data:
                 stanzaId = str(row[0])
-                d = { 'timestamp': datetime.datetime.utcfromtimestamp(row[1] / 1e3) }
+                d = { 'id': stanzaId, 'timestamp': datetime.datetime.utcfromtimestamp(row[1] / 1e3) }
                 d['stanza'] = generic.parseXml(row[2].decode('utf-8').encode('utf-8'))
 
                 """
@@ -164,7 +164,7 @@ class MySQLStanzaStorage(StanzaStorage):
                 stor = d['stanza'].addElement((xmlstream2.NS_XMPP_STORAGE, 'storage'))
                 stor['id'] = stanzaId
 
-                out[stanzaId] = d
+                out.append(d)
             return out
         return dbpool.runInteraction(_translate, recipient)
 
