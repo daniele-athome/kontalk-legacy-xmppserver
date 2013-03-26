@@ -20,7 +20,7 @@
 
 
 from twisted.internet import reactor
-from twisted.application import strports
+from twisted.application import internet
 from twisted.names.srvconnect import SRVConnector
 from twisted.words.protocols.jabber import jid, xmlstream, error
 from twisted.words.xish import domish
@@ -29,9 +29,10 @@ from wokkel import component, server
 
 from zope.interface import Interface, implements
 
-from kontalk.xmppserver import log, util, keyring, storage, xmlstream2, auth
+from kontalk.xmppserver import log, util, keyring, storage, xmlstream2
 
 try:
+    from OpenSSL import crypto, SSL
     from twisted.internet import ssl
 except ImportError:
     ssl = None
@@ -39,24 +40,39 @@ if ssl and not ssl.supported:
     ssl = None
 
 
-def initiateNet(factory):
+def initiateNet(factory, ctxFactory):
     domain = factory.authenticator.otherHost
     """
     TEST
-    c = XMPPNetConnector(reactor, domain, factory)
+    c = XMPPNetConnector(reactor, domain, factory, ctxFactory)
     c.connect()
     """
     ports = {
         'prime.kontalk.net': 5270,
         'beta.kontalk.net': 6270,
     }
-    c = reactor.connectTCP('localhost', ports[domain], factory)
+    c = reactor.connectSSL('localhost', ports[domain], factory, ctxFactory)
     return factory.deferred
 
 
+class CtxFactory(ssl.ClientContextFactory):
+    def __init__(self, certfile, keyfile):
+        self.certfile = certfile
+        self.keyfile = keyfile
+
+    def getContext(self):
+        self.method = SSL.SSLv23_METHOD
+        ctx = ssl.ClientContextFactory.getContext(self)
+        ctx.use_certificate_file(self.certfile)
+        ctx.use_privatekey_file(self.keyfile)
+        # TODO peer certificate should be checked even on initiating connection
+        return ctx
+
+
 class XMPPNetConnector(SRVConnector):
-    def __init__(self, reactor, domain, factory):
-        SRVConnector.__init__(self, reactor, 'xmpp-net', domain, factory)
+    def __init__(self, reactor, domain, factory, ctxFactory):
+        SRVConnector.__init__(self, reactor, 'xmpp-net', domain, factory,
+            connectFuncName='connectSSL', connectFuncKwArgs={'contextFactory':ctxFactory})
 
 
     def pickServer(self):
@@ -208,12 +224,23 @@ class XMPPNetServerFactory(xmlstream.XmlStreamServerFactory):
                           self.onAuthenticated)
 
         self.serial = 0
+        self.tls_ctx = None
 
-    def loadKey(self, fingerprint):
+    def loadPEM(self, certfile, keyfile):
         if ssl is None:
             raise xmlstream.TLSNotSupported()
 
-        self.tls_ctx = auth.DefaultGnuPGContextFactory(self.service.fingerprint)
+        cert = open(certfile, 'rb')
+        cert_buf = cert.read()
+        cert.close()
+        cert = open(keyfile, 'rb')
+        key_buf = cert.read()
+        cert.close()
+
+        pkey = crypto.load_privatekey(crypto.FILETYPE_PEM, key_buf)
+        cert = crypto.load_certificate(crypto.FILETYPE_PEM, cert_buf)
+        self.tls_ctx = ssl.CertificateOptions(privateKey=pkey, certificate=cert)
+
 
     def onConnectionMade(self, xs):
         """
@@ -272,6 +299,10 @@ class XMPPNetServerFactory(xmlstream.XmlStreamServerFactory):
         else:
             self.service.dispatch(xs, element)
 
+    def verifyPeer(self, connection, x509, errnum, errdepth, ok):
+        # TODO other checks
+        return ok
+
 
 class INetService(Interface):
 
@@ -299,6 +330,8 @@ class NetService(object):
         self.domains.add(self.defaultDomain)
         self.router = router
         self.keyring = keyring
+        # SSL context for initiating connections
+        self.tls_ctx = CtxFactory(config['ssl_cert'], config['ssl_key'])
 
         self._outgoingStreams = {}
         self._outgoingQueues = {}
@@ -380,7 +413,7 @@ class NetService(object):
 
         self._outgoingConnecting.add(otherHost)
 
-        d = initiateNet(factory)
+        d = initiateNet(factory, self.tls_ctx)
         d.addCallback(resetConnecting)
         d.addErrback(bounceError)
         return d
@@ -471,10 +504,6 @@ class NetComponent(xmlstream2.SocketComponent):
     L{StreamManager} is for the connection with the router.
     """
 
-    """
-    TODO connection with other Kontalk servers should be SSL certificate authenticated
-    """
-
     def __init__(self, config):
         router_cfg = config['router']
         for key in ('socket', 'host', 'port'):
@@ -495,10 +524,15 @@ class NetComponent(xmlstream2.SocketComponent):
         self.service.logTraffic = self.logTraffic
         self.sfactory = XMPPNetServerFactory(self.service)
         self.sfactory.logTraffic = self.logTraffic
-        self.sfactory.loadKey(self.config['fingerprint'])
+        self.sfactory.loadPEM(self.config['ssl_cert'], self.config['ssl_key'])
 
-        return strports.service('tcp:' + str(self.config['bind'][1]) +
-            ':interface=' + str(self.config['bind'][0]), self.sfactory)
+        ctx = self.sfactory.tls_ctx.getContext()
+        ctx.set_verify(SSL.VERIFY_PEER | SSL.VERIFY_FAIL_IF_NO_PEER_CERT, self.sfactory.verifyPeer)
+        ctx.load_verify_locations(self.config['ssl_store'])
+
+        return internet.SSLServer(port=int(self.config['bind'][1]),
+            factory=self.sfactory, contextFactory=self.sfactory.tls_ctx,
+            interface=str(self.config['bind'][0]))
 
     """ Connection with router """
 
