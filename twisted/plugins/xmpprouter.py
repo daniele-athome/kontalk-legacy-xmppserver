@@ -19,7 +19,7 @@
 '''
 
 
-import json
+import demjson
 
 from zope.interface import implements
 
@@ -44,7 +44,7 @@ class KontalkRouterServiceMaker(object):
 
         # load configuration
         fp = open(options['config'], 'r')
-        config = json.load(fp)
+        config = demjson.decode(fp.read(), allow_comments=True)
         fp.close()
 
         log.init(config)
