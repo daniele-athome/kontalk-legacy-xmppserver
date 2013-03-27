@@ -888,6 +888,6 @@ class C2SComponent(xmlstream2.SocketComponent):
         if delayed:
             # delay our call
             self.pending_offline[_id] = reactor.callLater(self.OFFLINE_STORE_DELAY, _offline, stanza)
-            return _id
+            return stanza['id']
         else:
             return _offline(stanza)
