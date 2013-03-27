@@ -5,7 +5,7 @@
 from twisted.internet import reactor
 from twisted.words.xish import domish
 
-import sys, time, json
+import sys, time, demjson
 
 from kontalk.xmppserver import util, xmlstream2
 import bot_utils
@@ -118,6 +118,30 @@ class Handler:
         else:
             self.stats('messages:sent')
 
+    def messageLoop(self, peer, contentFmt='%d', request=False, delay=0, count=0):
+        self._loopCount = 0
+        self._loopAckCount = 0
+        self._loopStart = time.time()
+        def _stats(stanza):
+            self._loopAckCount += 1
+            if self._loopAckCount >= count:
+                # remove observer
+                self.client.xmlstream.removeObserver("/message/received", _stats)
+                diff = time.time() - self._loopStart
+                self.stats('messages:loopsPerSecond', self._loopAckCount / diff)
+                print "%d loops in %.2f seconds" % (self._loopAckCount, diff)
+                print "messages: %.2f loops/second" % (self._loopAckCount / diff, )
+
+        def _count():
+            self._loopCount += 1
+            if self._loopCount < count:
+                reactor.callLater(delay, _count)
+            self.sendTextMessage(peer, contentFmt % (self._loopCount, ), request)
+
+        # WARNING this is very specific to this method
+        self.client.xmlstream.addObserver("/message/received", _stats)
+        reactor.callLater(delay, _count)
+
     def bounceIncrement(self, peer, request=False, begin=False, delay=0, count=0):
         self._bounceIncStart = time.time()
         self._bounceIncAvg = 0
@@ -144,7 +168,7 @@ class Handler:
 
 # load configuration
 fp = open(sys.argv[1], 'r')
-config = json.load(fp)
+config = demjson.decode(fp.read(), allow_comments=True)
 fp.close()
 
 handler = Handler(config)

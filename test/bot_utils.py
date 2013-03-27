@@ -214,8 +214,13 @@ class Client(object):
         xs.addObserver('/iq', self.handler.iq)
 
         pcfg = self.config['presence']
-        presence = xmppim.AvailablePresence(statuses={None: pcfg['status']}, priority=pcfg['priority'], show=pcfg['show'])
-        xs.send(presence)
+        p = domish.Element((None, 'presence'))
+        if pcfg['type'] != 'available':
+            p['type'] = pcfg['type']
+        p.addElement((None, 'status'), content=pcfg['status'])
+        p.addElement((None, 'priority'), content=pcfg['priority'])
+        p.addElement((None, 'show'), content=pcfg['show'])
+        xs.send(p)
 
         self.handler.ready()
 
