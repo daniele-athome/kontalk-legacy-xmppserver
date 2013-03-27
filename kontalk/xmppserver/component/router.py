@@ -54,7 +54,7 @@ class Router(component.Router):
         stanza = Presence()
         stanza['from'] = destination
 
-        log.debug("adversiting component %s" % (destination, ))
+        log.info("adversiting component %s" % (destination, ))
         self.broadcast(stanza)
 
         # advertise this component about the others
@@ -85,7 +85,7 @@ class Router(component.Router):
 
         stanza = UnavailablePresence()
         stanza['from'] = destination
-        log.debug("unadvertising component %s" % (stanza['from'],))
+        log.info("unadvertising component %s" % (stanza['from'],))
         self.broadcast(stanza)
 
     def route(self, stanza, xs):
@@ -115,13 +115,13 @@ class Router(component.Router):
             lg.send(stanza)
 
         if not stanza.hasAttribute('to'):
-            log.debug("broadcasting stanza %s" % (stanza.toXml().encode('utf-8'), ))
+            #log.debug("broadcasting stanza %s" % (stanza.toXml().encode('utf-8'), ))
             self.broadcast(stanza)
         else:
             """
             FIXME we have encoding problems here... (why not in other components?!?!?)
             """
-            log.debug("routing stanza %s" % (stanza.toXml().encode('utf-8'), ))
+            #log.debug("routing stanza %s" % (stanza.toXml().encode('utf-8'), ))
             try:
                 destination = jid.JID(stanza['to'])
 
@@ -131,7 +131,7 @@ class Router(component.Router):
                     self.routes[None].send(stanza)
 
             except KeyError:
-                log.debug("unroutable stanza, bouncing back to component")
+                log.warn("unroutable stanza, bouncing back to component")
                 e = error.StanzaError('service-unavailable')
                 xs.send(e.toResponse(stanza))
 
