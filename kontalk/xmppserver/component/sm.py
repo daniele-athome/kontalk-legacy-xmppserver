@@ -393,7 +393,7 @@ class MessageHandler(XMPPHandler):
                 to = jid.JID(stanza['to'])
                 sender = self.xmlstream.otherEntity
                 if to.host == self.parent.network and sender.host == self.parent.network:
-                    self.parent.router.stanzadb.delete(msgId, to.user, sender.user)
+                    self.parent.router.message_offline_delete(msgId, to.user, sender.user)
             except:
                 pass
 
@@ -628,12 +628,10 @@ class C2SManager(xmlstream2.StreamManager):
             # negative resource
             # => DROP STANZA
             try:
-                if not origTo.resource and self._presence and int(str(self._presence.priority)) < 0:
+                if not origTo.resource and int(str(self._presence.priority)) < 0:
                     return None
             except:
-                # this is for int()
-                import traceback
-                traceback.print_exc()
+                pass
 
         # FIXME using deepcopy is not safe
         from copy import deepcopy

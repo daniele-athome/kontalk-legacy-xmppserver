@@ -22,6 +22,7 @@
 import time
 import traceback
 
+from twisted.internet import reactor
 from twisted.application import strports
 from twisted.cred import portal
 from twisted.internet.protocol import ServerFactory
@@ -494,7 +495,7 @@ class MessageHandler(XMPPHandler):
                             """
                             if chat_msg and (receipt or received):
                                 # send message to offline storage just to be safe
-                                stanza['id'] = self.message_offline(stanza)
+                                stanza['id'] = self.parent.message_offline_store(stanza, True)
 
                             # send message to sm only to non-negative resources
                             self.parent.sfactory.dispatch(stanza)
@@ -502,9 +503,13 @@ class MessageHandler(XMPPHandler):
                         except:
                             # manager not found - send error or send to offline storage
                             log.debug("c2s manager for %s not found" % (stanza['to'], ))
-                            # receipt not present - send to offline storage
-                            if chat_msg and not receipt and stanza.body:
-                                stanza['id'] = self.message_offline(stanza)
+                            """
+                            Since our previous call to message_offline_store()
+                            was with delayed parameter, we need to store for
+                            real now.
+                            """
+                            if chat_msg and stanza.body:
+                                stanza['id'] = self.parent.message_offline_store(stanza)
                             if self.parent.push_manager and (chat_msg and stanza.body and (not receipt or receipt.name == 'request')):
                                 self.parent.push_manager.notify(to)
 
@@ -512,7 +517,7 @@ class MessageHandler(XMPPHandler):
                         if chat_msg and received:
                             # delete the received message
                             # TODO safe delete with sender/recipient
-                            self.parent.stanzadb.delete(received['id'])
+                            self.parent.message_offline_delete(received['id'])
 
                         stamp = time.time()
 
@@ -550,7 +555,7 @@ class MessageHandler(XMPPHandler):
                         if sender.host != self.parent.servername:
                             log.debug("remote server now has responsibility for message %s - deleting" % (receipt['id'], ))
                             # TODO safe delete with sender/recipient
-                            self.parent.stanzadb.delete(receipt['id'])
+                            self.parent.message_offline_delete(receipt['id'])
 
                 else:
                     log.debug("stanza is not our concern or is an error")
@@ -564,50 +569,18 @@ class MessageHandler(XMPPHandler):
             rec['stamp'] = time.strftime(xmlstream2.XMPP_STAMP_FORMAT, time.gmtime(stamp))
         self.send(ack)
 
-    def message_offline(self, stanza):
-        """Stores a message stanza to the storage."""
-
-        # TEST using deepcopy is not safe
-        from copy import deepcopy
-        stanza = deepcopy(stanza)
-
-        # check if an id is present in the receipt, otherwise generate a new one
-        receipt = xmlstream2.extract_receipt(stanza, 'request')
-        if not receipt:
-            stanza['id'] = util.rand_str(30, util.CHARSBOX_AZN_LOWERCASE)
-
-        # store message for bare network JID
-        jid_to = jid.JID(stanza['to'])
-        jid_to.host = self.parent.network
-        stanza['to'] = jid_to.userhost()
-
-        # sender JID should be a network JID
-        jid_from = jid.JID(stanza['from'])
-        jid_from.host = self.parent.network
-        stanza['from'] = jid_from.full()
-
-        try:
-            del stanza['origin']
-        except KeyError:
-            pass
-
-        # safe uri for persistance
-        stanza.uri = stanza.defaultUri = sm.C2SManager.namespace
-
-        log.debug("storing offline message for %s" % (stanza['to'], ))
-        try:
-            self.parent.stanzadb.store(stanza)
-        except:
-            traceback.print_exc()
-
-        return stanza['id']
-
 
 class C2SComponent(xmlstream2.SocketComponent):
     """
     Kontalk c2s component.
     L{StreamManager} is for the connection with the router.
     """
+
+    """
+    How many seconds to wait for a receipt before a message goes to offline
+    storage.
+    """
+    OFFLINE_STORE_DELAY = 10
 
     protocolHandlers = (
         InitialPresenceHandler,
@@ -630,6 +603,14 @@ class C2SComponent(xmlstream2.SocketComponent):
         self.start_time = time.time()
         self.registration = None
         self.push_manager = None
+
+        """
+        This dictionary keeps track of messages currently pending for offline
+        storage. Keys are message IDs, values are L{IDelayedCall} which can be
+        canceled when a message is going to be deleted (also avoiding to do the
+        actual database delete).
+        """
+        self.pending_offline = {}
 
         # protocol handlers here!!
         for handler in self.protocolHandlers:
@@ -766,7 +747,7 @@ class C2SComponent(xmlstream2.SocketComponent):
             log.debug("message stanza from resolver - CHECK!")
             receipt = xmlstream2.extract_receipt(stanza, 'received')
             if receipt:
-                self.stanzadb.delete(receipt['id'])
+                self.message_offline_delete(receipt['id'])
 
 
     def not_found(self, stanza):
@@ -809,7 +790,7 @@ class C2SComponent(xmlstream2.SocketComponent):
                     Otherwise just delete the message immediately.
                     """
                     if not xmlstream2.extract_receipt(msg['stanza'], 'request'):
-                        self.stanzadb.delete(msg['id'])
+                        self.message_offline_delete(msg['id'])
                 except:
                     traceback.print_exc()
                     log.debug("offline message delivery failed (%s)" % (msg['id'], ))
@@ -825,3 +806,88 @@ class C2SComponent(xmlstream2.SocketComponent):
             _jid = jid.JID(_jid)
             _jid.host = self.servername
             return _jid
+
+    def _message_offline_cancel(self, stanzaId):
+        if stanzaId in self.pending_offline:
+            if self.pending_offline[stanzaId].active():
+                self.pending_offline[stanzaId].cancel()
+                del self.pending_offline[stanzaId]
+                return True
+        return False
+
+    def message_offline_delete(self, stanzaId, sender=None, recipient=None):
+        """
+        Deletes a message from offline storage. It also checks the pending
+        messages to decide if we can skip delete.
+        """
+        # check if message is pending to offline
+        if self._message_offline_cancel(stanzaId):
+            return True
+
+        return self.stanzadb.delete(stanzaId, sender, recipient)
+
+    def message_offline_store(self, stanza, delayed=False):
+        """
+        Stores a message stanza to the offline storage.
+        @param delayed: True to delay the actual store action; this is useful
+        when waiting for a confirmation receipt, in order to avoid storing the
+        message before sending it. If confirmation is not received after a
+        defined time, message will be stored.
+        """
+
+        def _offline(stanza):
+            # TEST using deepcopy is not safe
+            from copy import deepcopy
+            stanza = deepcopy(stanza)
+
+            # if no receipt request is found, generate a unique id for the message
+            receipt = xmlstream2.extract_receipt(stanza, 'request')
+            if not receipt:
+                stanza['id'] = util.rand_str(30, util.CHARSBOX_AZN_LOWERCASE)
+
+            # store message for bare network JID
+            jid_to = jid.JID(stanza['to'])
+            jid_to.host = self.network
+            stanza['to'] = jid_to.userhost()
+
+            # sender JID should be a network JID
+            jid_from = jid.JID(stanza['from'])
+            jid_from.host = self.network
+            stanza['from'] = jid_from.full()
+
+            try:
+                del stanza['origin']
+            except KeyError:
+                pass
+
+            # safe uri for persistance
+            stanza.uri = stanza.defaultUri = sm.C2SManager.namespace
+
+            log.debug("storing offline message for %s" % (stanza['to'], ))
+            try:
+                self.stanzadb.store(stanza)
+            except:
+                # TODO log this
+                traceback.print_exc()
+
+            return stanza['id']
+
+        """
+        Check for a receipt request. In this case we need to manipulate the
+        original stanza because we need a reference to the message.
+        """
+        receipt = xmlstream2.extract_receipt(stanza, 'request')
+        if not receipt:
+            _id = stanza['id'] = util.rand_str(30, util.CHARSBOX_AZN_LOWERCASE)
+        else:
+            _id = receipt['id']
+
+        # cancel any previous delayed call
+        self._message_offline_cancel(_id)
+
+        if delayed:
+            # delay our call
+            self.pending_offline[_id] = reactor.callLater(self.OFFLINE_STORE_DELAY, _offline, stanza)
+            return _id
+        else:
+            return _offline(stanza)
