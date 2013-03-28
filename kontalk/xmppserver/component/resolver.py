@@ -68,7 +68,10 @@ class PresenceHandler(XMPPHandler):
         if stanza.consumed:
             return
 
-        log.debug("subscription request: %s" % (stanza.toXml(), ))
+        if self.parent.logTraffic:
+            log.debug("subscription request: %s" % (stanza.toXml(), ))
+        else:
+            log.debug("subscription request to %s from %s" % (stanza['to'], stanza['from']))
 
         # extract jid the user wants to subscribe to
         jid_to = jid.JID(stanza['to'])
@@ -93,7 +96,10 @@ class PresenceHandler(XMPPHandler):
         if stanza.consumed:
             return
 
-        log.debug("unsubscription request: %s" % (stanza.toXml(), ))
+        if self.parent.logTraffic:
+            log.debug("unsubscription request: %s" % (stanza.toXml(), ))
+        else:
+            log.debug("unsubscription request to %s from %s" % (stanza['to'], stanza['from']))
 
         # extract jid the user wants to subscribe to
         jid_to = jid.JID(stanza['to'])
@@ -315,7 +321,10 @@ class JIDCache(XMPPHandler):
 
     def onPresenceAvailable(self, stanza):
         """Handle availability presence stanzas."""
-        log.debug("presence: %s" % (stanza.toXml().encode('utf-8'), ))
+        if self.parent.logTraffic:
+            log.debug("presence: %s" % (stanza.toXml().encode('utf-8'), ))
+        else:
+            log.debug("presence available from %s" % (stanza['from'], ))
 
         # update usercache with last seen and status
         user = jid.JID(stanza['from'])
@@ -327,7 +336,10 @@ class JIDCache(XMPPHandler):
 
     def onPresenceUnavailable(self, stanza):
         """Handle unavailable presence stanzas."""
-        log.debug("user unavailable: %s" % (stanza.toXml().encode('utf-8'), ))
+        if self.parent.logTraffic:
+            log.debug("user unavailable: %s" % (stanza.toXml().encode('utf-8'), ))
+        else:
+            log.debug("user unavailable from %s" % (stanza['from'], ))
         user = jid.JID(stanza['from'])
 
         if user.user:

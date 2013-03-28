@@ -602,7 +602,10 @@ class C2SManager(xmlstream2.StreamManager):
         """Bounce stanzas as results."""
         if not stanza.consumed:
             util.resetNamespace(stanza, self.namespace)
-            log.debug("bouncing %s" % (stanza.toXml(), ))
+
+            if self.router.logTraffic:
+                log.debug("bouncing %s" % (stanza.toXml(), ))
+
             stanza.consumed = True
             self.send(xmlstream2.toResponse(stanza, 'result'))
 

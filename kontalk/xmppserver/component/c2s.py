@@ -363,7 +363,12 @@ class PresenceProbeHandler(XMPPHandler):
                     response.addChild(chain)
 
                     self.send(response)
-                    log.debug("probe result sent: %s" % (response.toXml().encode('utf-8'), ))
+
+                    if self.parent.logTraffic:
+                        log.debug("probe result sent: %s" % (response.toXml().encode('utf-8'), ))
+                    else:
+                        log.debug("probe result sent: %s" % (response['from'], ))
+
             elif presence is not None and type(presence) != list:
                 chain = domish.Element((xmlstream2.NS_XMPP_STANZA_GROUP, 'group'))
                 chain['id'] = stanza['id']
@@ -385,7 +390,11 @@ class PresenceProbeHandler(XMPPHandler):
 
                 response.addChild(chain)
                 self.send(response)
-                log.debug("probe result sent: %s" % (response.toXml().encode('utf-8'), ))
+
+                if self.parent.logTraffic:
+                    log.debug("probe result sent: %s" % (response.toXml().encode('utf-8'), ))
+                else:
+                    log.debug("probe result sent: %s" % (response['from'], ))
             else:
                 log.debug("probe: user not found")
                 # TODO return error?
