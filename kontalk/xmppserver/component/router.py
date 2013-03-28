@@ -115,18 +115,20 @@ class Router(component.Router):
             lg.send(stanza)
 
         if not stanza.hasAttribute('to'):
-            #log.debug("broadcasting stanza %s" % (stanza.toXml().encode('utf-8'), ))
+            if self.logTraffic:
+                log.debug("broadcasting stanza %s" % (stanza.toXml().encode('utf-8'), ))
             self.broadcast(stanza)
         else:
             """
             FIXME we have encoding problems here... (why not in other components?!?!?)
             """
-            #log.debug("routing stanza %s" % (stanza.toXml().encode('utf-8'), ))
+            if self.logTraffic:
+                log.debug("routing stanza %s" % (stanza.toXml().encode('utf-8'), ))
             try:
-                destination = jid.JID(stanza['to'])
+                destination_host = util.jid_host(stanza['to'])
 
-                if destination.host in self.routes:
-                    self.routes[destination.host].send(stanza)
+                if destination_host in self.routes:
+                    self.routes[destination_host].send(stanza)
                 else:
                     self.routes[None].send(stanza)
 
@@ -140,10 +142,10 @@ class Router(component.Router):
         Broadcast a stanza to every component.
         This alters the to attribute in outgoing stanza for each component.
         """
-        jid_from = jid.JID(stanza['from'])
+        from_host = util.jid_host(stanza['from'])
         for host, xs in self.routes.iteritems():
             # do not send to the original sender
-            if host is not None and (host != jid_from.host or same):
+            if host is not None and (host != from_host or same):
                 log.debug("sending to %s" % (host, ))
                 stanza['to'] = host
                 xs.send(stanza)
