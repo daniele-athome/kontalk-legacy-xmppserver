@@ -135,12 +135,11 @@ class XMPPServerFactory(xish_xmlstream.XmlStreamFactoryMixin, ServerFactory):
         Dispatch a stanza to a JID all to all available resources found locally.
         @raise L{KeyError}: if a destination route is not found
         """
-        to = jid.JID(stanza['to'])
-        userid, resource = util.jid_to_userid(to, True)
+        userid, unused, resource = jid.parse(stanza['to'])
 
         util.resetNamespace(stanza, component.NS_COMPONENT_ACCEPT)
 
-        if to.resource is not None:
+        if resource is not None:
             self.streams[userid][resource].send(stanza)
         else:
             for resource, manager in self.streams[userid].iteritems():
@@ -292,8 +291,10 @@ class InitialPresenceHandler(XMPPHandler):
         them through the actual route.
         """
 
+        sender = jid.JID(stanza['from'])
+
         # check for external conflict
-        self.parent.sfactory.check_conflict(jid.JID(stanza['from']))
+        self.parent.sfactory.check_conflict(sender)
 
         # initial presence - deliver offline storage
         def output(data):
@@ -317,7 +318,7 @@ class InitialPresenceHandler(XMPPHandler):
                     traceback.print_exc()
                     log.debug("offline message delivery failed (%s)" % (msg['id'], ))
 
-        d = self.parent.stanzadb.get_by_recipient(jid.JID(stanza['from']))
+        d = self.parent.stanzadb.get_by_recipient(sender)
         d.addCallback(output)
 
 
@@ -397,8 +398,8 @@ class PresenceProbeHandler(XMPPHandler):
 
                 self.send(response)
 
-        to = jid.JID(stanza['to'])
-        d = self.parent.presencedb.get(to)
+        userid, unused, resource = jid.parse(stanza['to'])
+        d = self.parent.presencedb.get(userid, resource)
         d.addCallback(_db, stanza)
 
 
@@ -445,8 +446,8 @@ class LastActivityHandler(XMPPHandler):
                 # TODO return error?
                 log.debug("iq/last: user not found")
 
-        to = jid.JID(stanza['to'])
-        d = self.parent.presencedb.get(to)
+        userid, unused, resource = jid.parse(stanza['to'])
+        d = self.parent.presencedb.get(userid, resource)
         d.addCallback(_db, stanza)
 
 
@@ -475,7 +476,9 @@ class MessageHandler(XMPPHandler):
 
     def dispatch(self, stanza):
         if not stanza.consumed:
-            log.debug("incoming stanza: %s" % (stanza.toXml().encode('utf-8')))
+            if self.parent.logTraffic:
+                log.debug("incoming stanza: %s" % (stanza.toXml().encode('utf-8')))
+
             stanza.consumed = True
 
             util.resetNamespace(stanza, component.NS_COMPONENT_ACCEPT)
@@ -546,13 +549,13 @@ class MessageHandler(XMPPHandler):
                     r_received = xmlstream2.extract_receipt(stanza, 'received')
                     receipt = r_sent if r_sent else r_received
                     if receipt is not None:
-                        sender = jid.JID(stanza['from'])
+                        sender_host = util.jid_host(stanza['from'])
                         """
                         We are receiving a sent receipt from another server,
                         meaning that the server has now responsibility for the
                         message - we can delete it now.
                         """
-                        if sender.host != self.parent.servername:
+                        if sender_host != self.parent.servername:
                             log.debug("remote server now has responsibility for message %s - deleting" % (receipt['id'], ))
                             # TODO safe delete with sender/recipient
                             self.parent.message_offline_delete(receipt['id'])
@@ -716,7 +719,8 @@ class C2SComponent(xmlstream2.SocketComponent):
         """
 
         if not stanza.consumed:
-            log.debug("incoming stanza: %s" % (stanza.toXml().encode('utf-8')))
+            if self.logTraffic:
+                log.debug("incoming stanza: %s" % (stanza.toXml().encode('utf-8')))
             stanza.consumed = True
 
             util.resetNamespace(stanza, component.NS_COMPONENT_ACCEPT)
@@ -761,8 +765,11 @@ class C2SComponent(xmlstream2.SocketComponent):
         """
 
         # initial presence - deliver offline storage
-        def output(data):
+        def output(data, user):
             log.debug("data: %r" % (data, ))
+            # this will be used to set a safe recipient
+            # WARNING this will create a JID anyway :(
+            to = self.resolveJID(user).userhost()
             for msg in data:
                 log.debug("msg[%s]=%s" % (msg['id'], msg['stanza'].toXml().encode('utf-8'), ))
                 try:
@@ -781,7 +788,7 @@ class C2SComponent(xmlstream2.SocketComponent):
                     We use direct delivery here: it's faster and does not
                     involve JID resolution
                     """
-                    msg['stanza']['to'] = self.resolveJID(jid.JID(msg['stanza']['to'])).full()
+                    msg['stanza']['to'] = to
                     self.dispatch(msg['stanza'])
 
                     """
@@ -796,7 +803,7 @@ class C2SComponent(xmlstream2.SocketComponent):
                     log.debug("offline message delivery failed (%s)" % (msg['id'], ))
 
         d = self.stanzadb.get_by_recipient(user)
-        d.addCallback(output)
+        d.addCallback(output, user)
 
     def resolveJID(self, _jid):
         """Transform host attribute of JID from network name to server name."""
@@ -847,11 +854,13 @@ class C2SComponent(xmlstream2.SocketComponent):
 
             # store message for bare network JID
             jid_to = jid.JID(stanza['to'])
+            # WARNING this is actually useless for MySQLStanzaStorage
             jid_to.host = self.network
             stanza['to'] = jid_to.userhost()
 
             # sender JID should be a network JID
             jid_from = jid.JID(stanza['from'])
+            # WARNING this is actually useless for MySQLStanzaStorage
             jid_from.host = self.network
             stanza['from'] = jid_from.full()
 

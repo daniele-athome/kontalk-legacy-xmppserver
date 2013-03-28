@@ -96,3 +96,13 @@ def str_none(obj, encoding='utf-8'):
 def sha1(text):
     hashed = hashlib.sha1(text)
     return hashed.hexdigest()
+
+def _jid_parse(jidstring, index):
+    j = jid.parse(jidstring)
+    return j[index]
+
+def jid_user(jidstring):
+    return _jid_parse(jidstring, 0)
+
+def jid_host(jidstring):
+    return _jid_parse(jidstring, 1)

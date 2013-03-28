@@ -72,7 +72,7 @@ class StanzaStorage:
 class PresenceStorage:
     """Presence cache storage."""
 
-    def get(self, user_jid):
+    def get(self, userid, resource):
         """Retrieve info about a user."""
         pass
 
@@ -148,8 +148,7 @@ class MySQLStanzaStorage(StanzaStorage):
     def get_by_recipient(self, recipient):
         global dbpool
         def _translate(tx, recipient):
-            userid, unused = util.jid_to_userid(recipient, True)
-            tx.execute('SELECT id, timestamp, content FROM stanzas WHERE recipient = ? ORDER BY timestamp', (userid, ))
+            tx.execute('SELECT id, timestamp, content FROM stanzas WHERE recipient = ? ORDER BY timestamp', (recipient.user, ))
             data = tx.fetchall()
             out = []
             for row in data:
@@ -170,8 +169,8 @@ class MySQLStanzaStorage(StanzaStorage):
 
     def delete(self, stanzaId, sender=None, recipient=None):
         global dbpool
-        import traceback
-        log.debug("deleting stanza %s -- traceback:\n%s" % (stanzaId, ''.join(traceback.format_stack())))
+        #import traceback
+        #log.debug("deleting stanza %s -- traceback:\n%s" % (stanzaId, ''.join(traceback.format_stack())))
         q = 'DELETE FROM stanzas WHERE id = ?'
         args = [stanzaId]
         if sender:
@@ -199,7 +198,7 @@ class MySQLNetworkStorage(NetworkStorage):
 
 class MySQLPresenceStorage(PresenceStorage):
 
-    def get(self, user_jid):
+    def get(self, userid, resource):
         def _fetchone(tx, query, args):
             tx.execute(query, args)
             data = tx.fetchone()
@@ -225,8 +224,7 @@ class MySQLPresenceStorage(PresenceStorage):
                 })
             return out
 
-        userid = util.jid_to_userid(user_jid)
-        if user_jid.resource:
+        if resource:
             interaction = _fetchone
             query = 'SELECT `userid`, `timestamp`, `status`, `show`, `priority` FROM presence WHERE userid = ?'
             args = (userid, )

@@ -619,9 +619,11 @@ class C2SManager(xmlstream2.StreamManager):
             stanza was intended to the full JID.
             """
             origTo = jid.JID(origTo)
-            log.debug("sending message to client %s (original was %s)" % (self.xmlstream.otherEntity, origTo))
-            if self._presence:
-                log.debug("_presence: %s" % (self._presence.toXml(), ))
+
+            if self.router.logTraffic:
+                log.debug("sending message to client %s (original was %s)" % (self.xmlstream.otherEntity, origTo))
+                if self._presence:
+                    log.debug("_presence: %s" % (self._presence.toXml(), ))
 
             # sending to bare JID
             # initial presence found
@@ -669,7 +671,10 @@ class C2SManager(xmlstream2.StreamManager):
         """
         if not stanza.consumed:
             util.resetNamespace(stanza, self.namespace)
-            log.debug("forwarding %s" % (stanza.toXml().encode('utf-8'), ))
+
+            if self.router.logTraffic:
+                log.debug("forwarding %s" % (stanza.toXml().encode('utf-8'), ))
+
             stanza.consumed = True
             util.resetNamespace(stanza, component.NS_COMPONENT_ACCEPT)
             stanza['from'] = self.resolveJID(stanza['from'] if useFrom else self.xmlstream.otherEntity).full()
