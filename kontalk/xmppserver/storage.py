@@ -227,7 +227,7 @@ class MySQLPresenceStorage(PresenceStorage):
         if resource:
             interaction = _fetchone
             query = 'SELECT `userid`, `timestamp`, `status`, `show`, `priority` FROM presence WHERE userid = ?'
-            args = (userid, )
+            args = (userid + resource, )
         else:
             interaction = _fetchall
             query = 'SELECT `userid`, `timestamp`, `status`, `show`, `priority` FROM presence WHERE userid LIKE ? ORDER BY `timestamp` DESC'
