@@ -557,7 +557,7 @@ class MessageHandler(XMPPHandler):
                     r_sent = xmlstream2.extract_receipt(stanza, 'sent')
                     r_received = xmlstream2.extract_receipt(stanza, 'received')
                     receipt = r_sent if r_sent else r_received
-                    if receipt is not None:
+                    if chat_msg and receipt is not None:
                         sender_host = util.jid_host(stanza['from'])
                         """
                         We are receiving a sent receipt from another server,
