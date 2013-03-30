@@ -41,8 +41,7 @@ if ssl and not ssl.supported:
 
 from wokkel import component
 
-from kontalk.xmppserver import log, auth, keyring, util, storage
-from kontalk.xmppserver import xmlstream2
+from kontalk.xmppserver import log, auth, keyring, util, storage, xmlstream2, compression
 import sm
 
 
@@ -193,6 +192,7 @@ class XMPPListenAuthenticator(xmlstream.ListenAuthenticator):
             (xmlstream2.TLSReceivingInitializer, False, False),
             (xmlstream2.SASLReceivingInitializer, True, True),
             (xmlstream2.RegistrationInitializer, True, True),
+            # doesn't work yet -- (compression.CompressReceivingInitializer, False, False),
             (xmlstream2.BindInitializer, True, False),
             (xmlstream2.SessionInitializer, True, False),
         )
