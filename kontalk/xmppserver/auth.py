@@ -21,9 +21,10 @@
 
 from zope.interface import implements
 
+from twisted.web import iweb
 from twisted.cred import credentials, checkers, error, portal
 from twisted.python import failure
-from twisted.internet import defer, ssl
+from twisted.internet import defer
 from twisted.words.protocols.jabber import jid, sasl
 
 # pyme
@@ -110,6 +111,26 @@ class AuthKontalkToken(object):
         return defer.maybeDeferred(
             credentials.checkToken, self.fingerprint, self.keyring).addCallback(
             self._cbTokenValid)
+
+class AuthKontalkTokenFactory(object):
+    implements(iweb.ICredentialFactory)
+
+    scheme = 'kontalktoken'
+
+    def __init__(self, fingerprint, keyring):
+        self.fingerprint = fingerprint
+        self.keyring = keyring
+
+    def getChallenge(self, request):
+        return {}
+
+    def decode(self, response, request):
+        key, token = response.split('=', 1)
+        if key == 'auth':
+            return KontalkToken(token, self.fingerprint, self.keyring)
+
+        raise error.LoginFailed('Invalid token')
+
 
 class SASLRealm:
     """
