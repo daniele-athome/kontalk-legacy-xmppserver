@@ -106,3 +106,22 @@ def jid_user(jidstring):
 
 def jid_host(jidstring):
     return _jid_parse(jidstring, 1)
+
+def generate_filename(mime):
+    '''Generates a random filename for the given mime type.'''
+    supported_mimes = {
+        'image/png' : 'png',
+        'image/jpeg' : 'jpg',
+        'image/gif' : 'gif',
+        'text/x-vcard' : 'vcf',
+        'text/vcard' : 'vcf',
+        'text/plain' : 'txt',
+    }
+
+    try:
+        ext = supported_mimes[mime]
+    except:
+        # generic extension
+        ext = 'bin'
+
+    return 'att%s.%s' % (rand_str(6, CHARSBOX_AZN_LOWERCASE), ext)

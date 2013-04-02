@@ -25,7 +25,7 @@ from twisted.words.protocols.jabber import jid
 
 from wokkel import generic
 
-import base64, time, datetime
+import os, base64, time, datetime
 
 try:
     from collections import OrderedDict
@@ -105,6 +105,22 @@ class UserValidationStorage:
 
     def validate(self, code):
         """Check if code is valid and deletes it."""
+        pass
+
+
+class FileStorage:
+    """File storage."""
+
+    def init(self):
+        """Initializes this storage driver."""
+        pass
+
+    def store_file(self, name, mime, fn):
+        """Stores a file reading data from a file-like object."""
+        pass
+
+    def store_data(self, name, mime, data):
+        """Stores a file reading data from a string."""
         pass
 
 
@@ -300,3 +316,27 @@ class MySQLUserValidationStorage(UserValidationStorage):
                 raise RuntimeError(self.TEXT_INVALID_CODE)
 
         return dbpool.runInteraction(_fetch, code)
+
+
+class DiskFileStorage(FileStorage):
+    """File storage."""
+
+    def __init__(self, path):
+        self.path = path
+
+    def init(self):
+        try:
+            os.makedirs(self.path)
+        except:
+            pass
+
+    def store_file(self, name, mime, fn):
+        # TODO
+        pass
+
+    def store_data(self, name, mime, data):
+        filename = os.path.join(self.path, name)
+        f = open(filename, 'w')
+        f.write(data)
+        f.close()
+        return filename

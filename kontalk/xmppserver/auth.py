@@ -127,7 +127,7 @@ class AuthKontalkTokenFactory(object):
     def decode(self, response, request):
         key, token = response.split('=', 1)
         if key == 'auth':
-            return KontalkToken(token, self.fingerprint, self.keyring)
+            return KontalkToken(token, True)
 
         raise error.LoginFailed('Invalid token')
 
