@@ -47,16 +47,15 @@ class FileDownload(resource.Resource):
         log.debug("request from %s: %s" % (self.userid, request.args))
         if 'f' in request.args:
             fn = request.args['f'][0]
-            filename = self.fileserver.storage.get(fn, False)
-            if filename:
-                # TODO mime
-                mime = 'application/octet-stream'
-                log.debug("sending file type %s, path %s" % (mime, filename))
+            info = self.fileserver.storage.get(fn, False)
+            if info:
+                filename, mime, md5sum = info
+                log.debug("sending file type %s, path %s, md5sum %s" % (mime, filename, md5sum))
                 genfilename = util.generate_filename(mime)
-                request.setHeader('content-type', 'application/octet-stream')
+                request.setHeader('content-type', mime)
                 request.setHeader('content-length', os.path.getsize(filename))
                 request.setHeader('content-disposition', 'attachment; filename="%s"' % (genfilename))
-                #request.setHeader('x-md5sum', md5sum)
+                request.setHeader('x-md5sum', md5sum)
 
                 # stream file to the client
                 fp = open(filename, 'rb')
@@ -110,7 +109,7 @@ class FileUpload(resource.Resource):
                     fileid = util.rand_str(40)
                     filename = self.fileserver.storage.store_data(fileid, mime, data)
                     if filename:
-                        #log.debug("file stored to disk (filename=%s, fileid=%s)" % (filename, fileid))
+                        log.debug("file stored to disk (filename=%s, fileid=%s)" % (filename, fileid))
                         request.setHeader('content-type', 'text/url')
                         return str(self.config['upload']['url']) % (fileid, )
                     else:

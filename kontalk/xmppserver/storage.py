@@ -340,16 +340,37 @@ class DiskFileStorage(FileStorage):
             raise NotImplementedError()
         else:
             fn = os.path.join(self.path, name)
-            if os.path.isfile(fn):
-                return fn
+            metafn = fn + '.properties'
+            if os.path.isfile(fn) and os.path.isfile(metafn):
+                # read metadata
+                metadata = {}
+                f = open(metafn, 'r')
+                for line in f:
+                    key, value = line.split('=')
+                    metadata[key] = value.strip('\n')
+                f.close()
+
+                return fn, metadata['mime'], metadata['md5sum']
 
     def store_file(self, name, mime, fn):
         # TODO
-        pass
+        raise NotImplementedError()
 
     def store_data(self, name, mime, data):
         filename = os.path.join(self.path, name)
         f = open(filename, 'w')
         f.write(data)
         f.close()
+
+        # calculate md5sum for file
+        # this is intentionally done to verify that the file is not corruputed on disk
+        # TODO this should be async
+        md5sum = util.md5sum(filename)
+
+        # write metadata file (avoid using ConfigParser, it's a simple file)
+        f = open(filename + '.properties', 'w')
+        f.write("mime=%s\n" % (mime, ))
+        f.write("md5sum=%s\n" % (md5sum, ))
+        f.close()
+
         return filename
