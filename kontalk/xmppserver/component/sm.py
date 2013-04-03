@@ -383,7 +383,14 @@ class MessageHandler(XMPPHandler):
         #self.xmlstream.addObserver("/message[@to='%s']" % (self.parent.servername), self.parent.error, 100)
         # ack is above stanza processing rules
         self.xmlstream.addObserver("/message/ack[@xmlns='%s']" % (xmlstream2.NS_XMPP_SERVER_RECEIPTS), self.ack, 600)
-        pass
+        # this is for replying with <ack/> immediately
+        self.xmlstream.addObserver("/message/received[@xmlns='%s']" % (xmlstream2.NS_XMPP_SERVER_RECEIPTS), self.received, 600)
+
+    def received(self, stanza):
+        ack = xmlstream2.toResponse(stanza, stanza['type'])
+        ack.addElement((xmlstream2.NS_XMPP_SERVER_RECEIPTS, 'ack'))
+        self.send(ack)
+        # proceed with processing
 
     def ack(self, stanza):
         stanza.consumed = True

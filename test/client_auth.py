@@ -358,6 +358,16 @@ class Client(object):
             media['type'] = 'image/png'
             cmd.send(self.network)
 
+        def testBad():
+            receipt = domish.Element((None, 'message'))
+            receipt['id'] = util.rand_str(8)
+            receipt['type'] = 'chat'
+            receipt['to'] = self.peer + '@' + self.network
+            child = receipt.addElement(('urn:xmpp:server-receipts', 'received'))
+            #child['id'] = util.rand_str(40)
+            xs.send(receipt)
+
+
         #reactor.callLater(2, testProbe)
         #reactor.callLater(1, testProbe)
         #reactor.callLater(1, testSubscribe)
@@ -369,6 +379,7 @@ class Client(object):
         #reactor.callLater(1, testValidate)
         #reactor.callLater(1, testCommand)
         #reactor.callLater(1, testUpload)
+        #reactor.callLater(1, testBad)
         #reactor.callLater(30, xs.sendFooter)
 
     def message(self, stanza, xs):
