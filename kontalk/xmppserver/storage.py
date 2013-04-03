@@ -115,6 +115,10 @@ class FileStorage:
         """Initializes this storage driver."""
         pass
 
+    def get(self, name, return_data=True):
+        """Retrieves a stored file."""
+        pass
+
     def store_file(self, name, mime, fn):
         """Stores a file reading data from a file-like object."""
         pass
@@ -329,6 +333,15 @@ class DiskFileStorage(FileStorage):
             os.makedirs(self.path)
         except:
             pass
+
+    def get(self, name, return_data=True):
+        if return_data:
+            # TODO
+            raise NotImplementedError()
+        else:
+            fn = os.path.join(self.path, name)
+            if os.path.isfile(fn):
+                return fn
 
     def store_file(self, name, mime, fn):
         # TODO

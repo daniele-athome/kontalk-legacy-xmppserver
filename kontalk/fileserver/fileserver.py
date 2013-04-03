@@ -43,25 +43,20 @@ class FileDownload(resource.Resource):
         request.setHeader('content-type', 'text/plain')
         return text
 
-    def bad_request(self, request):
-        return self._quick_response(request, 400, 'bad request')
-
-    def not_found(self, request):
-        return self._quick_response(request, 404, 'not found')
-
     def render_GET(self, request):
         log.debug("request from %s: %s" % (self.userid, request.args))
         if 'f' in request.args:
             fn = request.args['f'][0]
-            info = self.fileserver.storage.get_extra(fn, self.userid)
-            if info:
-                (filename, mime, md5sum) = info
-                log.debug("sending file type %s, path %s, md5sum %s" % (mime, filename, md5sum))
+            filename = self.fileserver.storage.get(fn, False)
+            if filename:
+                # TODO mime
+                mime = 'application/octet-stream'
+                log.debug("sending file type %s, path %s" % (mime, filename))
                 genfilename = util.generate_filename(mime)
-                request.setHeader('content-type', mime)
+                request.setHeader('content-type', 'application/octet-stream')
                 request.setHeader('content-length', os.path.getsize(filename))
                 request.setHeader('content-disposition', 'attachment; filename="%s"' % (genfilename))
-                request.setHeader('x-md5sum', md5sum)
+                #request.setHeader('x-md5sum', md5sum)
 
                 # stream file to the client
                 fp = open(filename, 'rb')
@@ -74,9 +69,9 @@ class FileDownload(resource.Resource):
 
             # file not found in extra storage
             else:
-                return self.not_found(request)
+                return self._quick_response(request, 404, 'not found')
 
-        return self.bad_request(request)
+        return self._quick_response(request, 400, 'bad request')
 
     def logout(self):
         # TODO
@@ -176,7 +171,9 @@ class Fileserver(resource.Resource, service.Service):
         storage.init(self.config['database'])
 
         # TODO from configuration
-        self.storage = storage.DiskFileStorage('/tmp/kontalk')
+        stor_class = self.config['storage']['class']
+        klass = getattr(storage, stor_class)
+        self.storage = klass(*self.config['storage']['params'])
 
         self.keyring = keyring.Keyring(storage.MySQLNetworkStorage(), self.config['fingerprint'], self.servername)
 
