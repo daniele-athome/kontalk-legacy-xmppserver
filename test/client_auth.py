@@ -33,6 +33,18 @@ class KontalkTokenMechanism(object):
     def getInitialResponse(self):
         return self.token.encode('utf-8')
 
+class KontalkPublicKeyMechanism(object):
+    """Implements the OpenPGP SASL authentication mechanism."""
+    implements(sasl_mechanisms.ISASLMechanism)
+
+    name = 'PGP-U-DSA-SHA1'
+
+    def __init__(self, key=None):
+        self.key = key
+
+    def getInitialResponse(self):
+        return self.key.encode('utf-8')
+
 
 class KontalkSASLInitiatingInitializer(xmlstream.BaseFeatureInitiatingInitializer):
     """Stream initializer that performs SASL authentication (only Kontalk)."""
@@ -48,10 +60,13 @@ class KontalkSASLInitiatingInitializer(xmlstream.BaseFeatureInitiatingInitialize
         token = self.xmlstream.authenticator.token
 
         mechanisms = sasl.get_mechanisms(self.xmlstream)
-        if token is not None and 'KONTALK-TOKEN' in mechanisms:
-            self.mechanism = KontalkTokenMechanism(token)
-        else:
-            raise sasl.SASLNoAcceptableMechanism()
+        if token is not None:
+            if 'PGP-U-DSA-SHA1' in mechanisms:
+                self.mechanism = KontalkPublicKeyMechanism(token)
+            elif 'KONTALK-TOKEN' in mechanisms:
+                self.mechanism = KontalkTokenMechanism(token)
+            else:
+                raise sasl.SASLNoAcceptableMechanism()
 
     def start(self):
         """
@@ -443,7 +458,13 @@ def user_token(userid, fp):
 
 FINGERPRINT = '37D0E678CDD19FB9B182B3804C9539B401F8229C'
 
-token = user_token(sys.argv[1], FINGERPRINT)
+try:
+    f = open(sys.argv[1])
+    token = base64.b64encode(f.read())
+    f.close()
+except:
+    token = user_token(sys.argv[1], FINGERPRINT)
+
 c = Client('kontalk.net', token, sys.argv[2] if len(sys.argv) > 2 else None)
 
 reactor.run()

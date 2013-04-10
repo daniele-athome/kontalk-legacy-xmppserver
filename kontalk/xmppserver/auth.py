@@ -33,6 +33,36 @@ from pyme import core
 import xmlstream2, log, util
 
 
+class IKontalkPublicKey(credentials.ICredentials):
+
+    def checkKey(fingerprint, keyring):
+        pass
+
+
+class KontalkPublicKey(object):
+    implements(IKontalkPublicKey)
+
+    def __init__(self, key, decode_b64=False):
+        self.key = key
+        self.decode_b64 = decode_b64
+
+    def checkKey(self, fingerprint, keyring):
+        try:
+            # import user key
+            # setup pyme
+            if self.decode_b64:
+                data = sasl.fromBase64(self.key)
+            else:
+                data = self.key
+
+            return keyring.check_key(data)
+        except:
+            import traceback
+            traceback.print_exc()
+            log.debug("key verification failed!")
+            return False
+
+
 class IKontalkToken(credentials.ICredentials):
 
     def checkToken(fingerprint, keyring):
@@ -112,6 +142,26 @@ class AuthKontalkToken(object):
             credentials.checkToken, self.fingerprint, self.keyring).addCallback(
             self._cbTokenValid)
 
+class AuthKontalkPublicKey(object):
+    implements(checkers.ICredentialsChecker)
+
+    credentialInterfaces = IKontalkPublicKey,
+
+    def __init__(self, fingerprint, keyring):
+        self.fingerprint = str(fingerprint)
+        self.keyring = keyring
+
+    def _cbTokenValid(self, userid):
+        if userid:
+            return userid
+        else:
+            return failure.Failure(error.UnauthorizedLogin())
+
+    def requestAvatarId(self, credentials):
+        return defer.maybeDeferred(
+            credentials.checkKey, self.fingerprint, self.keyring).addCallback(
+            self._cbTokenValid)
+
 class AuthKontalkTokenFactory(object):
     implements(iweb.ICredentialFactory)
 
@@ -151,11 +201,16 @@ class SASLRealm:
         if xmlstream2.IXMPPUser in interfaces:
             avatar = self.buildAvatar(avatarId)
             return xmlstream2.IXMPPUser, avatar, avatar.logout
+        elif xmlstream2.IPublicKey in interfaces:
+            return xmlstream2.IPublicKey, None, None
         else:
             raise NotImplementedError("Only IXMPPUser interface is supported by this realm")
 
     def buildAvatar(self, avatarId):
-        # The hostname will be overwritten by the SASLReceivingInitializer
-        # We put in example.com to keep the JID constructor from complaining
-        userid, resource = util.split_userid(avatarId)
-        return xmlstream2.XMPPUser(jid.JID(tuple=(userid, "example.com", resource)))
+        if avatarId == True:
+            log.debug("public key verified!")
+        else:
+            # The hostname will be overwritten by the SASLReceivingInitializer
+            # We put in example.com to keep the JID constructor from complaining
+            userid, resource = util.split_userid(avatarId)
+            return xmlstream2.XMPPUser(jid.JID(tuple=(userid, "example.com", resource)))

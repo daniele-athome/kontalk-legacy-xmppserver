@@ -1,9 +1,12 @@
 
+import random, time, os
+
 from twisted.cred import error as cred_error
 from twisted.internet import reactor, defer
 from twisted.words.protocols.jabber import client, ijabber, xmlstream, sasl
 from twisted.words.protocols.jabber.error import NS_XMPP_STANZAS
 from twisted.words.xish import domish
+from twisted.python.hashlib import sha1
 
 from wokkel import component
 
@@ -85,6 +88,33 @@ class XMPPUser:
 
     def logout(self):
         pass
+
+
+class IPublicKey(Interface):
+    """
+    An interface for public keys
+    """
+
+    fingerprint = Attribute("""Fingerprint of public key""")
+
+    def logout():
+        """
+        Do cleanup here
+        """
+
+class PublicKey:
+    """
+    A public key
+    """
+
+    implements(IPublicKey)
+
+    def __init__(self, fingerprint):
+        self.fingerprint = fingerprint
+
+    def logout(self):
+        pass
+
 
 
 
@@ -370,6 +400,57 @@ class KontalkTokenMechanism(object):
         self.deferred.errback(sasl.SASLAuthError())
 
 
+class PGPMechanism(object):
+    """
+    Implements the OpenPGP SASL authentication mechanism.
+    """
+    implements(ISASLServerMechanism)
+
+    def __init__(self, portal=None):
+        self.portal = portal
+
+    def getInitialChallenge(self):
+        """
+        Create an initial challenge. Used by e.g. DIGEST-MD5
+        """
+        return sha1("%s:%s:%s" % (str(random.random()) , str(time.gmtime()),str(os.getpid()))).hexdigest()
+
+    def parseInitialResponse(self, response):
+        """
+        Parse the initial resonse from the client, if any and return a deferred.
+        The deferred's callback returns either an instance of IXMPPUser or a string
+        that should be used as a subsequent challenge to be sent to the client.
+        Raises SASLAuthError as errback on failure
+        """
+        self.deferred = defer.Deferred()
+        login = self.portal.login(auth.KontalkPublicKey(response), None, IPublicKey)
+        login.addCallbacks(self.onKeySuccess, self.onKeyFailure)
+        return self.deferred
+
+    def onKeySuccess(self, (interface, avatar, logout)):
+        self.deferred.callback(self.getInitialChallenge())
+
+    def onKeyFailure(self, failure):
+        failure.trap(cred_error.UnauthorizedLogin)
+        self.deferred.errback(sasl.SASLAuthError())
+
+    def parseResponse(self, response):
+        """
+        Parse a response from the client and return a deferred.
+        The deferred's callback returns either an instance of IXMPPUser or a string
+        that should be used as a subsequent challenge to be sent to the client.
+        Raises SASLAuthError as errback on failure
+        """
+        pass
+
+    def onSuccess(self, (interface, avatar, logout)):
+        self.deferred.callback(avatar)
+
+    def onFailure(self, failure):
+        failure.trap(cred_error.UnauthorizedLogin)
+        self.deferred.errback(sasl.SASLAuthError())
+
+
 class SASLReceivingInitializer(BaseFeatureReceivingInitializer):
     """
     Stream initializer that performs SASL authentication.
@@ -381,6 +462,7 @@ class SASLReceivingInitializer(BaseFeatureReceivingInitializer):
         feature = domish.Element((sasl.NS_XMPP_SASL, 'mechanisms'), defaultUri=sasl.NS_XMPP_SASL)
         feature.addElement('mechanism', content='KONTALK-TOKEN')
         feature.addElement('mechanism', content='PLAIN')
+        feature.addElement('mechanism', content='PGP-U-DSA-SHA1')
         return feature
 
     def initialize(self):
@@ -410,6 +492,8 @@ class SASLReceivingInitializer(BaseFeatureReceivingInitializer):
             self.mechanism = KontalkTokenMechanism(self.xmlstream.portal)
         elif mechanism == 'PLAIN':
             self.mechanism = PlainMechanism(self.xmlstream.portal)
+        elif mechanism == 'PGP-U-DSA-SHA1':
+            self.mechanism = PGPMechanism(self.xmlstream.portal)
         else:
             self._sendFailure('invalid-mechanism')
             return
@@ -417,6 +501,7 @@ class SASLReceivingInitializer(BaseFeatureReceivingInitializer):
         response = str(element)
 
         if response:
+            # TODO base64 might fail - UNHANDLED ERROR
             deferred = self.mechanism.parseInitialResponse(sasl.fromBase64(response))
             deferred.addCallbacks(self.onSuccess, self.onFailure)
         else:

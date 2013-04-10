@@ -18,12 +18,14 @@
  along with this program.  If not, see <http://www.gnu.org/licenses/>.
 '''
 
+import base64
+
 # pyme
 from pyme import core
 from pyme.constants.keylist import mode as keymode
 from pyme.constants.sig import mode as sigmode
 
-import base64
+import log
 
 
 class Keyring:
@@ -41,6 +43,12 @@ class Keyring:
         self.fingerprint = fingerprint
         self.servername = servername
         self._list = {}
+
+        # pyme context
+        self.ctx = core.Context()
+        self.ctx.set_armor(0)
+        self.ctx.set_keylist_mode(keymode.SIGS)
+
         self._reload()
 
     def itervalues(self):
@@ -50,6 +58,7 @@ class Keyring:
     def _reload(self):
         def done(data):
             self._list = data
+
         self._db.get_list().addCallback(done)
 
     def host(self, fingerprint):
@@ -125,6 +134,62 @@ class Keyring:
     def hostlist(self):
         """List of host servers."""
         return self._list.values()
+
+    """
+    TODO this is not safe. We risk importing unwanted keys and a bunch of other
+    security holes. Be sure to use a dedicated GNUPGHOME for this task,
+    a copy of the default one to be used as a sandbox.
+    """
+    def check_key(self, keydata):
+        data = core.Data(keydata)
+
+        result = self.ctx.op_import(data)
+        if result:
+            log.warn("error! (%s)" % (result, ))
+        else:
+            result = self.ctx.op_import_result()
+            """
+            log.debug("-- status: %r" % (result, ))
+            log.debug(("%i public keys read\n" +
+                                "%i public keys imported\n" +
+                                "%i public keys unchanged\n" +
+                                "%i secret keys read\n" +
+                                "%i secret keys imported\n" +
+                                "%i secret keys unchanged") % \
+                              (result.considered,
+                               result.imported,
+                               result.unchanged,
+                               result.secret_read,
+                               result.secret_imported,
+                               result.secret_unchanged))
+            """
+
+            # key imported/unchanged, look for our signatures
+            if result.imported == 1 or result.unchanged == 1:
+                fpr = result.imports[0].fpr
+                key = self.ctx.get_key(fpr, False)
+
+                for sig in key.uids[0].signatures:
+                    match = False
+
+                    mkey = self.ctx.get_key(sig.keyid, False)
+                    if mkey:
+                        fpr = mkey.subkeys[0].fpr.upper()
+
+                        if fpr == self.fingerprint.upper():
+                            match = True
+                        else:
+                            # no match - compare with keyring
+                            for key in self._list.iterkeys():
+                                if fpr == key.upper():
+                                    match = True
+                                    break
+
+                    if match:
+                        return True
+
+        return False
+
 
     def generate_user_token(self, userid):
         """Generates a user token."""
