@@ -25,6 +25,8 @@ from pyme import core
 from pyme.constants.keylist import mode as keymode
 from pyme.constants.sig import mode as sigmode
 
+from twisted.words.protocols.jabber import jid
+
 import log
 
 
@@ -38,9 +40,10 @@ class Keyring:
         'messages' : (0, 100)
     }
 
-    def __init__(self, db, fingerprint, servername):
+    def __init__(self, db, fingerprint, network, servername):
         self._db = db
         self.fingerprint = fingerprint
+        self.network = network
         self.servername = servername
         self._list = {}
 
@@ -141,6 +144,10 @@ class Keyring:
     a copy of the default one to be used as a sandbox.
     """
     def check_key(self, keydata):
+        """
+        Checks a public key for server signatures.
+        @return: JID, fingerprint
+        """
         data = core.Data(keydata)
 
         result = self.ctx.op_import(data)
@@ -168,27 +175,52 @@ class Keyring:
             if result.imported == 1 or result.unchanged == 1:
                 fpr = result.imports[0].fpr
                 key = self.ctx.get_key(fpr, False)
+                # take the first uid
+                uid = key.uids[0]
 
-                for sig in key.uids[0].signatures:
-                    match = False
+                jabberid = jid.JID(uid.email)
+                if jabberid.host == self.network:
+                    jabberid.resource = uid.comment
 
-                    mkey = self.ctx.get_key(sig.keyid, False)
-                    if mkey:
-                        fpr = mkey.subkeys[0].fpr.upper()
+                    for sig in uid.signatures:
+                        mkey = self.ctx.get_key(sig.keyid, False)
+                        if mkey:
+                            fpr = mkey.subkeys[0].fpr.upper()
 
-                        if fpr == self.fingerprint.upper():
-                            match = True
-                        else:
-                            # no match - compare with keyring
-                            for key in self._list.iterkeys():
-                                if fpr == key.upper():
-                                    match = True
-                                    break
+                            if fpr == self.fingerprint.upper():
+                                return (jabberid, key.subkeys[0].fpr)
 
-                    if match:
-                        return True
+                            # no direct match - compare with keyring
+                            for rkey in self._list.iterkeys():
+                                if fpr == rkey.upper():
+                                    return (jabberid, key.subkeys[0].fpr)
 
-        return False
+    def check_signature(self, signature, text, fingerprint):
+        """
+        Checks the given signature against key identified by fingerprint.
+        @return: fingerprint
+        """
+        cipher = core.Data(signature)
+        plain = core.Data()
+
+        self.ctx.op_verify(cipher, None, plain)
+        # check verification result
+        res = self.ctx.op_verify_result()
+        if len(res.signatures) > 0:
+            sign = res.signatures[0]
+            plain.seek(0, 0)
+            cleartext = plain.read()
+            if cleartext != text:
+                log.debug("signed text not matching original text")
+                return None
+
+            if sign.fpr != fingerprint:
+                log.debug("fingerprint mismatch")
+                return None
+
+            return fingerprint
+
+        return None
 
 
     def generate_user_token(self, userid):

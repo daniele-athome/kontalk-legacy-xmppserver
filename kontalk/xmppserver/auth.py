@@ -35,7 +35,7 @@ import xmlstream2, log, util
 
 class IKontalkPublicKey(credentials.ICredentials):
 
-    def checkKey(fingerprint, keyring):
+    def check(fingerprint, keyring):
         pass
 
 
@@ -46,10 +46,8 @@ class KontalkPublicKey(object):
         self.key = key
         self.decode_b64 = decode_b64
 
-    def checkKey(self, fingerprint, keyring):
+    def check(self, fingerprint, keyring):
         try:
-            # import user key
-            # setup pyme
             if self.decode_b64:
                 data = sasl.fromBase64(self.key)
             else:
@@ -60,12 +58,43 @@ class KontalkPublicKey(object):
             import traceback
             traceback.print_exc()
             log.debug("key verification failed!")
-            return False
+            return None
+
+
+class IKontalkSignedChallenge(credentials.ICredentials):
+
+    def check(fingerprint, keyring):
+        pass
+
+
+class KontalkSignedChallenge(object):
+    implements(IKontalkSignedChallenge)
+
+    def __init__(self, avatar, challenge, signature, decode_b64=False):
+        self.avatar = avatar
+        self.challenge = challenge
+        self.signature = signature
+        self.decode_b64 = decode_b64
+
+    def check(self, fingerprint, keyring):
+        try:
+            if self.decode_b64:
+                data = sasl.fromBase64(self.signature)
+            else:
+                data = self.signature
+
+            if keyring.check_signature(data, self.challenge, self.avatar.fingerprint):
+                return self.avatar.jid
+        except:
+            import traceback
+            traceback.print_exc()
+            log.debug("signature verification failed!")
+            return None
 
 
 class IKontalkToken(credentials.ICredentials):
 
-    def checkToken(fingerprint, keyring):
+    def check(fingerprint, keyring):
         pass
 
 
@@ -76,7 +105,7 @@ class KontalkToken(object):
         self.token = token
         self.decode_b64 = decode_b64
 
-    def checkToken(self, fingerprint, keyring):
+    def check(self, fingerprint, keyring):
         try:
             # setup pyme
             if self.decode_b64:
@@ -122,10 +151,10 @@ class KontalkToken(object):
             log.debug("token verification failed!")
 
 
-class AuthKontalkToken(object):
+class AuthKontalkChecker(object):
     implements(checkers.ICredentialsChecker)
 
-    credentialInterfaces = IKontalkToken,
+    credentialInterfaces = IKontalkToken, IKontalkPublicKey, IKontalkSignedChallenge
 
     def __init__(self, fingerprint, keyring):
         self.fingerprint = str(fingerprint)
@@ -139,28 +168,9 @@ class AuthKontalkToken(object):
 
     def requestAvatarId(self, credentials):
         return defer.maybeDeferred(
-            credentials.checkToken, self.fingerprint, self.keyring).addCallback(
+            credentials.check, self.fingerprint, self.keyring).addCallback(
             self._cbTokenValid)
 
-class AuthKontalkPublicKey(object):
-    implements(checkers.ICredentialsChecker)
-
-    credentialInterfaces = IKontalkPublicKey,
-
-    def __init__(self, fingerprint, keyring):
-        self.fingerprint = str(fingerprint)
-        self.keyring = keyring
-
-    def _cbTokenValid(self, userid):
-        if userid:
-            return userid
-        else:
-            return failure.Failure(error.UnauthorizedLogin())
-
-    def requestAvatarId(self, credentials):
-        return defer.maybeDeferred(
-            credentials.checkKey, self.fingerprint, self.keyring).addCallback(
-            self._cbTokenValid)
 
 class AuthKontalkTokenFactory(object):
     implements(iweb.ICredentialFactory)
@@ -202,15 +212,21 @@ class SASLRealm:
             avatar = self.buildAvatar(avatarId)
             return xmlstream2.IXMPPUser, avatar, avatar.logout
         elif xmlstream2.IPublicKey in interfaces:
-            return xmlstream2.IPublicKey, None, None
+            avatar = self.buildAvatar(avatarId)
+            return xmlstream2.IPublicKey, avatar, avatar.logout
         else:
             raise NotImplementedError("Only IXMPPUser interface is supported by this realm")
 
     def buildAvatar(self, avatarId):
-        if avatarId == True:
-            log.debug("public key verified!")
+        if type(avatarId) in (list, tuple):
+            _jid, fpr = avatarId
+            return xmlstream2.PublicKey(fpr, _jid)
         else:
             # The hostname will be overwritten by the SASLReceivingInitializer
             # We put in example.com to keep the JID constructor from complaining
-            userid, resource = util.split_userid(avatarId)
-            return xmlstream2.XMPPUser(jid.JID(tuple=(userid, "example.com", resource)))
+            if isinstance(avatarId, jid.JID):
+                _jid = avatarId
+            else:
+                userid, resource = util.split_userid(avatarId)
+                _jid = jid.JID(tuple=(userid, "example.com", resource))
+            return xmlstream2.XMPPUser(_jid)

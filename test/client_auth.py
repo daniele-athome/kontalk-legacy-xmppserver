@@ -45,6 +45,23 @@ class KontalkPublicKeyMechanism(object):
     def getInitialResponse(self):
         return self.key.encode('utf-8')
 
+    def getResponse(self, challenge):
+        from pyme.constants.sig import mode as sigmode
+
+        plain = core.Data(challenge)
+        cipher = core.Data()
+        ctx = core.Context()
+        ctx.set_armor(0)
+
+        # signing key
+        ctx.signers_add(ctx.get_key('6A712220F83880FA7706B1A7A627909E5F0DB891', True))
+
+        ctx.op_sign(plain, cipher, sigmode.NORMAL)
+        cipher.seek(0, 0)
+        token = cipher.read()
+        return token
+        #return 'BIEAAAA:BIEBABEBIEIBABEBIBIEOBABEBIBO:BIEUBUBABEBIBOBUUUUU'
+
 
 class KontalkSASLInitiatingInitializer(xmlstream.BaseFeatureInitiatingInitializer):
     """Stream initializer that performs SASL authentication (only Kontalk)."""
@@ -77,6 +94,7 @@ class KontalkSASLInitiatingInitializer(xmlstream.BaseFeatureInitiatingInitialize
         self._deferred = defer.Deferred()
         self.xmlstream.addOnetimeObserver('/success', self.onSuccess)
         self.xmlstream.addOnetimeObserver('/failure', self.onFailure)
+        self.xmlstream.addOnetimeObserver('/challenge', self.onChallenge)
         self.sendAuth(self.mechanism.getInitialResponse())
         return self._deferred
 
@@ -97,6 +115,13 @@ class KontalkSASLInitiatingInitializer(xmlstream.BaseFeatureInitiatingInitialize
             # token is already base64
             auth.addContent(data)
         self.xmlstream.send(auth)
+
+    def onChallenge(self, challenge):
+        challenge_str = str(challenge)
+        response = self.mechanism.getResponse(base64.b64decode(challenge_str))
+        packet = domish.Element((sasl.NS_XMPP_SASL, 'response'))
+        packet.addContent(base64.b64encode(response))
+        self.xmlstream.send(packet)
 
     def onSuccess(self, success):
         self.xmlstream.removeObserver('/failure', self.onFailure)

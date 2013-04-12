@@ -1,0 +1,27 @@
+Authentication using GPG keys
+
+== Overview ==
+GPG authentication is achieved through an ad-hoc SASL mechanism: PGP-U-DSA-SHA1.
+Client is required to have a previously generated key pair and has the public
+key signed by a server authorized to do so.
+
+
+== SASL mechanism ==
+Client begins authentication by sending its public key encoded in Base64:
+
+<auth xmlns='urn:ietf:params:xml:ns:xmpp-sasl'>[base64-encoded client public key]</auth>
+
+At this point, server verifies the key by looking for a server signature. If
+the key is valid, server replies with a challenge:
+
+<challenge xmlns='urn:ietf:params:xml:ns:xmpp-sasl'>[challenge]</challenge>
+
+Challenge is a base64-encoded sha1-hashed hex string defined as:
+"%s:%s:%s" % (str(random.random()) , str(time.gmtime()),str(os.getpid()))
+
+Client signs this challenge with its private key and sends it back:
+<response xmlns='urn:ietf:params:xml:ns:xmpp-sasl'>[signed challenge]</response>
+
+If server verifies the signature, client is allowed to proceed.
+Jabber ID will be read from the key uid e-mail (containing something like
+userid@kontalk.net - must be like that, otherwise it must be rejected).

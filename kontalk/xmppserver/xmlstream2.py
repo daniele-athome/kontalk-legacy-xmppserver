@@ -96,6 +96,7 @@ class IPublicKey(Interface):
     """
 
     fingerprint = Attribute("""Fingerprint of public key""")
+    jid = Attribute("""JID stored in the public key""")
 
     def logout():
         """
@@ -109,8 +110,9 @@ class PublicKey:
 
     implements(IPublicKey)
 
-    def __init__(self, fingerprint):
+    def __init__(self, fingerprint, jabberid):
         self.fingerprint = fingerprint
+        self.jid = jabberid
 
     def logout(self):
         pass
@@ -408,12 +410,14 @@ class PGPMechanism(object):
 
     def __init__(self, portal=None):
         self.portal = portal
+        self.avatar = None
 
     def getInitialChallenge(self):
         """
         Create an initial challenge. Used by e.g. DIGEST-MD5
         """
-        return sha1("%s:%s:%s" % (str(random.random()) , str(time.gmtime()),str(os.getpid()))).hexdigest()
+        self._challenge = sha1("%s:%s:%s" % (str(random.random()) , str(time.gmtime()),str(os.getpid()))).hexdigest()
+        return self._challenge
 
     def parseInitialResponse(self, response):
         """
@@ -428,6 +432,7 @@ class PGPMechanism(object):
         return self.deferred
 
     def onKeySuccess(self, (interface, avatar, logout)):
+        self.avatar = avatar
         self.deferred.callback(self.getInitialChallenge())
 
     def onKeyFailure(self, failure):
@@ -441,7 +446,12 @@ class PGPMechanism(object):
         that should be used as a subsequent challenge to be sent to the client.
         Raises SASLAuthError as errback on failure
         """
-        pass
+        self.deferred = defer.Deferred()
+
+        login = self.portal.login(auth.KontalkSignedChallenge(self.avatar, self._challenge, response), None, IXMPPUser)
+        login.addCallbacks(self.onSuccess, self.onFailure)
+        return self.deferred
+
 
     def onSuccess(self, (interface, avatar, logout)):
         self.deferred.callback(avatar)
