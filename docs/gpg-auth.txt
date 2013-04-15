@@ -25,3 +25,13 @@ Client signs this challenge with its private key and sends it back:
 If server verifies the signature, client is allowed to proceed.
 Jabber ID will be read from the key uid e-mail (containing something like
 userid@kontalk.net - must be like that, otherwise it must be rejected).
+
+== Key information ==
+A Kontalk access key must have a UID signed by a Kontalk server containing:
+ * name: A custom public name
+ * email: jabberid (hash@kontalk.net)
+ * comment: some comment e.g. kontalk.net authentication key (unused)
+
+Resource is not stored in key, since there is one key pair per user/device pair.
+Removing resources from authentication will need refactoring the resolver
+component because of resource randomness (or maybe not?)
