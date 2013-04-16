@@ -226,6 +226,8 @@ class SASLRealm:
             # We put in example.com to keep the JID constructor from complaining
             if isinstance(avatarId, jid.JID):
                 _jid = avatarId
+                # generate random resource
+                _jid.resource = util.rand_str(8, util.CHARSBOX_AZN_UPPERCASE)
             else:
                 userid, resource = util.split_userid(avatarId)
                 _jid = jid.JID(tuple=(userid, "example.com", resource))
