@@ -72,7 +72,7 @@ class StanzaStorage:
 class PresenceStorage:
     """Presence cache storage."""
 
-    def get(self, userid, resource):
+    def get(self, userid):
         """Retrieve info about a user."""
         pass
 
@@ -80,7 +80,7 @@ class PresenceStorage:
         """Persist a presence."""
         pass
 
-    def touch(self, user_jid):
+    def touch(self, userid):
         """Update last seen timestamp of a user."""
         pass
 
@@ -218,7 +218,7 @@ class MySQLNetworkStorage(NetworkStorage):
 
 class MySQLPresenceStorage(PresenceStorage):
 
-    def get(self, userid, resource):
+    def get(self, userid):
         def _fetchone(tx, query, args):
             tx.execute(query, args)
             data = tx.fetchone()
@@ -230,35 +230,15 @@ class MySQLPresenceStorage(PresenceStorage):
                     'show': data[3],
                     'priority': data[4],
                 }
-        def _fetchall(tx, query, args):
-            tx.execute(query, args)
-            data = tx.fetchall()
-            out = []
-            for d in data:
-                out.append({
-                    'userid': d[0],
-                    'timestamp': d[1],
-                    'status': base64.b64decode(d[2]).decode('utf-8') if d[2] is not None else '',
-                    'show': d[3],
-                    'priority': d[4],
-                })
-            return out
 
-        if resource:
-            interaction = _fetchone
-            query = 'SELECT `userid`, `timestamp`, `status`, `show`, `priority` FROM presence WHERE userid = ?'
-            args = (userid + resource, )
-        else:
-            interaction = _fetchall
-            query = 'SELECT `userid`, `timestamp`, `status`, `show`, `priority` FROM presence WHERE userid LIKE ? ORDER BY `timestamp` DESC'
-            args = (userid + '%', )
-
-        return dbpool.runInteraction(interaction, query, args)
+        query = 'SELECT `userid`, `timestamp`, `status`, `show`, `priority` FROM presence WHERE userid = ?'
+        args = (userid[:util.USERID_LENGTH], )
+        return dbpool.runInteraction(_fetchone, query, args)
 
     def presence(self, stanza):
         global dbpool
         sender = jid.JID(stanza['from'])
-        userid = util.jid_to_userid(sender)
+        userid, unused = util.jid_to_userid(sender, True)
 
         def encode_not_empty(val):
             if val is not None:
@@ -275,9 +255,8 @@ class MySQLPresenceStorage(PresenceStorage):
         values = (userid, encode_not_empty(stanza.status), util.str_none(stanza.show), priority)
         return dbpool.runOperation('REPLACE INTO presence VALUES(?, UTC_TIMESTAMP(), ?, ?, ?)', values)
 
-    def touch(self, user_jid):
+    def touch(self, userid):
         global dbpool
-        userid = util.jid_to_userid(user_jid)
         return dbpool.runOperation('UPDATE presence SET timestamp = UTC_TIMESTAMP() WHERE userid = ?', (userid, ))
 
 

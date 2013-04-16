@@ -407,8 +407,8 @@ class PresenceProbeHandler(XMPPHandler):
 
                 self.send(response)
 
-        userid, unused, resource = jid.parse(stanza['to'])
-        d = self.parent.presencedb.get(userid, resource)
+        userid = util.jid_user(stanza['to'])
+        d = self.parent.presencedb.get(userid)
         d.addCallback(_db, stanza)
 
 
@@ -455,8 +455,8 @@ class LastActivityHandler(XMPPHandler):
                 # TODO return error?
                 log.debug("iq/last: user not found")
 
-        userid, unused, resource = jid.parse(stanza['to'])
-        d = self.parent.presencedb.get(userid, resource)
+        userid = util.jid_user(stanza['to'])
+        d = self.parent.presencedb.get(userid)
         d.addCallback(_db, stanza)
 
 

@@ -351,7 +351,7 @@ class JIDCache(XMPPHandler):
                         self.parent.presencedb.presence(stanza)
                     else:
                         # update last seen only
-                        self.parent.presencedb.touch(user)
+                        self.parent.presencedb.touch(user.user)
 
             self.user_unavailable(stanza)
 
@@ -724,7 +724,7 @@ class Resolver(xmlstream2.SocketComponent):
 
         storage.init(config['database'])
         self.presencedb = storage.MySQLPresenceStorage()
-        self.keyring = keyring.Keyring(storage.MySQLNetworkStorage(), config['fingerprint'], self.servername)
+        self.keyring = keyring.Keyring(storage.MySQLNetworkStorage(), config['fingerprint'], self.network, self.servername)
 
         self.subscriptions = {}
 

@@ -3,8 +3,8 @@
 -- http://www.phpmyadmin.net
 --
 -- Host: localhost
--- Generato il: Mar 07, 2013 alle 15:04
--- Versione del server: 5.5.28
+-- Generato il: Apr 16, 2013 alle 18:39
+-- Versione del server: 5.5.30
 -- Versione PHP: 5.4.4-14
 
 SET SQL_MODE="NO_AUTO_VALUE_ON_ZERO";
@@ -27,26 +27,13 @@ SET time_zone = "+00:00";
 --
 
 CREATE TABLE `presence` (
-  `userid` varchar(48) NOT NULL,
-  `timestamp` datetime NOT NULL,
-  `status` varchar(500) CHARACTER SET ascii COLLATE ascii_bin DEFAULT NULL,
-  `show` varchar(30) CHARACTER SET ascii COLLATE ascii_bin DEFAULT NULL,
+  `userid` char(40) NOT NULL COMMENT 'User ID',
+  `timestamp` datetime NOT NULL COMMENT 'Cache entry timestamp',
+  `status` varchar(500) CHARACTER SET ascii COLLATE ascii_bin DEFAULT NULL COMMENT 'Status message',
+  `show` varchar(30) CHARACTER SET ascii COLLATE ascii_bin DEFAULT NULL COMMENT 'Availability',
   `priority` smallint(5) NOT NULL DEFAULT '0' COMMENT 'Priority',
   PRIMARY KEY (`userid`)
-) ENGINE=MyISAM DEFAULT CHARSET=ascii;
-
--- --------------------------------------------------------
-
---
--- Struttura della tabella `push`
---
-
-CREATE TABLE `push` (
-  `userid` varchar(48) CHARACTER SET ascii NOT NULL,
-  `provider` varchar(10) COLLATE ascii_bin NOT NULL,
-  `registration_id` text COLLATE ascii_bin NOT NULL,
-  PRIMARY KEY (`userid`,`provider`)
-) ENGINE=MyISAM DEFAULT CHARSET=ascii COLLATE=ascii_bin COMMENT='Push notification registrations';
+) ENGINE=MyISAM DEFAULT CHARSET=ascii COMMENT='User presence cache';
 
 -- --------------------------------------------------------
 
