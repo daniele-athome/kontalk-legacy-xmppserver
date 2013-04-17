@@ -17,6 +17,7 @@ encoding//kontalk/xmppserver/storage.py=utf-8
 encoding//kontalk/xmppserver/upload.py=utf-8
 encoding//kontalk/xmppserver/util.py=utf-8
 encoding//kontalk/xmppserver/version.py=utf-8
+encoding//kontalk/xmppserver/xmlstream2.py=utf-8
 encoding//twisted/plugins/fileserver.py=utf-8
 encoding//twisted/plugins/xmppc2s.py=utf-8
 encoding//twisted/plugins/xmppnet.py=utf-8

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
-'''Authentication utilities.'''
-'''
-  Kontalk Pyserver
+"""Authentication utilities."""
+"""
+  Kontalk XMPP server
   Copyright (C) 2011 Kontalk Devteam <devteam@kontalk.org>
 
  This program is free software: you can redistribute it and/or modify
@@ -16,7 +16,7 @@
 
  You should have received a copy of the GNU General Public License
  along with this program.  If not, see <http://www.gnu.org/licenses/>.
-'''
+"""
 
 
 from zope.interface import implements
@@ -26,9 +26,6 @@ from twisted.cred import credentials, checkers, error, portal
 from twisted.python import failure
 from twisted.internet import defer
 from twisted.words.protocols.jabber import jid, sasl
-
-# pyme
-from pyme import core
 
 import xmlstream2, log, util
 
@@ -86,6 +83,7 @@ class KontalkSignedChallenge(object):
             if keyring.check_signature(data, self.challenge, self.avatar.fingerprint):
                 return self.avatar.jid
         except:
+            # TODO logging or throw exception back
             import traceback
             traceback.print_exc()
             log.debug("signature verification failed!")
@@ -112,40 +110,10 @@ class KontalkToken(object):
                 data = sasl.fromBase64(self.token)
             else:
                 data = self.token
-            cipher = core.Data(data)
-            plain = core.Data()
-            ctx = core.Context()
-            ctx.set_armor(0)
 
-            ctx.op_verify(cipher, None, plain)
-            # check verification result
-            res = ctx.op_verify_result()
-            if len(res.signatures) > 0:
-                sign = res.signatures[0]
-                plain.seek(0, 0)
-                text = plain.read()
-                data = text.split('|', 2)
-
-                # not a valid token
-                if len(data) != 2:
-                    return None
-
-                # length not matching - refused
-                userid = data[0]
-                if len(userid) != util.USERID_LENGTH_RESOURCE:
-                    return None
-
-                # compare with provided fingerprint (if any)
-                if fingerprint and (sign.fpr.upper() == fingerprint.upper()):
-                    return userid
-
-                # no match - compare with keyring
-                for key in keyring:
-                    if sign.fpr.upper() == key.upper():
-                        return userid
-
-            return None
+            return keyring.check_token(data)
         except:
+            # TODO logging or throw exception back
             import traceback
             traceback.print_exc()
             log.debug("token verification failed!")

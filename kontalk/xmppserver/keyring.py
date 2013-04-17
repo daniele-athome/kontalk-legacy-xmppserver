@@ -18,16 +18,16 @@
  along with this program.  If not, see <http://www.gnu.org/licenses/>.
 '''
 
-import base64
-
-# pyme
-from pyme import core
-from pyme.constants.keylist import mode as keymode
-from pyme.constants.sig import mode as sigmode
+import base64, gpgme
 
 from twisted.words.protocols.jabber import jid
 
-import log
+try:
+    from io import BytesIO
+except ImportError:
+    from StringIO import StringIO as BytesIO
+
+import util, log
 
 
 class Keyring:
@@ -48,9 +48,9 @@ class Keyring:
         self._list = {}
 
         # pyme context
-        self.ctx = core.Context()
-        self.ctx.set_armor(0)
-        self.ctx.set_keylist_mode(keymode.SIGS)
+        self.ctx = gpgme.Context()
+        self.ctx.armor = False
+        self.ctx.keylist_mode = gpgme.KEYLIST_MODE_SIGS
 
         self._reload()
 
@@ -69,6 +69,7 @@ class Keyring:
 
     def get_server_trust(self, fingerprint):
         '''Returns the trust level (ie how many servers trust another) of a given server.'''
+        # TODO convert to gpgme
         count = 0
         ctx = core.Context()
         ctx.set_keylist_mode(keymode.SIGS)
@@ -138,6 +139,36 @@ class Keyring:
         """List of host servers."""
         return self._list.values()
 
+    def check_token(self, token_data):
+        """Checks a Kontalk token. Data must be already base64-decoded."""
+        cipher = BytesIO(token_data)
+        plain = BytesIO()
+
+        res = self.ctx.verify(cipher, None, plain)
+        # check verification result
+        if len(res) > 0:
+            sign = res[0]
+            text = plain.getvalue()
+            data = text.split('|', 2)
+
+            # not a valid token
+            if len(data) != 2:
+                return None
+
+            # length not matching - refused
+            userid = data[0]
+            if len(userid) != util.USERID_LENGTH_RESOURCE:
+                return None
+
+            # compare with own fingerprint
+            if sign.fpr.upper() == self.fingerprint.upper():
+                return userid
+
+            # no match - compare with keyring
+            for rkey in self._list.iterkeys():
+                if sign.fpr.upper() == rkey.upper():
+                    return userid
+
     """
     TODO this is not safe. We risk importing unwanted keys and a bunch of other
     security holes. Be sure to use a dedicated GNUPGHOME for this task,
@@ -148,77 +179,59 @@ class Keyring:
         Checks a public key for server signatures.
         @return: JID, fingerprint
         """
-        data = core.Data(keydata)
+        data = BytesIO(keydata)
 
-        result = self.ctx.op_import(data)
-        if result:
-            log.warn("error! (%s)" % (result, ))
-        else:
-            result = self.ctx.op_import_result()
-            """
-            log.debug("-- status: %r" % (result, ))
-            log.debug(("%i public keys read\n" +
-                                "%i public keys imported\n" +
-                                "%i public keys unchanged\n" +
-                                "%i secret keys read\n" +
-                                "%i secret keys imported\n" +
-                                "%i secret keys unchanged") % \
-                              (result.considered,
-                               result.imported,
-                               result.unchanged,
-                               result.secret_read,
-                               result.secret_imported,
-                               result.secret_unchanged))
-            """
+        result = self.ctx.import_(data)
+        # key imported/unchanged, look for our signatures
+        if result and (result.imported == 1 or result.unchanged == 1):
+            fpr = str(result.imports[0][0])
+            key = self.ctx.get_key(fpr, False)
+            # take the first uid
+            uid = key.uids[0]
 
-            # key imported/unchanged, look for our signatures
-            if result.imported == 1 or result.unchanged == 1:
-                fpr = result.imports[0].fpr
-                key = self.ctx.get_key(fpr, False)
-                # take the first uid
-                uid = key.uids[0]
+            jabberid = jid.JID(uid.email)
+            if jabberid.host == self.network:
+                jabberid.resource = uid.comment
 
-                jabberid = jid.JID(uid.email)
-                if jabberid.host == self.network:
-                    jabberid.resource = uid.comment
+                for sig in uid.signatures:
+                    mkey = self.ctx.get_key(sig.keyid, False)
+                    if mkey:
+                        fpr = mkey.subkeys[0].fpr.upper()
 
-                    for sig in uid.signatures:
-                        mkey = self.ctx.get_key(sig.keyid, False)
-                        if mkey:
-                            fpr = mkey.subkeys[0].fpr.upper()
+                        if fpr == self.fingerprint.upper():
+                            return (jabberid, key.subkeys[0].fpr)
 
-                            if fpr == self.fingerprint.upper():
+                        # no direct match - compare with keyring
+                        for rkey in self._list.iterkeys():
+                            if fpr == rkey.upper():
                                 return (jabberid, key.subkeys[0].fpr)
-
-                            # no direct match - compare with keyring
-                            for rkey in self._list.iterkeys():
-                                if fpr == rkey.upper():
-                                    return (jabberid, key.subkeys[0].fpr)
 
     def check_signature(self, signature, text, fingerprint):
         """
         Checks the given signature against key identified by fingerprint.
         @return: fingerprint
         """
-        cipher = core.Data(signature)
-        plain = core.Data()
+        try:
+            cipher = BytesIO(signature)
+            plain = BytesIO()
 
-        self.ctx.op_verify(cipher, None, plain)
-        # check verification result
-        res = self.ctx.op_verify_result()
-        if len(res.signatures) > 0:
-            sign = res.signatures[0]
-            plain.seek(0, 0)
-            cleartext = plain.read()
-            if cleartext != text:
-                log.debug("signed text not matching original text")
-                return None
+            res = self.ctx.verify(cipher, None, plain)
+            # check verification result
+            if len(res) > 0:
+                sign = res[0]
+                cleartext = plain.getvalue()
+                if cleartext != text:
+                    log.debug("signed text not matching original text")
+                    return None
 
-            if sign.fpr != fingerprint:
-                log.debug("fingerprint mismatch")
-                return None
+                if sign.fpr != fingerprint:
+                    log.debug("fingerprint mismatch")
+                    return None
 
-            return fingerprint
+                return fingerprint
+        except:
+            import traceback
+            traceback.print_exc()
 
         return None
 
@@ -233,15 +246,12 @@ class Keyring:
         """
         fp = str(self.fingerprint)
         string = '%s|%s' % (str(userid), fp)
-        plain = core.Data(string)
-        cipher = core.Data()
-        ctx = core.Context()
-        ctx.set_armor(0)
+        plain = BytesIO(string)
+        cipher = BytesIO()
 
         # signing key
-        ctx.signers_add(ctx.get_key(fp, True))
+        self.ctx.signers = [self.ctx.get_key(fp, True)]
 
-        ctx.op_sign(plain, cipher, sigmode.NORMAL)
-        cipher.seek(0, 0)
-        token = cipher.read()
+        self.ctx.sign(plain, cipher, gpgme.SIG_MODE_NORMAL)
+        token = cipher.getvalue()
         return base64.b64encode(token)

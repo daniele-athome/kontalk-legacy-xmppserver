@@ -37,7 +37,7 @@ class KontalkPublicKeyMechanism(object):
     """Implements the OpenPGP SASL authentication mechanism."""
     implements(sasl_mechanisms.ISASLMechanism)
 
-    name = 'PGP-U-DSA-SHA1'
+    name = 'OPENPGP'
 
     def __init__(self, key=None):
         self.key = key
@@ -78,7 +78,7 @@ class KontalkSASLInitiatingInitializer(xmlstream.BaseFeatureInitiatingInitialize
 
         mechanisms = sasl.get_mechanisms(self.xmlstream)
         if token is not None:
-            if 'PGP-U-DSA-SHA1' in mechanisms:
+            if 'OPENPGP' in mechanisms:
                 self.mechanism = KontalkPublicKeyMechanism(token)
             elif 'KONTALK-TOKEN' in mechanisms:
                 self.mechanism = KontalkTokenMechanism(token)

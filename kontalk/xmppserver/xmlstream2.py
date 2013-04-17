@@ -1,3 +1,23 @@
+# -*- coding: utf-8 -*-
+"""XML stream utilities."""
+"""
+  Kontalk XMPP server
+  Copyright (C) 2011 Kontalk Devteam <devteam@kontalk.org>
+
+ This program is free software: you can redistribute it and/or modify
+ it under the terms of the GNU General Public License as published by
+ the Free Software Foundation, either version 3 of the License, or
+ (at your option) any later version.
+
+ This program is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ GNU General Public License for more details.
+
+ You should have received a copy of the GNU General Public License
+ along with this program.  If not, see <http://www.gnu.org/licenses/>.
+"""
+
 
 import random, time, os
 
@@ -348,6 +368,8 @@ class PlainMechanism(object):
     """
     implements(ISASLServerMechanism)
 
+    name = 'PLAIN'
+
     def __init__(self, portal=None):
         self.portal = portal
 
@@ -379,6 +401,8 @@ class KontalkTokenMechanism(object):
     """
     implements(ISASLServerMechanism)
 
+    name = 'KONTALK-TOKEN'
+
     def __init__(self, portal=None):
         self.portal = portal
 
@@ -407,6 +431,8 @@ class PGPMechanism(object):
     Implements the OpenPGP SASL authentication mechanism.
     """
     implements(ISASLServerMechanism)
+
+    name = 'OPENPGP'
 
     def __init__(self, portal=None):
         self.portal = portal
@@ -462,17 +488,13 @@ class PGPMechanism(object):
 
 
 class SASLReceivingInitializer(BaseFeatureReceivingInitializer):
-    """
-    Stream initializer that performs SASL authentication.
-
-    The supported mechanisms by this initializer are C{DIGEST-MD5} and C{PLAIN}
-    """
+    """Stream initializer that performs SASL authentication."""
 
     def feature(self):
         feature = domish.Element((sasl.NS_XMPP_SASL, 'mechanisms'), defaultUri=sasl.NS_XMPP_SASL)
         feature.addElement('mechanism', content='KONTALK-TOKEN')
         feature.addElement('mechanism', content='PLAIN')
-        feature.addElement('mechanism', content='PGP-U-DSA-SHA1')
+        feature.addElement('mechanism', content='OPENPGP')
         return feature
 
     def initialize(self):
@@ -502,7 +524,7 @@ class SASLReceivingInitializer(BaseFeatureReceivingInitializer):
             self.mechanism = KontalkTokenMechanism(self.xmlstream.portal)
         elif mechanism == 'PLAIN':
             self.mechanism = PlainMechanism(self.xmlstream.portal)
-        elif mechanism == 'PGP-U-DSA-SHA1':
+        elif mechanism == 'OPENPGP':
             self.mechanism = PGPMechanism(self.xmlstream.portal)
         else:
             self._sendFailure('invalid-mechanism')

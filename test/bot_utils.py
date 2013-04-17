@@ -13,11 +13,14 @@ from wokkel import xmppim
 
 from zope.interface import implements
 
-# pyme
-from pyme import core
-from pyme.constants.sig import mode
+import gpgme
 
-import sys, base64
+try:
+    from io import BytesIO
+except ImportError:
+    from StringIO import StringIO as BytesIO
+
+import base64
 
 from kontalk.xmppserver import util, xmlstream2
 
@@ -31,15 +34,15 @@ def user_token(userid, fp):
     and the fingerprint of the server he registered to
     '''
     string = '%s|%s' % (userid, fp)
-    plain = core.Data(string)
-    cipher = core.Data()
-    ctx = core.Context()
-    ctx.set_armor(0)
+    plain = BytesIO(str(string))
+    cipher = BytesIO()
+    ctx = gpgme.Context()
+    ctx.armor = False
 
     # signing key
-    ctx.signers_add(ctx.get_key(fp, True))
+    ctx.signers = [ctx.get_key(fp)]
 
-    ctx.op_sign(plain, cipher, mode.NORMAL)
+    ctx.sign(plain, cipher, gpgme.SIG_MODE_NORMAL)
     cipher.seek(0, 0)
     token = cipher.read()
     return base64.b64encode(token)
@@ -58,6 +61,33 @@ class KontalkTokenMechanism(object):
     def getInitialResponse(self):
         return self.token.encode('utf-8')
 
+class KontalkPublicKeyMechanism(object):
+    """Implements the OpenPGP SASL authentication mechanism."""
+    implements(sasl_mechanisms.ISASLMechanism)
+
+    name = 'OPENPGP'
+
+    def __init__(self, fingerprint=None):
+        self.fingerprint = str(fingerprint)
+        self.ctx = gpgme.Context()
+
+    def getInitialResponse(self):
+        # TODO retrieve key
+        keydata = BytesIO()
+        key = self.ctx.get_key(self.fingerprint, True)
+        self.ctx.export(str(key.subkeys[0].keyid), keydata)
+        return base64.b64encode(keydata.getvalue())
+
+    def getResponse(self, challenge):
+        plain = BytesIO(challenge)
+        cipher = BytesIO()
+
+        # signing key
+        self.ctx.signers = [self.ctx.get_key(self.fingerprint, True)]
+
+        self.ctx.sign(plain, cipher, gpgme.SIG_MODE_NORMAL)
+        return cipher.getvalue()
+
 
 class KontalkSASLInitiatingInitializer(xmlstream.BaseFeatureInitiatingInitializer):
     """Stream initializer that performs SASL authentication (only Kontalk)."""
@@ -70,12 +100,22 @@ class KontalkSASLInitiatingInitializer(xmlstream.BaseFeatureInitiatingInitialize
         Select and setup authentication mechanism.
         """
 
-        token = self.xmlstream.authenticator.token
+        self.mechanism = None
+
+        try:
+            token = self.xmlstream.authenticator.token
+            fingerprint = None
+        except:
+            token = None
+            fingerprint = self.xmlstream.authenticator.fingerprint
 
         mechanisms = sasl.get_mechanisms(self.xmlstream)
         if token is not None and 'KONTALK-TOKEN' in mechanisms:
             self.mechanism = KontalkTokenMechanism(token)
-        else:
+        if fingerprint is not None and 'OPENPGP' in mechanisms:
+            self.mechanism = KontalkPublicKeyMechanism(fingerprint)
+
+        if not self.mechanism:
             raise sasl.SASLNoAcceptableMechanism()
 
     def start(self):
@@ -87,6 +127,7 @@ class KontalkSASLInitiatingInitializer(xmlstream.BaseFeatureInitiatingInitialize
         self._deferred = defer.Deferred()
         self.xmlstream.addOnetimeObserver('/success', self.onSuccess)
         self.xmlstream.addOnetimeObserver('/failure', self.onFailure)
+        self.xmlstream.addOnetimeObserver('/challenge', self.onChallenge)
         self.sendAuth(self.mechanism.getInitialResponse())
         return self._deferred
 
@@ -108,6 +149,13 @@ class KontalkSASLInitiatingInitializer(xmlstream.BaseFeatureInitiatingInitialize
             auth.addContent(data)
         self.xmlstream.send(auth)
 
+    def onChallenge(self, challenge):
+        challenge_str = str(challenge)
+        response = self.mechanism.getResponse(base64.b64decode(challenge_str))
+        packet = domish.Element((sasl.NS_XMPP_SASL, 'response'))
+        packet.addContent(base64.b64encode(response))
+        self.xmlstream.send(packet)
+
     def onSuccess(self, success):
         self.xmlstream.removeObserver('/failure', self.onFailure)
         self.xmlstream.reset()
@@ -126,9 +174,12 @@ class KontalkSASLInitiatingInitializer(xmlstream.BaseFeatureInitiatingInitialize
 class KontalkXMPPAuthenticator(xmlstream.ConnectAuthenticator):
     namespace = 'jabber:client'
 
-    def __init__(self, network, token):
+    def __init__(self, network, token, fingerprint):
         xmlstream.ConnectAuthenticator.__init__(self, network)
-        self.token = token
+        if fingerprint:
+            self.fingerprint = fingerprint
+        elif token:
+            self.token = token
         # this is for making twisted bits not complaining
         self.jid = jid.JID('anon@example.com')
 
@@ -165,13 +216,17 @@ class Client(object):
     def __init__(self, config, handler):
         self.config = config
         self.token = user_token(config['identity'], config['fingerprint'])
+        try:
+            self.fingerprint = config['key']
+        except:
+            self.fingerprint = None
         self.network = config['network']
         self.logTrafficIn = config['debug']
         self.logTrafficOut = config['debug']
         self.handler = handler
         self.handler.client = self
 
-        a = KontalkXMPPAuthenticator(config['network'], self.token)
+        a = KontalkXMPPAuthenticator(config['network'], self.token, self.fingerprint)
         f = xmlstream.XmlStreamFactory(a)
         f.addBootstrap(xmlstream.STREAM_CONNECTED_EVENT, self.connected)
         f.addBootstrap(xmlstream.STREAM_END_EVENT, self.disconnected)
@@ -414,26 +469,3 @@ class Client(object):
         print failure
 
         self.xmlstream.sendFooter()
-
-
-def user_token(userid, fp):
-    '''Generates a user token.'''
-
-    '''
-    token is made up of the hashed phone number (the user id)
-    plus the resource (in one big string, 40+8 characters),
-    and the fingerprint of the server he registered to
-    '''
-    string = '%s|%s' % (userid, fp)
-    plain = core.Data(str(string))
-    cipher = core.Data()
-    ctx = core.Context()
-    ctx.set_armor(0)
-
-    # signing key
-    ctx.signers_add(ctx.get_key(str(fp), True))
-
-    ctx.op_sign(plain, cipher, mode.NORMAL)
-    cipher.seek(0, 0)
-    token = cipher.read()
-    return base64.b64encode(token)

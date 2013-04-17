@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
-'''Utilities for everybody.'''
-'''
+"""Utilities for everybody."""
+"""
   Kontalk XMPP server
   Copyright (C) 2011 Kontalk Devteam <devteam@kontalk.org>
 
@@ -16,7 +16,7 @@
 
  You should have received a copy of the GNU General Public License
  along with this program.  If not, see <http://www.gnu.org/licenses/>.
-'''
+"""
 
 import random, hashlib
 
