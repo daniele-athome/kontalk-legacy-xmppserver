@@ -105,7 +105,6 @@ class KontalkToken(object):
 
     def check(self, fingerprint, keyring):
         try:
-            # setup pyme
             if self.decode_b64:
                 data = sasl.fromBase64(self.token)
             else:

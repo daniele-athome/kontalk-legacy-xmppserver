@@ -47,7 +47,7 @@ class Keyring:
         self.servername = servername
         self._list = {}
 
-        # pyme context
+        # gpgme context
         self.ctx = gpgme.Context()
         self.ctx.armor = False
         self.ctx.keylist_mode = gpgme.KEYLIST_MODE_SIGS
