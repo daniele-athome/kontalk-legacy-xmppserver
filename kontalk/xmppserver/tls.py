@@ -21,17 +21,34 @@
 
 from twisted.protocols.policies import WrappingFactory, ProtocolWrapper
 from twisted.internet.interfaces import ILoggingContext, ISystemHandle, ISSLTransport
-from twisted.internet.protocol import Protocol
+from twisted.internet import protocol
 from twisted.python.failure import Failure
 from twisted.internet.main import CONNECTION_LOST
+from twisted.internet import error
 
 # WARNING internal import
 from twisted.internet._newtls import _BypassTLS
 
 from zope.interface import implements, providedBy, directlyProvides
 
-from gnutls.connection import *
+from gnutls.constants import SHUT_RDWR, SHUT_WR
+from gnutls.connection import OpenPGPCredentials as _OpenPGPCredentials
+from gnutls.connection import ClientSession, ServerSession
 from gnutls.errors import *
+
+
+class CertificateOK: pass
+
+class OpenPGPCredentials(_OpenPGPCredentials):
+    """A Twisted enhanced OpenPGPCredentials"""
+    verify_peer = False
+    verify_period = None
+
+    def verify_callback(self, peer_cert, preverify_status=None):
+        """Verifies the peer certificate and raises an exception if it cannot be accepted"""
+        if isinstance(preverify_status, Exception):
+            raise preverify_status
+        self.check_certificate(peer_cert, cert_name='peer certificate')
 
 
 def startTLS(transport, credentials, normal, bypass):
@@ -83,7 +100,7 @@ def startTLS(transport, credentials, normal, bypass):
         transport.unregisterProducer()
 
     tlsFactory = TLSSessionFactory(credentials, client, None)
-    tlsProtocol = TLSSessionProtocol(tlsFactory, transport.protocol, False)
+    tlsProtocol = TLSSessionProtocol(tlsFactory, transport.protocol)
     transport.protocol = tlsProtocol
 
     transport.getHandle = tlsProtocol.getHandle
@@ -104,7 +121,45 @@ def startTLS(transport, credentials, normal, bypass):
         transport.registerProducer(producer, streaming)
 
 
-class TLSSessionProtocol(ProtocolWrapper):
+class TLSSessionProtocol(protocol.Protocol):
+
+    implements(ISystemHandle, ISSLTransport)
+
+    def __init__(self, factory, wrappedProtocol):
+        # the real protocol (e.g. XmlStream)
+        self._protocol = wrappedProtocol
+        self.factory = factory
+
+    def getHandle(self):
+        return self._tlsConnection
+
+    def getPeerCertificate(self):
+        return self._tlsConnection.get_peer_certificate()
+
+    def dataReceived(self, data):
+        # TODO
+        print "data received (%d bytes)" % (len(data), )
+        print data
+
+    def makeConnection(self, transport):
+        transport.stopReading()
+        transport.stopWriting()
+        self._tlsConnection = self.factory.getSession(transport)
+
+        try:
+            self._tlsConnection.handshake()
+        except (OperationWouldBlock, OperationInterrupted):
+            print "would block"
+
+        self._tlsConnection.verify_peer()
+
+        self.connectionMade()
+
+    def write(self, bytes):
+        self._tlsConnection.send(bytes)
+
+
+class TLSSessionProtocolOld(ProtocolWrapper):
     """
     @ivar _tlsConnection: The L{OpenSSL.SSL.Connection} instance which is
         encrypted and decrypting this connection.
@@ -177,13 +232,8 @@ class TLSSessionProtocol(ProtocolWrapper):
         Connect this wrapper to the given transport and initialize the
         necessary L{OpenSSL.SSL.Connection} with a memory BIO.
         """
-        tlsContext = self.factory._credentials
-        if self.factory._isClient:
-            klass = ClientSession
-        else:
-            klass = ServerSession
+        self._tlsConnection = self.factory.getSession(transport)
 
-        self._tlsConnection = klass(transport.socket, tlsContext)
         self._appSendBuffer = []
 
         # Add interfaces provided by the transport we are wrapping:
@@ -202,111 +252,64 @@ class TLSSessionProtocol(ProtocolWrapper):
         # Now that we ourselves have a transport (initialized by the
         # ProtocolWrapper.makeConnection call above), kick off the TLS
         # handshake.
+        transport.stopWriting()
+        transport.stopReading()
+
+        transport.socket = self._tlsConnection
+        transport.fileno = transport.socket.fileno
+        transport.startReading()
+
         try:
             self._tlsConnection.handshake()
         except (OperationWouldBlock, OperationInterrupted):
-            self._flushSend()
+            if self._tlsConnection.interrupted_while_writing:
+                transport.startWriting()
+            return
+        except GNUTLSError, e:
+            #del self.doRead
+            self.failIfNotConnected(err = e)
+            return
 
-
-    def _flushSend(self):
-        """
-        Read any bytes out of the send BIO and write them to the underlying
-        transport.
-        """
         try:
-            bytes = self._tlsConnection.recv(2 ** 15)
-        except (OperationWouldBlock, OperationInterrupted):
-            # There may be nothing in the send BIO right now.
-            pass
+            self._verifyPeer()
+        except GNUTLSError, e:
+            self.closeTLSSession(e)
+            self.failIfNotConnected(err = e)
+            return
+        except Exception, e:
+            self.closeTLSSession(e)
+            self.failIfNotConnected(err = error.getConnectError(str(e)))
+            return
+
+        ## TLS handshake (including certificate verification) finished succesfully
+        ProtocolWrapper.connectionMade(self)
+
+    def _verifyPeer(self):
+        session = self.socket
+        credentials = self.credentials
+        if not credentials.verify_peer:
+            return
+        try:
+            session.verify_peer()
+        except Exception, e:
+            preverify_status = e
         else:
-            self.transport.write(bytes)
+            preverify_status = CertificateOK
 
+        credentials.verify_callback(session.peer_certificate, preverify_status)
 
-    def _flushReceive(self):
-        """
-        Try to receive any application-level bytes which are now available
-        because of a previous write into the receive BIO.  This will take
-        care of delivering any application-level bytes which are received to
-        the protocol, as well as handling of the various exceptions which
-        can come from trying to get such bytes.
-        """
-        # Keep trying this until an error indicates we should stop or we
-        # close the connection.  Looping is necessary to make sure we
-        # process all of the data which was put into the receive BIO, as
-        # there is no guarantee that a single recv call will do it all.
-        while not self._lostTLSConnection:
-            try:
-                bytes = self._tlsConnection.recv(2 ** 15)
-            except (OperationWouldBlock, OperationInterrupted):
-                # The newly received bytes might not have been enough to produce
-                # any application data.
-                break
-            # TODO dummy exception
-            except ValueError:
-                # TLS has shut down and no more TLS data will be received over
-                # this connection.
-                self._shutdownTLS()
-                # Passing in None means the user protocol's connnectionLost
-                # will get called with reason from underlying transport:
-                self._tlsShutdownFinished(None)
-            except GNUTLSError, e:
-                # Something went pretty wrong.  For example, this might be a
-                # handshake failure (because there were no shared ciphers, because
-                # a certificate failed to verify, etc).  TLS can no longer proceed.
+    def closeTLSSession(self, reason):
+        try:
+            self.socket.send_alert(reason)
+            self._shutdownTLS(SHUT_RDWR)
+        except Exception:
+            pass
 
-                # Squash EOF in violation of protocol into ConnectionLost; we
-                # create Failure before calling _flushSendBio so that no new
-                # exception will get thrown in the interim.
-                if e.args[0] == -1 and e.args[1] == 'Unexpected EOF':
-                    failure = Failure(CONNECTION_LOST)
-                else:
-                    failure = Failure()
-
-                self._flushSend()
-                self._tlsShutdownFinished(failure)
-            else:
-                # If we got application bytes, the handshake must be done by
-                # now.  Keep track of this to control error reporting later.
-                self._handshakeDone = True
-                ProtocolWrapper.dataReceived(self, bytes)
-
-        # The received bytes might have generated a response which needs to be
-        # sent now.  For example, the handshake involves several round-trip
-        # exchanges without ever producing application-bytes.
-        self._flushSend()
-
-
-    def dataReceived(self, bytes):
-        """
-        Deliver any received bytes to the receive BIO and then read and deliver
-        to the application any application-level data which becomes available
-        as a result of this.
-        """
-        self._tlsConnection.send(bytes)
-
-        if self._writeBlockedOnRead:
-            # A read just happened, so we might not be blocked anymore.  Try to
-            # flush all the pending application bytes.
-            self._writeBlockedOnRead = False
-            appSendBuffer = self._appSendBuffer
-            self._appSendBuffer = []
-            for bytes in appSendBuffer:
-                self._write(bytes)
-            if (not self._writeBlockedOnRead and self.disconnecting and
-                self.producer is None):
-                self._shutdownTLS()
-            if self._producer is not None:
-                self._producer.resumeProducing()
-
-        self._flushReceive()
-
-
-    def _shutdownTLS(self):
+    def _shutdownTLS(self, how=SHUT_RDWR):
         """
         Initiate, or reply to, the shutdown handshake of the TLS layer.
         """
-        shutdownSuccess = self._tlsConnection.bye()
-        self._flushSend()
+        shutdownSuccess = self._tlsConnection.bye(how)
         if shutdownSuccess:
             # Both sides have shutdown, so we can start closing lower-level
             # transport. This will also happen if we haven't started
@@ -474,6 +477,19 @@ class TLSSessionFactory(WrappingFactory):
         WrappingFactory.__init__(self, wrappedFactory)
         self._credentials = credentials
         self._isClient = isClient
+        self._session = None
+
+    def getSession(self, transport):
+        if not self._session:
+            if self._isClient:
+                klass = ClientSession
+            else:
+                klass = ServerSession
+
+            self._session = klass(transport.socket, self._credentials)
+
+        return self._session
+
 
     def logPrefix(self):
         """

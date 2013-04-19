@@ -1,7 +1,5 @@
 # -*- coding: utf-8 -*-
 """XML stream utilities."""
-from gnutls.connection import OpenPGPCredentials
-from gnutls.crypto import OpenPGPCertificate, OpenPGPPrivateKey
 """
   Kontalk XMPP server
   Copyright (C) 2011 Kontalk Devteam <devteam@kontalk.org>
@@ -35,7 +33,7 @@ from wokkel import component
 from zope.interface.declarations import implements
 from zope.interface.interface import Attribute, Interface
 
-import auth, log, tls
+import auth, log
 
 INIT_SUCCESS_EVENT = intern("//event/xmpp/initsuccess")
 
@@ -218,12 +216,7 @@ class TLSReceivingInitializer(BaseFeatureReceivingInitializer):
         if self.canInitialize(self):
             self.xmlstream.dispatch(self, INIT_SUCCESS_EVENT)
             self.xmlstream.send(domish.Element((xmlstream.NS_XMPP_TLS, 'proceed')))
-            # TODO ehm :)
-            cert = OpenPGPCertificate(open('../pygnutls/examples/certs/valid-pgp.pub').read())
-            key = OpenPGPPrivateKey(open('../pygnutls/examples/certs/valid-pgp.key').read())
-            from twisted.internet.abstract import FileDescriptor
-            tls.startTLS(self.xmlstream.transport, OpenPGPCredentials(cert, key), True, FileDescriptor)
-            #self.xmlstream.transport.startTLS(self.xmlstream.factory.tls_ctx)
+            self.xmlstream.transport.startTLS(self.xmlstream.factory.tls_ctx)
             self.xmlstream.reset()
 
 

@@ -645,6 +645,21 @@ class C2SComponent(xmlstream2.SocketComponent):
         if 'ssl_key' in self.config and 'ssl_cert' in self.config:
             self.sfactory.loadPEM(self.config['ssl_cert'], self.config['ssl_key'])
 
+        # --- TEST ---
+        from gnutls.interfaces import twisted
+        from gnutls.crypto import OpenPGPCertificate, OpenPGPPrivateKey
+        from kontalk.xmppserver import tls
+
+        # TODO ehm :)
+        cert = OpenPGPCertificate(open('../pygnutls/examples/certs/valid-pgp.pub').read())
+        key = OpenPGPPrivateKey(open('../pygnutls/examples/certs/valid-pgp.key').read())
+
+        reactor.listenTLS(port=int(self.config['bind'][1])+1,
+            factory=self.sfactory,
+            credentials=tls.OpenPGPCredentials(cert, key),
+            interface=str(self.config['bind'][0]))
+        # --- TEST ---
+
         return strports.service('tcp:' + str(self.config['bind'][1]) +
             ':interface=' + str(self.config['bind'][0]), self.sfactory)
 
