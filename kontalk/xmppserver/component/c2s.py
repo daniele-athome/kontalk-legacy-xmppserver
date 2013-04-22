@@ -24,12 +24,15 @@ import traceback
 
 from twisted.internet import reactor
 from twisted.application import strports
+from twisted.application.internet import StreamServerEndpointService
 from twisted.cred import portal
 from twisted.internet.protocol import ServerFactory
 
 from twisted.words.protocols.jabber import xmlstream, jid, error
 from twisted.words.protocols.jabber.xmlstream import XMPPHandler
 from twisted.words.xish import domish, xmlstream as xish_xmlstream
+
+from gnutls.crypto import OpenPGPCertificate, OpenPGPPrivateKey
 
 try:
     from OpenSSL import crypto
@@ -41,7 +44,7 @@ if ssl and not ssl.supported:
 
 from wokkel import component
 
-from kontalk.xmppserver import log, auth, keyring, util, storage, xmlstream2, compression
+from kontalk.xmppserver import log, auth, keyring, util, storage, xmlstream2, tls
 import sm
 
 
@@ -645,23 +648,24 @@ class C2SComponent(xmlstream2.SocketComponent):
         if 'ssl_key' in self.config and 'ssl_cert' in self.config:
             self.sfactory.loadPEM(self.config['ssl_cert'], self.config['ssl_key'])
 
-        # --- TEST ---
-        from gnutls.interfaces import twisted
-        from gnutls.crypto import OpenPGPCertificate, OpenPGPPrivateKey
-        from kontalk.xmppserver import tls
+        if 'tls' in self.config['bind']:
+            cert = OpenPGPCertificate(open(self.config['pgp_cert']).read())
+            key = OpenPGPPrivateKey(open(self.config['pgp_key']).read())
 
-        # TODO ehm :)
-        cert = OpenPGPCertificate(open('../pygnutls/examples/certs/valid-pgp.pub').read())
-        key = OpenPGPPrivateKey(open('../pygnutls/examples/certs/valid-pgp.key').read())
+            cred = auth.OpenPGPKontalkCredentials(cert, key, str(self.config['pgp_keyring']), authportal)
+            cred.verify_peer = True
+            tls_svc = StreamServerEndpointService(
+                tls.TLSServerEndpoint(reactor=reactor,
+                    port=int(self.config['bind']['tls'][1]),
+                    interface=str(self.config['bind']['tls'][0]),
+                    credentials=cred),
+                self.sfactory)
+            tls_svc._raiseSynchronously = True
 
-        reactor.listenTLS(port=int(self.config['bind'][1])+1,
-            factory=self.sfactory,
-            credentials=tls.OpenPGPCredentials(cert, key),
-            interface=str(self.config['bind'][0]))
-        # --- TEST ---
+        plain_svc = strports.service('tcp:' + str(self.config['bind']['plain'][1]) +
+            ':interface=' + str(self.config['bind']['plain'][0]), self.sfactory)
 
-        return strports.service('tcp:' + str(self.config['bind'][1]) +
-            ':interface=' + str(self.config['bind'][0]), self.sfactory)
+        return [plain_svc, tls_svc]
 
     def startService(self):
         component.Component.startService(self)

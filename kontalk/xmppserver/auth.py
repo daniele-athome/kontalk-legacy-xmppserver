@@ -27,7 +27,37 @@ from twisted.python import failure
 from twisted.internet import defer
 from twisted.words.protocols.jabber import jid, sasl
 
-import xmlstream2, log, util
+import xmlstream2, log, util, tls
+
+
+class OpenPGPKontalkCredentials(tls.OpenPGPCredentials):
+    """Kontalk-enhanced OpenPGP credentials."""
+
+    def __init__(self, cert, key, keyring, portal):
+        tls.OpenPGPCredentials.__init__(self, cert, key, keyring)
+        self.portal = portal
+
+    def verify_callback(self, peer_cert, preverify_status=None):
+        print peer_cert, preverify_status
+        tls.OpenPGPCredentials.verify_callback(self, peer_cert, preverify_status)
+        self.portal.login(KontalkCertificate(peer_cert), None, xmlstream2.IXMPPUser)
+
+
+class IKontalkCertificate(credentials.ICredentials):
+
+    def check(fingerprint, keyring):
+        pass
+
+
+class KontalkCertificate(object):
+    implements(IKontalkCertificate)
+
+    def __init__(self, cert):
+        self.cert = cert
+
+    def check(self, fingerprint, keyring):
+        uid = self.cert.uid(0)
+        return jid.JID(uid.email)
 
 
 class IKontalkPublicKey(credentials.ICredentials):
@@ -121,7 +151,7 @@ class KontalkToken(object):
 class AuthKontalkChecker(object):
     implements(checkers.ICredentialsChecker)
 
-    credentialInterfaces = IKontalkToken, IKontalkPublicKey, IKontalkSignedChallenge
+    credentialInterfaces = IKontalkToken, IKontalkCertificate, IKontalkPublicKey, IKontalkSignedChallenge
 
     def __init__(self, fingerprint, keyring):
         self.fingerprint = str(fingerprint)

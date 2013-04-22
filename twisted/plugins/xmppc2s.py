@@ -51,7 +51,7 @@ class KontalkC2SServiceMaker(object):
         appl = MultiService()
         comp = C2SComponent(config)
         comp.setServiceParent(appl)
-        comp.setup().setServiceParent(appl)
+        [x.setServiceParent(appl) for x in comp.setup()]
 
         return appl
 
