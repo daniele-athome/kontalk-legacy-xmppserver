@@ -325,6 +325,21 @@ class ISASLServerMechanism(Interface):
         """
 
 
+class ExternalMechanism(object):
+    """
+    Implements the EXTERNAL SASL authentication mechanism.
+
+    @type portal: L{Portal}
+    """
+    implements(ISASLServerMechanism)
+
+    name = 'EXTERNAL'
+
+    def __init__(self, portal=None):
+        self.portal = portal
+    # TODO TODO TODO TODO TODO TODO
+
+
 class PlainMechanism(object):
     """
     Implements the PLAIN SASL authentication mechanism.
@@ -396,10 +411,18 @@ class KontalkTokenMechanism(object):
 class SASLReceivingInitializer(BaseFeatureReceivingInitializer):
     """Stream initializer that performs SASL authentication."""
 
+    external = False
+
     def feature(self):
+        # TODO check for zope interface
+        self.external = hasattr(self.xmlstream.transport.socket, 'peer_certificate')
+
         feature = domish.Element((sasl.NS_XMPP_SASL, 'mechanisms'), defaultUri=sasl.NS_XMPP_SASL)
-        feature.addElement('mechanism', content='KONTALK-TOKEN')
-        feature.addElement('mechanism', content='PLAIN')
+        if self.external:
+            feature.addElement('mechanism', content='EXTERNAL')
+        else:
+            feature.addElement('mechanism', content='KONTALK-TOKEN')
+            feature.addElement('mechanism', content='PLAIN')
         return feature
 
     def initialize(self):
@@ -425,6 +448,13 @@ class SASLReceivingInitializer(BaseFeatureReceivingInitializer):
             return
 
         mechanism = element.getAttribute('mechanism')
+        if self.external:
+            if mechanism == 'EXTERNAL':
+                self.mechanism = ExternalMechanism(self.xmlstream.portal)
+            else:
+                self._sendFailure('invalid-mechanism')
+                return
+
         if mechanism == 'KONTALK-TOKEN':
             self.mechanism = KontalkTokenMechanism(self.xmlstream.portal)
         elif mechanism == 'PLAIN':

@@ -226,6 +226,12 @@ class XMPPListenAuthenticator(xmlstream.ListenAuthenticator):
 
             required = False
             for initializer in self.xmlstream.initializers:
+                # already on TLS
+                # TODO check for zope interface
+                if hasattr(self.xmlstream.transport.socket, 'peer_certificate') and isinstance(initializer, xmlstream2.TLSReceivingInitializer):
+                    log.debug("already on TLS, skipping %r" % (initializer, ))
+                    continue
+
                 if required and (not hasattr(initializer, 'exclusive') or not initializer.exclusive):
                     log.debug("skipping %r" % (initializer, ))
                     continue
