@@ -61,34 +61,6 @@ class KontalkTokenMechanism(object):
     def getInitialResponse(self):
         return self.token.encode('utf-8')
 
-class KontalkPublicKeyMechanism(object):
-    """Implements the OpenPGP SASL authentication mechanism."""
-    implements(sasl_mechanisms.ISASLMechanism)
-
-    name = 'OPENPGP'
-
-    def __init__(self, fingerprint=None):
-        self.fingerprint = str(fingerprint)
-        self.ctx = gpgme.Context()
-
-    def getInitialResponse(self):
-        # TODO retrieve key
-        keydata = BytesIO()
-        key = self.ctx.get_key(self.fingerprint, True)
-        self.ctx.export(str(key.subkeys[0].keyid), keydata)
-        return base64.b64encode(keydata.getvalue())
-
-    def getResponse(self, challenge):
-        plain = BytesIO(challenge)
-        cipher = BytesIO()
-
-        # signing key
-        self.ctx.signers = [self.ctx.get_key(self.fingerprint, True)]
-
-        self.ctx.sign(plain, cipher, gpgme.SIG_MODE_NORMAL)
-        return cipher.getvalue()
-
-
 class KontalkSASLInitiatingInitializer(xmlstream.BaseFeatureInitiatingInitializer):
     """Stream initializer that performs SASL authentication (only Kontalk)."""
 
@@ -102,18 +74,11 @@ class KontalkSASLInitiatingInitializer(xmlstream.BaseFeatureInitiatingInitialize
 
         self.mechanism = None
 
-        try:
-            token = self.xmlstream.authenticator.token
-            fingerprint = None
-        except:
-            token = None
-            fingerprint = self.xmlstream.authenticator.fingerprint
+        token = self.xmlstream.authenticator.token
 
         mechanisms = sasl.get_mechanisms(self.xmlstream)
         if token is not None and 'KONTALK-TOKEN' in mechanisms:
             self.mechanism = KontalkTokenMechanism(token)
-        if fingerprint is not None and 'OPENPGP' in mechanisms:
-            self.mechanism = KontalkPublicKeyMechanism(fingerprint)
 
         if not self.mechanism:
             raise sasl.SASLNoAcceptableMechanism()

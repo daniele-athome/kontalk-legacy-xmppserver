@@ -60,66 +60,6 @@ class KontalkCertificate(object):
         return jid.JID(uid.email)
 
 
-class IKontalkPublicKey(credentials.ICredentials):
-
-    def check(fingerprint, keyring):
-        pass
-
-
-class KontalkPublicKey(object):
-    implements(IKontalkPublicKey)
-
-    def __init__(self, key, decode_b64=False):
-        self.key = key
-        self.decode_b64 = decode_b64
-
-    def check(self, fingerprint, keyring):
-        try:
-            if self.decode_b64:
-                data = sasl.fromBase64(self.key)
-            else:
-                data = self.key
-
-            return keyring.check_key(data)
-        except:
-            import traceback
-            traceback.print_exc()
-            log.debug("key verification failed!")
-            return None
-
-
-class IKontalkSignedChallenge(credentials.ICredentials):
-
-    def check(fingerprint, keyring):
-        pass
-
-
-class KontalkSignedChallenge(object):
-    implements(IKontalkSignedChallenge)
-
-    def __init__(self, avatar, challenge, signature, decode_b64=False):
-        self.avatar = avatar
-        self.challenge = challenge
-        self.signature = signature
-        self.decode_b64 = decode_b64
-
-    def check(self, fingerprint, keyring):
-        try:
-            if self.decode_b64:
-                data = sasl.fromBase64(self.signature)
-            else:
-                data = self.signature
-
-            if keyring.check_signature(data, self.challenge, self.avatar.fingerprint):
-                return self.avatar.jid
-        except:
-            # TODO logging or throw exception back
-            import traceback
-            traceback.print_exc()
-            log.debug("signature verification failed!")
-            return None
-
-
 class IKontalkToken(credentials.ICredentials):
 
     def check(fingerprint, keyring):
@@ -151,7 +91,7 @@ class KontalkToken(object):
 class AuthKontalkChecker(object):
     implements(checkers.ICredentialsChecker)
 
-    credentialInterfaces = IKontalkToken, IKontalkCertificate, IKontalkPublicKey, IKontalkSignedChallenge
+    credentialInterfaces = IKontalkToken, IKontalkCertificate
 
     def __init__(self, fingerprint, keyring):
         self.fingerprint = str(fingerprint)
@@ -208,24 +148,17 @@ class SASLRealm:
         if xmlstream2.IXMPPUser in interfaces:
             avatar = self.buildAvatar(avatarId)
             return xmlstream2.IXMPPUser, avatar, avatar.logout
-        elif xmlstream2.IPublicKey in interfaces:
-            avatar = self.buildAvatar(avatarId)
-            return xmlstream2.IPublicKey, avatar, avatar.logout
         else:
             raise NotImplementedError("Only IXMPPUser interface is supported by this realm")
 
     def buildAvatar(self, avatarId):
-        if type(avatarId) in (list, tuple):
-            _jid, fpr = avatarId
-            return xmlstream2.PublicKey(fpr, _jid)
+        # The hostname will be overwritten by the SASLReceivingInitializer
+        # We put in example.com to keep the JID constructor from complaining
+        if isinstance(avatarId, jid.JID):
+            _jid = avatarId
+            # generate random resource
+            _jid.resource = util.rand_str(8, util.CHARSBOX_AZN_UPPERCASE)
         else:
-            # The hostname will be overwritten by the SASLReceivingInitializer
-            # We put in example.com to keep the JID constructor from complaining
-            if isinstance(avatarId, jid.JID):
-                _jid = avatarId
-                # generate random resource
-                _jid.resource = util.rand_str(8, util.CHARSBOX_AZN_UPPERCASE)
-            else:
-                userid, resource = util.split_userid(avatarId)
-                _jid = jid.JID(tuple=(userid, "example.com", resource))
-            return xmlstream2.XMPPUser(_jid)
+            userid, resource = util.split_userid(avatarId)
+            _jid = jid.JID(tuple=(userid, "example.com", resource))
+        return xmlstream2.XMPPUser(_jid)

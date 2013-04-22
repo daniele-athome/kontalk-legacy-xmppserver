@@ -110,36 +110,6 @@ class XMPPUser:
         pass
 
 
-class IPublicKey(Interface):
-    """
-    An interface for public keys
-    """
-
-    fingerprint = Attribute("""Fingerprint of public key""")
-    jid = Attribute("""JID stored in the public key""")
-
-    def logout():
-        """
-        Do cleanup here
-        """
-
-class PublicKey:
-    """
-    A public key
-    """
-
-    implements(IPublicKey)
-
-    def __init__(self, fingerprint, jabberid):
-        self.fingerprint = fingerprint
-        self.jid = jabberid
-
-    def logout(self):
-        pass
-
-
-
-
 class IReceivingInitializer(ijabber.IInitializer):
     """
     Interface for XML stream initializers for the initiating entity.
@@ -426,67 +396,6 @@ class KontalkTokenMechanism(object):
         self.deferred.errback(sasl.SASLAuthError())
 
 
-class PGPMechanism(object):
-    """
-    Implements the OpenPGP SASL authentication mechanism.
-    """
-    implements(ISASLServerMechanism)
-
-    name = 'OPENPGP'
-
-    def __init__(self, portal=None):
-        self.portal = portal
-        self.avatar = None
-
-    def getInitialChallenge(self):
-        """
-        Create an initial challenge. Used by e.g. DIGEST-MD5
-        """
-        self._challenge = sha1("%s:%s:%s" % (str(random.random()) , str(time.gmtime()),str(os.getpid()))).hexdigest()
-        return self._challenge
-
-    def parseInitialResponse(self, response):
-        """
-        Parse the initial resonse from the client, if any and return a deferred.
-        The deferred's callback returns either an instance of IXMPPUser or a string
-        that should be used as a subsequent challenge to be sent to the client.
-        Raises SASLAuthError as errback on failure
-        """
-        self.deferred = defer.Deferred()
-        login = self.portal.login(auth.KontalkPublicKey(response), None, IPublicKey)
-        login.addCallbacks(self.onKeySuccess, self.onKeyFailure)
-        return self.deferred
-
-    def onKeySuccess(self, (interface, avatar, logout)):
-        self.avatar = avatar
-        self.deferred.callback(self.getInitialChallenge())
-
-    def onKeyFailure(self, failure):
-        failure.trap(cred_error.UnauthorizedLogin)
-        self.deferred.errback(sasl.SASLAuthError())
-
-    def parseResponse(self, response):
-        """
-        Parse a response from the client and return a deferred.
-        The deferred's callback returns either an instance of IXMPPUser or a string
-        that should be used as a subsequent challenge to be sent to the client.
-        Raises SASLAuthError as errback on failure
-        """
-        self.deferred = defer.Deferred()
-
-        login = self.portal.login(auth.KontalkSignedChallenge(self.avatar, self._challenge, response), None, IXMPPUser)
-        login.addCallbacks(self.onSuccess, self.onFailure)
-        return self.deferred
-
-
-    def onSuccess(self, (interface, avatar, logout)):
-        self.deferred.callback(avatar)
-
-    def onFailure(self, failure):
-        failure.trap(cred_error.UnauthorizedLogin)
-        self.deferred.errback(sasl.SASLAuthError())
-
-
 class SASLReceivingInitializer(BaseFeatureReceivingInitializer):
     """Stream initializer that performs SASL authentication."""
 
@@ -494,7 +403,6 @@ class SASLReceivingInitializer(BaseFeatureReceivingInitializer):
         feature = domish.Element((sasl.NS_XMPP_SASL, 'mechanisms'), defaultUri=sasl.NS_XMPP_SASL)
         feature.addElement('mechanism', content='KONTALK-TOKEN')
         feature.addElement('mechanism', content='PLAIN')
-        feature.addElement('mechanism', content='OPENPGP')
         return feature
 
     def initialize(self):
@@ -524,8 +432,6 @@ class SASLReceivingInitializer(BaseFeatureReceivingInitializer):
             self.mechanism = KontalkTokenMechanism(self.xmlstream.portal)
         elif mechanism == 'PLAIN':
             self.mechanism = PlainMechanism(self.xmlstream.portal)
-        elif mechanism == 'OPENPGP':
-            self.mechanism = PGPMechanism(self.xmlstream.portal)
         else:
             self._sendFailure('invalid-mechanism')
             return
