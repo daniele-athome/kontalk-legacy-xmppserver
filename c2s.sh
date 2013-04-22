@@ -1,2 +1,2 @@
 #!/bin/sh
-exec twistd --pidfile c2s.pid -n kontalk-c2s
+GNUPGHOME=$PWD/.gnupg exec twistd --pidfile c2s.pid -n kontalk-c2s
