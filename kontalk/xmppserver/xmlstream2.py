@@ -19,14 +19,11 @@
 """
 
 
-import random, time, os
-
 from twisted.cred import error as cred_error
 from twisted.internet import reactor, defer
 from twisted.words.protocols.jabber import client, ijabber, xmlstream, sasl
 from twisted.words.protocols.jabber.error import NS_XMPP_STANZAS
 from twisted.words.xish import domish
-from twisted.python.hashlib import sha1
 
 from wokkel import component
 
