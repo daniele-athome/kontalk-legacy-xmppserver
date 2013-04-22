@@ -2,3 +2,6 @@
 *.pid
 dropin.cache
 .gnupg
+/keyring.gpg
+/server-pgp.crt
+/server-pgp.key
