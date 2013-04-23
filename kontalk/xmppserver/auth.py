@@ -33,14 +33,13 @@ import xmlstream2, log, util, tls
 class OpenPGPKontalkCredentials(tls.OpenPGPCredentials):
     """Kontalk-enhanced OpenPGP credentials."""
 
-    def __init__(self, cert, key, keyring, portal):
+    def __init__(self, cert, key, keyring):
         tls.OpenPGPCredentials.__init__(self, cert, key, keyring)
-        self.portal = portal
 
     def verify_callback(self, peer_cert, preverify_status=None):
         print peer_cert, preverify_status
         tls.OpenPGPCredentials.verify_callback(self, peer_cert, preverify_status)
-        self.portal.login(KontalkCertificate(peer_cert), None, xmlstream2.IXMPPUser)
+        # TODO other checks?
 
 
 class IKontalkCertificate(credentials.ICredentials):

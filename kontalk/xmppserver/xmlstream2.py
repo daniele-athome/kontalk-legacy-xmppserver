@@ -30,7 +30,7 @@ from wokkel import component
 from zope.interface.declarations import implements
 from zope.interface.interface import Attribute, Interface
 
-import auth, log
+import auth, log, tls
 
 INIT_SUCCESS_EVENT = intern("//event/xmpp/initsuccess")
 
@@ -335,9 +335,28 @@ class ExternalMechanism(object):
 
     name = 'EXTERNAL'
 
-    def __init__(self, portal=None):
+    def __init__(self, portal=None, peer_certificate=None):
         self.portal = portal
-    # TODO TODO TODO TODO TODO TODO
+        self.peer_certificate = peer_certificate
+
+    def getInitialChallenge(self):
+        return defer.Deferred().errback(SASLMechanismError())
+
+    def parseInitialResponse(self, response):
+        self.deferred = defer.Deferred()
+        login = self.portal.login(auth.KontalkCertificate(self.peer_certificate), None, IXMPPUser)
+        login.addCallbacks(self.onSuccess, self.onFailure)
+        return self.deferred
+
+    def parseResponse(self, response):
+        return defer.Deferred().errback(SASLMechanismError())
+
+    def onSuccess(self, (interface, avatar, logout)):
+        self.deferred.callback(avatar)
+
+    def onFailure(self, failure):
+        failure.trap(cred_error.UnauthorizedLogin)
+        self.deferred.errback(sasl.SASLAuthError())
 
 
 class PlainMechanism(object):
@@ -414,8 +433,7 @@ class SASLReceivingInitializer(BaseFeatureReceivingInitializer):
     external = False
 
     def feature(self):
-        # TODO check for zope interface
-        self.external = hasattr(self.xmlstream.transport.socket, 'peer_certificate')
+        self.external = tls.isTLS(self.xmlstream)
 
         feature = domish.Element((sasl.NS_XMPP_SASL, 'mechanisms'), defaultUri=sasl.NS_XMPP_SASL)
         if self.external:
@@ -450,18 +468,18 @@ class SASLReceivingInitializer(BaseFeatureReceivingInitializer):
         mechanism = element.getAttribute('mechanism')
         if self.external:
             if mechanism == 'EXTERNAL':
-                self.mechanism = ExternalMechanism(self.xmlstream.portal)
+                self.mechanism = ExternalMechanism(self.xmlstream.portal, self.xmlstream.transport.getPeerCertificate())
             else:
                 self._sendFailure('invalid-mechanism')
                 return
-
-        if mechanism == 'KONTALK-TOKEN':
-            self.mechanism = KontalkTokenMechanism(self.xmlstream.portal)
-        elif mechanism == 'PLAIN':
-            self.mechanism = PlainMechanism(self.xmlstream.portal)
         else:
-            self._sendFailure('invalid-mechanism')
-            return
+            if mechanism == 'KONTALK-TOKEN':
+                self.mechanism = KontalkTokenMechanism(self.xmlstream.portal)
+            elif mechanism == 'PLAIN':
+                self.mechanism = PlainMechanism(self.xmlstream.portal)
+            else:
+                self._sendFailure('invalid-mechanism')
+                return
 
         response = str(element)
 

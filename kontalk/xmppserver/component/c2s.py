@@ -227,8 +227,7 @@ class XMPPListenAuthenticator(xmlstream.ListenAuthenticator):
             required = False
             for initializer in self.xmlstream.initializers:
                 # already on TLS
-                # TODO check for zope interface
-                if hasattr(self.xmlstream.transport.socket, 'peer_certificate') and isinstance(initializer, xmlstream2.TLSReceivingInitializer):
+                if tls.isTLS(self.xmlstream) and isinstance(initializer, xmlstream2.TLSReceivingInitializer):
                     log.debug("already on TLS, skipping %r" % (initializer, ))
                     continue
 
@@ -658,7 +657,7 @@ class C2SComponent(xmlstream2.SocketComponent):
             cert = OpenPGPCertificate(open(self.config['pgp_cert']).read())
             key = OpenPGPPrivateKey(open(self.config['pgp_key']).read())
 
-            cred = auth.OpenPGPKontalkCredentials(cert, key, str(self.config['pgp_keyring']), authportal)
+            cred = auth.OpenPGPKontalkCredentials(cert, key, str(self.config['pgp_keyring']))
             cred.verify_peer = True
             tls_svc = StreamServerEndpointService(
                 tls.TLSServerEndpoint(reactor=reactor,

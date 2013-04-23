@@ -27,6 +27,10 @@ from gnutls.connection import OpenPGPCredentials as _OpenPGPCredentials
 from gnutls.interfaces import twisted
 
 
+def isTLS(xmlstream):
+    return isinstance(xmlstream.transport, twisted.TLSMixin)
+
+
 class OpenPGPCredentials(_OpenPGPCredentials):
     """A Twisted enhanced OpenPGPCredentials"""
     verify_peer = False
