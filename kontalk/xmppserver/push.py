@@ -19,10 +19,14 @@
 '''
 
 
-import traceback
-import urllib, urllib2
+from twisted.internet import reactor, defer
+from twisted.web.client import Agent, FileBodyProducer
+from twisted.web.http_headers import Headers
 
-import log
+from StringIO import StringIO
+import urllib
+import traceback
+import log, util
 
 
 class GCMPushNotifications:
@@ -61,24 +65,40 @@ class GooglePush(PushServer):
 
     def __init__(self, service, config):
         self.service = service
-        self.token = config['apikey']
-        self.sender = config['projectid']
+        self.token = str(config['apikey'])
+        self.sender = str(config['projectid'])
 
     def notify(self, regid):
+        agent = Agent(reactor)
         params = urllib.urlencode({
             'registration_id' : regid,
             'collapse_key' : 'new',
             'data.action' : 'org.kontalk.CHECK_MESSAGES'
         })
-        headers = {
-            'Authorization' : 'key=' + self.token
-        }
-        req = urllib2.Request(self.url, params, headers)
-        fd = urllib2.urlopen(req)
-        # TODO what do we do with the output??
-        data = fd.read()
-        log.debug("data from gcm: %s" % (data, ))
-        return data
+        headers = Headers({
+            'Authorization' : ['key=' + self.token],
+            'Content-Type' : ['application/x-www-form-urlencoded;charset=UTF-8'],
+        })
+
+        d = agent.request('POST', self.url, headers, FileBodyProducer(StringIO(params)))
+
+        def _success(response):
+            if response.code == 204:
+                d = defer.succeed('')
+            else:
+                d = defer.Deferred()
+                def _debug(data):
+                    log.debug("data from gcm(%s): %s" % (data[0], data[1], ))
+                d.addCallback(_debug)
+                response.deliverBody(util.SimpleReceiver(response.code, d))
+
+            return d
+
+        def _error(response):
+            log.warn("error from gcm: %s" % (response, ))
+
+        d.addCallbacks(_success, _error)
+        return d
 
 
 class PushManager:

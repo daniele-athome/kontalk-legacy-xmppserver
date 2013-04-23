@@ -20,6 +20,8 @@
 
 import random, hashlib
 
+from twisted.internet import protocol
+from twisted.web import client
 from twisted.words.protocols.jabber import jid
 from wokkel import generic
 
@@ -132,3 +134,21 @@ def md5sum(filename):
         for chunk in iter(lambda: f.read(128*md5.block_size), ''):
             md5.update(chunk)
     return md5.hexdigest()
+
+
+class SimpleReceiver(protocol.Protocol):
+    """A simple string buffer receiver for http clients."""
+
+    def __init__(self, code, d):
+        self.buf = ''
+        self.code = code
+        self.d = d
+
+    def dataReceived(self, data):
+        self.buf += data
+
+    def connectionLost(self, reason=protocol.connectionDone):
+        if isinstance(reason.value, client.ResponseDone):
+            self.d.callback((self.code, self.buf))
+        else:
+            self.d.errback(reason)
