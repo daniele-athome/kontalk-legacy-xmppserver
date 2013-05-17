@@ -620,7 +620,11 @@ class JIDCache(XMPPHandler):
     def _lookup_cb(self, result, _jid, clientDeferred):
         #log.debug("result = %r" % (result, ))
         out = set()
-        del self.lookups[_jid]
+        try:
+            del self.lookups[_jid]
+        except KeyError:
+            pass
+
         # TODO this is always true since errbacks are not really used
         if not isinstance(result, failure.Failure):
             # FIXME this is really a messy algorithm
