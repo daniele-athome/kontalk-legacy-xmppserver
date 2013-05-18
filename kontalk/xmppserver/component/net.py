@@ -519,7 +519,7 @@ class NetComponent(xmlstream2.SocketComponent):
     def setup(self):
         storage.init(self.config['database'])
 
-        ring = keyring.Keyring(storage.MySQLNetworkStorage(), self.config['fingerprint'], self.servername)
+        ring = keyring.Keyring(storage.MySQLNetworkStorage(), self.config['fingerprint'], self.network, self.servername)
         self.service = NetService(self.config, self, ring)
         self.service.logTraffic = self.logTraffic
         self.sfactory = XMPPNetServerFactory(self.service)
