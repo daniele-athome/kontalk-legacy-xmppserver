@@ -291,6 +291,42 @@ class InitialPresenceHandler(XMPPHandler):
     def connectionInitialized(self):
         self.xmlstream.addObserver("/presence[not(@type)][@to='%s']" % (self.parent.servername, ), self.presence)
 
+    def send_presence(self, to, destination):
+        """
+        Sends all local presence data (available and unavailable) to the given
+        entity.
+        """
+        def _db(presence, to, destination):
+            log.debug("presence: %r" % (presence, ))
+            if type(presence) == list and len(presence) > 0:
+                for user in presence:
+                    response = domish.Element((None, 'presence'))
+                    response['to'] = to
+                    response['destination'] = destination
+                    response_from = util.userid_to_jid(user['userid'], self.parent.servername)
+                    response['from'] = response_from.full()
+
+                    if user['status'] is not None:
+                        response.addElement((None, 'status'), content=user['status'])
+                    if user['show'] is not None:
+                        response.addElement((None, 'show'), content=user['show'])
+
+                    if not self.parent.sfactory.client_connected(response_from):
+                        response['type'] = 'unavailable'
+                        delay = domish.Element(('urn:xmpp:delay', 'delay'))
+                        delay['stamp'] = user['timestamp'].strftime(xmlstream2.XMPP_STAMP_FORMAT)
+                        response.addChild(delay)
+
+                    self.send(response)
+
+                    if self.parent.logTraffic:
+                        log.debug("presence sent: %s" % (response.toXml().encode('utf-8'), ))
+                    else:
+                        log.debug("presence sent: %s" % (response['from'], ))
+
+        d = self.parent.presencedb.get_all()
+        d.addCallback(_db, to, destination)
+
     def presence(self, stanza):
         """
         This initial presence is from a broadcast sent by external entities
@@ -300,6 +336,9 @@ class InitialPresenceHandler(XMPPHandler):
         """
 
         sender = jid.JID(stanza['from'])
+        # receiving initial presence from remote server, send all presence
+        if stanza['from'] != self.parent.servername and stanza['from'] in self.parent.keyring.hostlist():
+            self.send_presence(stanza['from'], stanza['origin'])
 
         # check for external conflict
         self.parent.sfactory.check_conflict(sender)

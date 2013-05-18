@@ -76,6 +76,10 @@ class PresenceStorage:
         """Retrieve info about a user."""
         pass
 
+    def get_all(self):
+        """Retrieve info about all users."""
+        pass
+
     def presence(self, stanza):
         """Persist a presence."""
         pass
@@ -234,6 +238,24 @@ class MySQLPresenceStorage(PresenceStorage):
         query = 'SELECT `userid`, `timestamp`, `status`, `show`, `priority` FROM presence WHERE userid = ?'
         args = (userid[:util.USERID_LENGTH], )
         return dbpool.runInteraction(_fetchone, query, args)
+
+    def get_all(self):
+        def _fetchall(tx, query):
+            tx.execute(query)
+            out = []
+            rows = tx.fetchall()
+            for data in rows:
+                out.append({
+                    'userid': data[0],
+                    'timestamp': data[1],
+                    'status': base64.b64decode(data[2]).decode('utf-8') if data[2] is not None else '',
+                    'show': data[3],
+                    'priority': data[4],
+                })
+            return out
+
+        query = 'SELECT `userid`, `timestamp`, `status`, `show`, `priority` FROM presence'
+        return dbpool.runInteraction(_fetchall, query)
 
     def presence(self, stanza):
         global dbpool

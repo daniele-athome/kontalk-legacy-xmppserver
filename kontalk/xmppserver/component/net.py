@@ -350,6 +350,17 @@ class NetService(object):
                        lambda _: self.outgoingDisconnected(xs))
         xs.addObserver('/*', self.onElement, 0, xs)
 
+        """
+        Here we introduce ourselves to remote c2s, so it will reply with
+        all presence. We are faking resolver identity using 'origin' so the
+        reply will go directly to it.
+        """
+        p = domish.Element((None, 'presence'))
+        p['from'] = self.defaultDomain
+        p['origin'] = self.network
+        p['to'] = otherHost
+        xs.send(p)
+
         if otherHost in self._outgoingQueues:
             for element in self._outgoingQueues[otherHost]:
                 xs.send(element)
