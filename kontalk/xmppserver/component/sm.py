@@ -323,6 +323,9 @@ class IQHandler(XMPPHandler):
                 return fn(stanza)
 
     def roster(self, stanza):
+        # enforce destination (resolver)
+        stanza['to'] = self.parent.network
+
         # requesting items lookup, forward to resolver
         if xmlstream2.has_element(stanza.query, uri=xmlstream2.NS_IQ_ROSTER, name='item'):
             self.parent.forward(stanza)
