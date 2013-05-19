@@ -296,13 +296,14 @@ class InitialPresenceHandler(XMPPHandler):
         Sends all local presence data (available and unavailable) to the given
         entity.
         """
-        def _db(presence, to, destination):
+        def _db(presence, to, destination=None):
             log.debug("presence: %r" % (presence, ))
             if type(presence) == list and len(presence) > 0:
                 for user in presence:
                     response = domish.Element((None, 'presence'))
                     response['to'] = to
-                    response['destination'] = destination
+                    if destination:
+                        response['destination'] = destination
                     response_from = util.userid_to_jid(user['userid'], self.parent.servername)
                     response['from'] = response_from.full()
 
@@ -335,10 +336,12 @@ class InitialPresenceHandler(XMPPHandler):
         them through the actual route.
         """
 
+        # receiving initial presence from remote server or from local resolver, send all presence
+        if stanza['from'] == self.parent.network or (stanza['from'] != self.parent.servername and stanza['from'] in self.parent.keyring.hostlist()):
+            log.debug("resolver appeared, sending all local presence to %s" % (stanza['from'], ))
+            self.send_presence(stanza['from'], stanza['origin'] if stanza.hasAttribute('origin') else None)
+
         sender = jid.JID(stanza['from'])
-        # receiving initial presence from remote server, send all presence
-        if stanza['from'] != self.parent.servername and stanza['from'] in self.parent.keyring.hostlist():
-            self.send_presence(stanza['from'], stanza['origin'])
 
         # check for external conflict
         self.parent.sfactory.check_conflict(sender)
