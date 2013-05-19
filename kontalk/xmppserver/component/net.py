@@ -275,8 +275,17 @@ class XMPPNetServerFactory(xmlstream.XmlStreamServerFactory):
                                                    0, xs)
         xs.addObserver('/*', self.onElement, 0, xs)
 
-        self.service.validateConnection(xs)
-
+        if self.service.validateConnection(xs):
+            """
+            Here we introduce ourselves to remote c2s, so it will reply with
+            all presence. We are faking resolver identity using 'origin' so the
+            reply will go directly to it.
+            """
+            p = domish.Element((None, 'presence'))
+            p['from'] = self.service.defaultDomain
+            p['origin'] = self.service.network
+            p['to'] = otherHost
+            xs.send(p)
 
     def onConnectionLost(self, xs, reason):
         thisHost = xs.thisEntity.host
@@ -433,7 +442,9 @@ class NetService(object):
         otherHost = xs.otherEntity.host
         if otherHost in self._outgoingStreams:
             xs.sendStreamError(error.StreamError('conflict'))
+            return False
         self._outgoingStreams[otherHost] = xs
+        return True
 
     def invalidateConnection(self, xs):
         otherHost = xs.otherEntity.host
