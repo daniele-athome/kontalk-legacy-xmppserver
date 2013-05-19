@@ -1,0 +1,11 @@
+#!/bin/bash
+# Generates some fake presences SQL for the presence table
+
+SQL="INSERT INTO presence (userid, timestamp) VALUES('%s', NOW());\n"
+
+COUNT=$1
+
+for (( i=0; i<$COUNT; i++ )); do
+TEXT=$(< /dev/urandom tr -dc a-f0-9 | head -c 40)
+printf "$SQL" $TEXT
+done
