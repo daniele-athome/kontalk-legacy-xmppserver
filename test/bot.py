@@ -4,6 +4,9 @@
 
 from twisted.internet import reactor
 from twisted.words.xish import domish
+from twisted.words.protocols.jabber import jid
+
+from wokkel import xmppim
 
 import sys, time, demjson
 
@@ -100,14 +103,14 @@ class Handler:
     def sendTextMessage(self, peer, content, request=False):
         """Sends a text message with an optional receipt request."""
 
-        jid = self.client.xmlstream.authenticator.jid
+        _jid = self.client.xmlstream.authenticator.jid
         message = domish.Element((None, 'message'))
         message['id'] = 'kontalk' + util.rand_str(8, util.CHARSBOX_AZN_LOWERCASE)
         message['type'] = 'chat'
         if peer:
             message['to'] = peer
         else:
-            message['to'] = jid.userhost()
+            message['to'] = _jid.userhost()
         message.addElement((None, 'body'), content=content)
         if request:
             message.addElement(('urn:xmpp:server-receipts', 'request'))
@@ -161,6 +164,31 @@ class Handler:
 
         if begin:
             self.sendTextMessage(peer, "1", request)
+
+    def randomRoster(self, delay=0):
+        def _count():
+            global count, num
+            num = 400
+            count = 0
+            def _presence(stanza):
+                global count, num
+                count += 1
+                if count >= 400:
+                    print 'received all presence'
+            self.client.xmlstream.addObserver('/presence', _presence)
+
+            _jid = jid.JID(tuple=(None, self.client.network, None))
+            r = domish.Element((None, 'iq'))
+            r.addUniqueId()
+            r['type'] = 'get'
+            q = r.addElement((xmppim.NS_ROSTER, 'query'))
+            for n in range(num):
+                _jid.user = util.rand_str(util.USERID_LENGTH, util.CHARSBOX_HEX_LOWERCASE)
+                item = q.addElement((None, 'item'))
+                item['jid'] = _jid.userhost()
+            self.client.send(r)
+
+        reactor.callLater(delay, _count)
 
     def quit(self):
         self.client.xmlstream.sendFooter()
