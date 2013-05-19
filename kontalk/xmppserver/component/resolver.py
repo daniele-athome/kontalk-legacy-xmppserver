@@ -580,6 +580,14 @@ class JIDCache(XMPPHandler):
         @rtype: L{Deferred}
         """
 
+        # TEST remote lookup not used any more because of global presence sync
+        hits = self.cache_lookup(_jid)
+        #log.debug("[%s] local cache hits: %r (%r)" % (_jid.full(), hits, self.jid_cache))
+        if hits:
+            return defer.succeed(hits)
+        else:
+            return defer.succeed([])
+
         #log.debug("[%s] looking up" % (_jid.full(), ))
 
         # force refresh is cache is too old
