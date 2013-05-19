@@ -58,9 +58,10 @@ class Router(component.Router):
         self.broadcast(stanza)
 
         # advertise this component about the others
+        stanza = Presence()
+        stanza['to'] = destination
         for host in self.routes.iterkeys():
             if host is not None:
-                stanza = Presence()
                 stanza['from'] = host
                 xs.send(stanza)
 
