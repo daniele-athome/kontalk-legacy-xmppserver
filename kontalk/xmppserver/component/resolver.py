@@ -311,6 +311,7 @@ class PresenceStub(object):
 
     def push(self, stanza):
         """Push a presence to this stub."""
+        # TODO update object attributes with latest data
         ujid = jid.JID(stanza['from'])
 
         # recreate presence stanza for local use
@@ -333,6 +334,12 @@ class PresenceStub(object):
             return presence
         except:
             pass
+
+    def presence(self):
+        if self.available():
+            return self._avail.values()
+        else:
+            return (self.toElement(), )
 
     def available(self):
         """Returns true if available presence count is greater than 0."""
@@ -388,7 +395,7 @@ class JIDCache(XMPPHandler):
     @ivar jid_cache: cache of JIDs location [userid][resource]=(timestamp, host)
     @type jid_cache: C{dict}
     @ivar presence_cache: cache of presence stanzas
-    @type presence_cache: C{dict} [JID]=PresenceStub
+    @type presence_cache: C{dict} [userid]=PresenceStub
     """
 
     """Seconds should pass to consider the cache to be old."""
@@ -399,7 +406,6 @@ class JIDCache(XMPPHandler):
     def __init__(self):
         XMPPHandler.__init__(self)
         self.lookups = {}
-        self.jid_cache = {}
         self.presence_cache = {}
         self._last_lookup = 0
 
@@ -456,7 +462,7 @@ class JIDCache(XMPPHandler):
         to = jid.JID(stanza['to'])
 
         def _lookup(data, gid, sender):
-            #log.debug("onProbe(%s): found %r" % (gid, data, ))
+            log.debug("onProbe(%s): found %r" % (gid, data, ))
             if data:
                 # TEST using deepcopy is not safe
                 from copy import deepcopy
@@ -481,43 +487,29 @@ class JIDCache(XMPPHandler):
     def user_available(self, stanza):
         """Called when receiving a presence stanza."""
         ujid = jid.JID(stanza['from'])
-        userid, resource = util.jid_to_userid(ujid, True)
-        if userid not in self.jid_cache:
-            self.jid_cache[userid] = dict()
 
-        bare_jid = ujid.userhostJID()
-        bare_jid.host = self.parent.network
         try:
-            stub = self.presence_cache[bare_jid]
+            stub = self.presence_cache[ujid.user]
             stub.push(stanza)
         except KeyError:
             stub = PresenceStub.fromElement(stanza)
-            self.presence_cache[bare_jid] = stub
+            self.presence_cache[ujid.user] = stub
 
-        if resource:
-            self.jid_cache[userid][resource] = (time.time(), ujid.host)
-
-        print self.presence_cache
+        print "CACHE:", self.presence_cache
 
     def user_unavailable(self, stanza):
         """Called when receiving a presence unavailable stanza."""
         ujid = jid.JID(stanza['from'])
-        userid, resource = util.jid_to_userid(ujid, True)
-        if userid not in self.jid_cache:
-            self.jid_cache[userid] = dict()
+        unused, resource = util.jid_to_userid(ujid, True)
 
-        bare_jid = ujid.userhostJID()
         try:
-            stub = self.presence_cache[bare_jid]
+            stub = self.presence_cache[ujid.user]
             stub.pop(resource)
         except KeyError:
             stub = PresenceStub.fromElement(stanza)
-            self.presence_cache[bare_jid] = stub
+            self.presence_cache[ujid.user] = stub
 
-        if resource:
-            self.jid_cache[userid][resource] = (time.time(), ujid.host)
-
-        print self.presence_cache
+        print "CACHE:", self.presence_cache
 
     def network_presence_probe(self, to):
         """
@@ -648,8 +640,8 @@ class JIDCache(XMPPHandler):
         else:
             # bare JID
             try:
-                stub = self.presence_cache[_jid]
-                out = set([jid.JID(stanza['from']) for unused, stanza in stub._avail.iteritems()])
+                stub = self.presence_cache[_jid.user]
+                out = set([jid.JID(stanza['from']) for stanza in stub.presence()])
                 print out
                 if not unavailable:
                     tmp = set()
@@ -676,7 +668,7 @@ class JIDCache(XMPPHandler):
 
         # TEST remote lookup not used any more because of global presence sync
         hits = self.cache_lookup(_jid)
-        log.debug("[%s] local cache hits: %r (%r)" % (_jid.full(), hits, self.jid_cache))
+        log.debug("[%s] local cache hits: %r (%r)" % (_jid.full(), hits, self.presence_cache))
         if hits:
             return defer.succeed(hits)
         else:
