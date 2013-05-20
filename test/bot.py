@@ -190,6 +190,13 @@ class Handler:
 
         reactor.callLater(delay, _count)
 
+    def probe(self, peer, delay=0):
+        def _probe():
+            p = xmppim.ProbePresence(jid.JID(peer))
+            self.client.send(p.toElement())
+
+        reactor.callLater(delay, _probe)
+
     def quit(self):
         self.client.xmlstream.sendFooter()
 
