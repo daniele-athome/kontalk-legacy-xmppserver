@@ -296,29 +296,58 @@ class InitialPresenceHandler(XMPPHandler):
         Sends all local presence data (available and unavailable) to the given
         entity.
         """
+
         def _db(presence, to, destination=None):
+            from copy import copy
             log.debug("presence: %r" % (presence, ))
             if type(presence) == list and len(presence) > 0:
+
                 for user in presence:
-                    response = domish.Element((None, 'presence'))
-                    response['to'] = to
-                    if destination:
-                        response['destination'] = destination
-                    response_from = util.userid_to_jid(user['userid'], self.parent.servername)
-                    response['from'] = response_from.full()
+                    response_from = util.userid_to_jid(user['userid'], self.parent.servername).full()
 
-                    if user['status'] is not None:
-                        response.addElement((None, 'status'), content=user['status'])
-                    if user['show'] is not None:
-                        response.addElement((None, 'show'), content=user['show'])
+                    num_avail = 0
+                    try:
+                        streams = self.parent.sfactory.streams[user['userid']]
+                        for x in streams.itervalues():
+                            presence = x._presence
+                            if presence and not presence.hasAttribute('type'):
+                                response = domish.Element((None, 'presence'))
+                                response['to'] = to
+                                if destination:
+                                    response['destination'] = destination
+                                response['from'] = presence['from']
 
-                    if not self.parent.sfactory.client_connected(response_from):
+                                # copy stuff
+                                for child in ('status', 'show', 'priority'):
+                                    e = getattr(presence, child)
+                                    if e:
+                                        response.addChild(copy(e))
+
+                                self.send(response)
+
+                                num_avail += 1
+                    except KeyError:
+                        pass
+
+                    # no available resources - send unavailable presence
+                    if not num_avail:
+                        response = domish.Element((None, 'presence'))
+                        response['to'] = to
+                        if destination:
+                            response['destination'] = destination
+                        response['from'] = response_from
+
+                        if user['status'] is not None:
+                            response.addElement((None, 'status'), content=user['status'])
+                        if user['show'] is not None:
+                            response.addElement((None, 'show'), content=user['show'])
+
                         response['type'] = 'unavailable'
                         delay = domish.Element(('urn:xmpp:delay', 'delay'))
                         delay['stamp'] = user['timestamp'].strftime(xmlstream2.XMPP_STAMP_FORMAT)
                         response.addChild(delay)
 
-                    self.send(response)
+                        self.send(response)
 
                     if self.parent.logTraffic:
                         log.debug("presence sent: %s" % (response.toXml().encode('utf-8'), ))

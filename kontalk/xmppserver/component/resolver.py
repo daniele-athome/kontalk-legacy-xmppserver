@@ -291,14 +291,104 @@ class MessageHandler(XMPPHandler):
             self.parent.send(stanza, force_unavailable=False, force_delivery=(stanza.sent is not None or stanza.received is not None))
 
 
+class PresenceStub(object):
+
+    def __init__(self, _jid, type=None, show=None, status=None, priority=0):
+        """Creates a presence stub for a bare JID, then push full JIDs."""
+        self._avail = {}
+        self.jid = _jid
+        self.type = type
+        if show in ['away', 'xa', 'chat', 'dnd']:
+            self.show = show
+        else:
+            self.show = None
+
+        self.status = status
+        try:
+            self.priority = int(priority)
+        except:
+            self.priority = 0
+
+    def push(self, stanza):
+        """Push a presence to this stub."""
+        ujid = jid.JID(stanza['from'])
+
+        # recreate presence stanza for local use
+        presence = domish.Element((None, 'presence'))
+        for attr in ('type', 'to', 'from'):
+            if stanza.hasAttribute(attr):
+                presence[attr] = stanza[attr]
+        for child in ('status', 'show', 'priority', 'delay'):
+            e = getattr(stanza, child)
+            if e:
+                presence.addChild(e)
+
+        self._avail[ujid.resource] = presence
+
+    def pop(self, resource):
+        """Pop the presence for the given resource from this stub."""
+        try:
+            presence = self._avail[resource]
+            del self._avail[resource]
+            return presence
+        except:
+            pass
+
+    def available(self):
+        """Returns true if available presence count is greater than 0."""
+        return len(self._avail) > 0
+
+    def __str__(self, *args, **kwargs):
+        return '<PresenceStub jid=%s, avail=%r>' % (self.jid.full(), self._avail)
+
+    def __repr__(self, *args, **kwargs):
+        return self.__str__(*args, **kwargs)
+
+    @classmethod
+    def fromElement(klass, e):
+        p_type = e.getAttribute('type')
+        if e.show:
+            show = str(e.show)
+        else:
+            show = None
+        if e.status:
+            status = e.show.__str__().encode('utf-8')
+        else:
+            status = None
+        try:
+            priority = int(e.priority.__str__())
+        except:
+            priority = 0
+
+        p = PresenceStub(jid.JID(e['from']).userhostJID(), p_type, show, status, priority)
+        if not p_type:
+            p.push(e)
+        return p
+
+    def toElement(self, attr='from'):
+        p = domish.Element((None, 'presence'))
+        p[attr] = self.jid.full()
+        if self.type:
+            p['type'] = self.type
+
+        if self.show:
+            p.addElement((None, 'show'), content=self.show)
+        if self.priority != 0:
+            p.addElement((None, 'priority'), content=str(self.priority))
+        if self.status:
+            p.addElement((None, 'status'), content=self.status)
+
+        return p
+
+
 class JIDCache(XMPPHandler):
     """
     Cache maintaining JID distributed in this Kontalk network.
     An instance is kept by the L{Resolver} component.
-    @ivar jid_cache: cache of JIDs location [userid][resource]=host
+    @ivar jid_cache: cache of JIDs location [userid][resource]=(timestamp, host)
     @type jid_cache: C{dict}
     @ivar presence_cache: cache of presence stanzas
-    @type presence_cache: C{dict} [JID]=<presence/>
+    @type presence_cache: C{dict} [JID]=PresenceStub
     """
 
     """Seconds should pass to consider the cache to be old."""
@@ -361,7 +451,7 @@ class JIDCache(XMPPHandler):
         if stanza.consumed:
             return
 
-        #log.debug("probe request: %s" % (stanza.toXml(), ))
+        log.debug("probe request: %s" % (stanza.toXml(), ))
         stanza.consumed = True
         to = jid.JID(stanza['to'])
 
@@ -395,35 +485,39 @@ class JIDCache(XMPPHandler):
         if userid not in self.jid_cache:
             self.jid_cache[userid] = dict()
 
-        now = time.time()
-        # recreate presence stanza for local use
-        presence = domish.Element((None, 'presence'))
-        for attr in ('type', 'to', 'from'):
-            if stanza.hasAttribute(attr):
-                presence[attr] = stanza[attr]
-        for child in ('status', 'show', 'priority', 'delay'):
-            e = getattr(stanza, child)
-            if e:
-                presence.addChild(e)
+        bare_jid = ujid.userhostJID()
+        bare_jid.host = self.parent.network
+        try:
+            stub = self.presence_cache[bare_jid]
+            stub.push(stanza)
+        except KeyError:
+            stub = PresenceStub.fromElement(stanza)
+            self.presence_cache[bare_jid] = stub
 
-        self.presence_cache[ujid] = presence
-        self.jid_cache[userid][resource] = (now, ujid.host)
-        #self._last_lookup = time.time()
+        if resource:
+            self.jid_cache[userid][resource] = (time.time(), ujid.host)
+
+        print self.presence_cache
 
     def user_unavailable(self, stanza):
         """Called when receiving a presence unavailable stanza."""
-        self.user_available(stanza)
-        """
         ujid = jid.JID(stanza['from'])
         userid, resource = util.jid_to_userid(ujid, True)
-        if userid in self.jid_cache and resource in self.jid_cache[userid]:
-            del self.jid_cache[userid][resource]
-            if len(self.jid_cache[userid]) == 0:
-                del self.jid_cache[userid]
+        if userid not in self.jid_cache:
+            self.jid_cache[userid] = dict()
 
-        self.presence_cache[ujid] = stanza
-        #self._last_lookup = time.time()
-        """
+        bare_jid = ujid.userhostJID()
+        try:
+            stub = self.presence_cache[bare_jid]
+            stub.pop(resource)
+        except KeyError:
+            stub = PresenceStub.fromElement(stanza)
+            self.presence_cache[bare_jid] = stub
+
+        if resource:
+            self.jid_cache[userid][resource] = (time.time(), ujid.host)
+
+        print self.presence_cache
 
     def network_presence_probe(self, to):
         """
@@ -526,9 +620,7 @@ class JIDCache(XMPPHandler):
     def jid_available(self, _jid):
         """Return true if full L{JID} is an available resource."""
         try:
-            # no type attribute - assume available
-            if not self.presence_cache[_jid].getAttribute('type'):
-                return True
+            return self.presence_cache[_jid].available()
         except:
             pass
 
@@ -556,8 +648,9 @@ class JIDCache(XMPPHandler):
         else:
             # bare JID
             try:
-                resources = self.jid_cache[_jid.user]
-                out = set([jid.JID(tuple=(_jid.user, host, resource)) for resource, (stamp, host) in resources.iteritems()])
+                stub = self.presence_cache[_jid]
+                out = set([jid.JID(stanza['from']) for unused, stanza in stub._avail.iteritems()])
+                print out
                 if not unavailable:
                     tmp = set()
                     for u in out:
@@ -565,7 +658,8 @@ class JIDCache(XMPPHandler):
                     out = tmp
                 return out
             except:
-                pass
+                import traceback
+                traceback.print_exc()
 
         return None
 
@@ -582,7 +676,7 @@ class JIDCache(XMPPHandler):
 
         # TEST remote lookup not used any more because of global presence sync
         hits = self.cache_lookup(_jid)
-        #log.debug("[%s] local cache hits: %r (%r)" % (_jid.full(), hits, self.jid_cache))
+        log.debug("[%s] local cache hits: %r (%r)" % (_jid.full(), hits, self.jid_cache))
         if hits:
             return defer.succeed(hits)
         else:
