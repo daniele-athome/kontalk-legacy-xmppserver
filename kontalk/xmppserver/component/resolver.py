@@ -522,6 +522,7 @@ class JIDCache(XMPPHandler):
             stub = self.presence_cache[ujid.user]
             stub.pop(resource)
         except KeyError:
+            # user not found in cache -- shouldn't happen!!
             stub = PresenceStub.fromElement(stanza)
             self.presence_cache[ujid.user] = stub
 
