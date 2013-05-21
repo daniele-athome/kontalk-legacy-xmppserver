@@ -346,10 +346,10 @@ class PresenceStub(object):
         return len(self._avail) > 0
 
     def __str__(self, *args, **kwargs):
-        return '<PresenceStub jid=%s, avail=%r>' % (self.jid.full(), self._avail)
+        return self.__repr__(*args, **kwargs)
 
     def __repr__(self, *args, **kwargs):
-        return self.__str__(*args, **kwargs)
+        return '<PresenceStub jid=%s, avail=%r>' % (self.jid.full(), self._avail)
 
     @classmethod
     def fromElement(klass, e):
@@ -481,8 +481,24 @@ class JIDCache(XMPPHandler):
             # used for the next callback in chain
             return data
 
-        d = self.lookup(to, refresh=True)
-        d.addCallback(_lookup, gid=stanza.getAttribute('id'), sender=stanza['from'])
+        gid = stanza.getAttribute('id')
+        stub = self.lookup(to)
+        log.debug("onProbe(%s): found %r" % (gid, stub, ))
+        if stub:
+            data = stub.presence()
+            i = len(data)
+            for x in data:
+                from copy import copy
+                presence = copy(x)
+                presence['to'] = stanza['from']
+                if gid:
+                    # FIXME this will duplicate group elements - actually in storage there should be no group element!!!
+                    group = presence.addElement((xmlstream2.NS_XMPP_STANZA_GROUP, 'group'))
+                    group['id'] = gid
+                    group['count'] = str(i)
+                    i -= 1
+
+                self.send(presence)
 
     def user_available(self, stanza):
         """Called when receiving a presence stanza."""
@@ -618,6 +634,13 @@ class JIDCache(XMPPHandler):
 
         return False
 
+    def lookup(self, _jid):
+        try:
+            return self.presence_cache[_jid.user]
+        except:
+            import traceback
+            traceback.print_exc()
+
     def cache_lookup(self, _jid, unavailable=True):
         """
         Search a JID in the server caches. If jid is a bare JID, all matches
@@ -655,7 +678,7 @@ class JIDCache(XMPPHandler):
 
         return None
 
-    def lookup(self, _jid, refresh=False, wait_factor=1.0):
+    def __lookup(self, _jid, refresh=False, wait_factor=1.0):
         """
         Lookup a L{JID} in the network.
         @param refresh: if true lookup is started over the whole network
