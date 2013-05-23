@@ -292,6 +292,7 @@ class MessageHandler(XMPPHandler):
 
 
 class PresenceStub(object):
+    """VERY UNOPTIMIZED CLASS"""
 
     def __init__(self, _jid, type=None, show=None, status=None, priority=0):
         """Creates a presence stub for a bare JID, then push full JIDs."""
@@ -340,6 +341,13 @@ class PresenceStub(object):
             return self._avail.values()
         else:
             return (self.toElement(), )
+
+    def jids(self):
+        """Returns a list of available resources from this JID."""
+        users = []
+        for avail in self._avail.itervalues():
+            users.append(jid.JID(avail['from']))
+        return users
 
     def available(self):
         """Returns true if available presence count is greater than 0."""
@@ -460,26 +468,6 @@ class JIDCache(XMPPHandler):
         log.debug("probe request: %s" % (stanza.toXml(), ))
         stanza.consumed = True
         to = jid.JID(stanza['to'])
-
-        def _lookup(data, gid, sender):
-            log.debug("onProbe(%s): found %r" % (gid, data, ))
-            if data:
-                # TEST using deepcopy is not safe
-                from copy import deepcopy
-                i = len(data)
-                for user in data:
-                    presence = deepcopy(self.presence_cache[user])
-                    presence['to'] = sender
-                    if gid:
-                        # FIXME this will duplicate group elements - actually in storage there should be no group element!!!
-                        group = presence.addElement((xmlstream2.NS_XMPP_STANZA_GROUP, 'group'))
-                        group['id'] = gid
-                        group['count'] = str(i)
-                        i -= 1
-
-                    self.send(presence)
-            # used for the next callback in chain
-            return data
 
         gid = stanza.getAttribute('id')
         stub = self.lookup(to)
@@ -929,71 +917,64 @@ class Resolver(xmlstream2.SocketComponent):
 
         # network JID - resolve and send to router
         elif to.host == self.network:
-            def _lookup(rcpts, stanza, sent):
-                #log.debug("rcpts = %r" % (rcpts, ))
-                if rcpts is None or len(rcpts) == 0:
-                    if not stanza.consumed:
-                        stanza.consumed = True
-                        log.debug("JID %s not found" % (to.full(), ))
-                        e = error.StanzaError('item-not-found', 'cancel')
-                        component.Component.send(self, e.toResponse(stanza))
-                    else:
-                        log.debug("JID %s not found (stanza has been consumed)" % (to.full(), ))
-                        return
-                else:
+            rcpts = self.cache.lookup(to)
+            log.debug("rcpts = %r" % (rcpts, ))
 
-                    """
-                    Stanza delivery rules (force_unavailable=False):
-                    1. deliver to all available resources
-                    2. destination was a bare JID
-                      a. if all resources are unavailable, deliver to the first network bare JID (then return)
-                    3. destination was a full JID:
-                      a. deliver to full JID if force_delivery=True
-
-                    Stanza delivery rules (force_unavailable=True):
-                    1. deliver to all resources found
-                    2. if no resource is available, silently drop stanza
-                    """
-                    log.debug("JID found: %r" % (rcpts, ))
+            if not rcpts:
+                if not stanza.consumed:
                     stanza.consumed = True
+                    log.debug("JID %s not found" % (to.full(), ))
+                    e = error.StanzaError('item-not-found', 'cancel')
+                    component.Component.send(self, e.toResponse(stanza))
+                else:
+                    log.debug("JID %s not found (stanza has been consumed)" % (to.full(), ))
+                    return
+            else:
+                """
+                Stanza delivery rules (force_unavailable=False):
+                1. deliver to all available resources
+                2. destination was a bare JID
+                  a. if all resources are unavailable, deliver to the first network bare JID (then return)
+                3. destination was a full JID:
+                  a. deliver to full JID if force_delivery=True
 
-                    if not force_unavailable:
-                        # destination was a full JID
-                        if to.resource:
-                            # deliver anyway
-                            if True: # TODO why this?? -- force_delivery:
-                                for _to in rcpts:
-                                    stanza['to'] = _to.full()
-                                    self._send(stanza)
+                Stanza delivery rules (force_unavailable=True):
+                1. deliver to all resources found
+                2. if no resource is available, silently drop stanza
+                """
+                log.debug("JID found: %r" % (rcpts, ))
+                stanza.consumed = True
 
-                        # destination was a bare JID
-                        else:
-                            avail = 0
-                            for _to in rcpts:
-                                if self.cache.jid_available(_to):
-                                    avail += 1
-                                    stanza['to'] = _to.full()
-                                    self._send(stanza)
+                jids = rcpts.jids()
 
-                            # no available resources, send to first network bare JID
-                            if avail == 0:
-                                for _to in rcpts:
-                                    stanza['to'] = _to.userhost()
-                                    self._send(stanza)
-                                    break
+                if not force_unavailable:
+                    # destination was a full JID
+                    if to.resource:
+                        # deliver anyway
+                        # TODO how? We have no knowledge of the requested resource
+                        # FIXME for now deliver if resource is available
+                        for _to in jids:
+                            if _to.resource == to.resource:
+                                stanza['to'] = _to.full()
+                                self._send(stanza)
+                                break
+                        # TODO otherwise should be error, shouldn't it?
 
+                    # destination was a bare JID
                     else:
-                        for _to in rcpts:
-                            if self.cache.jid_available(_to):
+                        # no available resources, send to first network bare JID
+                        if len(jids) == 0:
+                            stanza['to'] = rcpts.jid.userhost()
+                            self._send(stanza)
+                        else:
+                            for _to in jids:
                                 stanza['to'] = _to.full()
                                 self._send(stanza)
 
-                # used for the next callback in chain
-                return rcpts
-
-            sent = set()
-            d = self.cache.lookup(to, refresh=False)
-            d.addCallback(_lookup, stanza=stanza, sent=sent)
+                else:
+                    for _to in jids:
+                        stanza['to'] = _to.full()
+                        self._send(stanza)
 
         # otherwise send to router
         else:

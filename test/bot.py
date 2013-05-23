@@ -100,26 +100,28 @@ class Handler:
         else:
             self._stats[key] += inc
 
-    def sendTextMessage(self, peer, content, request=False):
+    def sendTextMessage(self, peer, content, request=False, delay=0):
         """Sends a text message with an optional receipt request."""
 
-        _jid = self.client.xmlstream.authenticator.jid
-        message = domish.Element((None, 'message'))
-        message['id'] = 'kontalk' + util.rand_str(8, util.CHARSBOX_AZN_LOWERCASE)
-        message['type'] = 'chat'
-        if peer:
-            message['to'] = peer
-        else:
-            message['to'] = _jid.userhost()
-        message.addElement((None, 'body'), content=content)
-        if request:
-            message.addElement(('urn:xmpp:server-receipts', 'request'))
-        self.client.send(message)
-        self.stats('messages:outgoing')
-        if request:
-            self.stats('messages:pending')
-        else:
-            self.stats('messages:sent')
+        def _send():
+            _jid = self.client.xmlstream.authenticator.jid
+            message = domish.Element((None, 'message'))
+            message['id'] = 'kontalk' + util.rand_str(8, util.CHARSBOX_AZN_LOWERCASE)
+            message['type'] = 'chat'
+            if peer:
+                message['to'] = peer
+            else:
+                message['to'] = _jid.userhost()
+            message.addElement((None, 'body'), content=content)
+            if request:
+                message.addElement(('urn:xmpp:server-receipts', 'request'))
+            self.client.send(message)
+            self.stats('messages:outgoing')
+            if request:
+                self.stats('messages:pending')
+            else:
+                self.stats('messages:sent')
+        reactor.callLater(delay, _send)
 
     def messageLoop(self, peer, contentFmt='%d', request=False, delay=0, count=0):
         self._loopCount = 0
