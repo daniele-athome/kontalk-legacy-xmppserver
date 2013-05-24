@@ -288,7 +288,7 @@ class MessageHandler(XMPPHandler):
                 stanza['to'] = jid.JID(stanza['from']).userhost()
 
             # send to router (without implicitly consuming)
-            self.parent.send(stanza, force_unavailable=False, force_delivery=(stanza.sent is not None or stanza.received is not None))
+            self.parent.send(stanza)
 
 
 class PresenceStub(object):
@@ -332,6 +332,11 @@ class PresenceStub(object):
         try:
             presence = self._avail[resource]
             del self._avail[resource]
+
+            # no more presences - resource is now unavailable
+            if self._avail == 0:
+                self.type = 'unavailable'
+
             return presence
         except:
             pass
@@ -367,7 +372,7 @@ class PresenceStub(object):
         else:
             show = None
         if e.status:
-            status = e.show.__str__().encode('utf-8')
+            status = e.status.__str__().encode('utf-8')
         else:
             status = None
         try:
@@ -487,6 +492,11 @@ class JIDCache(XMPPHandler):
                     i -= 1
 
                 self.send(presence)
+        else:
+            response = xmlstream2.toResponse(stanza, 'error')
+            # TODO include error cause?
+            self.send(response)
+
 
     def user_available(self, stanza):
         """Called when receiving a presence stanza."""
@@ -496,6 +506,8 @@ class JIDCache(XMPPHandler):
             stub = self.presence_cache[ujid.user]
             stub.push(stanza)
         except KeyError:
+            import traceback
+            traceback.print_exc()
             stub = PresenceStub.fromElement(stanza)
             self.presence_cache[ujid.user] = stub
 
@@ -510,6 +522,8 @@ class JIDCache(XMPPHandler):
             stub = self.presence_cache[ujid.user]
             stub.pop(resource)
         except KeyError:
+            import traceback
+            traceback.print_exc()
             # user not found in cache -- shouldn't happen!!
             stub = PresenceStub.fromElement(stanza)
             self.presence_cache[ujid.user] = stub
@@ -893,7 +907,7 @@ class Resolver(xmlstream2.SocketComponent):
             stanza.consumed = True
             self.send(stanza, *args, **kwargs)
 
-    def send(self, stanza, force_unavailable=False, force_delivery=False):
+    def send(self, stanza):
         """
         Resolves stanza recipient and send the stanza to the router.
         @todo document parameters
@@ -931,50 +945,40 @@ class Resolver(xmlstream2.SocketComponent):
                     return
             else:
                 """
-                Stanza delivery rules (force_unavailable=False):
+                Stanza delivery rules
                 1. deliver to all available resources
                 2. destination was a bare JID
                   a. if all resources are unavailable, deliver to the first network bare JID (then return)
                 3. destination was a full JID:
-                  a. deliver to full JID if force_delivery=True
-
-                Stanza delivery rules (force_unavailable=True):
-                1. deliver to all resources found
-                2. if no resource is available, silently drop stanza
+                  a. deliver to full JID
                 """
                 log.debug("JID found: %r" % (rcpts, ))
                 stanza.consumed = True
 
                 jids = rcpts.jids()
 
-                if not force_unavailable:
-                    # destination was a full JID
-                    if to.resource:
-                        # deliver anyway
-                        # TODO how? We have no knowledge of the requested resource
-                        # FIXME for now deliver if resource is available
-                        for _to in jids:
-                            if _to.resource == to.resource:
-                                stanza['to'] = _to.full()
-                                self._send(stanza)
-                                break
-                        # TODO otherwise should be error, shouldn't it?
-
-                    # destination was a bare JID
-                    else:
-                        # no available resources, send to first network bare JID
-                        if len(jids) == 0:
-                            stanza['to'] = rcpts.jid.userhost()
-                            self._send(stanza)
-                        else:
-                            for _to in jids:
-                                stanza['to'] = _to.full()
-                                self._send(stanza)
-
-                else:
+                # destination was a full JID
+                if to.resource:
+                    # deliver anyway
+                    # TODO how? We have no knowledge of the requested resource
+                    # FIXME for now deliver if resource is available
                     for _to in jids:
-                        stanza['to'] = _to.full()
+                        if _to.resource == to.resource:
+                            stanza['to'] = _to.full()
+                            self._send(stanza)
+                            break
+                    # TODO otherwise should be error, shouldn't it?
+
+                # destination was a bare JID
+                else:
+                    # no available resources, send to first network bare JID
+                    if len(jids) == 0:
+                        stanza['to'] = rcpts.jid.userhost()
                         self._send(stanza)
+                    else:
+                        for _to in jids:
+                            stanza['to'] = _to.full()
+                            self._send(stanza)
 
         # otherwise send to router
         else:
