@@ -39,7 +39,7 @@ class PresenceHandler(XMPPHandler):
         # initial presence is... well, initial :)
         self.xmlstream.addOnetimeObserver("/presence[not(@type)]", self.initialPresence)
         self.xmlstream.addObserver("/presence[not(@type)]", self.presence)
-        self.xmlstream.addObserver("/presence[@type='unavailable']", self.presence)
+        self.xmlstream.addObserver("/presence[@type='unavailable']", self.unavailablePresence)
 
     def connectionLost(self, reason):
         if self.xmlstream and self.xmlstream.otherEntity is not None:

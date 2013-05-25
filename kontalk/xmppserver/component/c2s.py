@@ -857,7 +857,6 @@ class C2SComponent(xmlstream2.SocketComponent):
             if receipt:
                 self.message_offline_delete(receipt['id'])
 
-
     def not_found(self, stanza):
         """Handle stanzas for unavailable resources."""
         # TODO if stanza.name == ...

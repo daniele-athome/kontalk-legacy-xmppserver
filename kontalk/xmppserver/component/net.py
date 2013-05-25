@@ -19,6 +19,8 @@
 """
 
 
+import os
+
 from twisted.internet import reactor
 from twisted.application import internet
 from twisted.names.srvconnect import SRVConnector
@@ -42,16 +44,16 @@ if ssl and not ssl.supported:
 
 def initiateNet(factory, ctxFactory):
     domain = factory.authenticator.otherHost
-    c = XMPPNetConnector(reactor, domain, factory, ctxFactory)
-    c.connect()
-    """
-    TEST
-    ports = {
-        'prime.kontalk.net': 5270,
-        'beta.kontalk.net': 6270,
-    }
-    c = reactor.connectSSL('localhost', ports[domain], factory, ctxFactory)
-    """
+    # TEST :)
+    if os.getenv('TEST', '0') == '1':
+        ports = {
+            'prime.kontalk.net': 5270,
+            'beta.kontalk.net': 6270,
+        }
+        c = reactor.connectSSL('localhost', ports[domain], factory, ctxFactory)
+    else:
+        c = XMPPNetConnector(reactor, domain, factory, ctxFactory)
+        c.connect()
     return factory.deferred
 
 
@@ -568,8 +570,11 @@ class NetComponent(xmlstream2.SocketComponent):
             if host != self.servername:
                 bind['name'] = host
                 self.send(bind)
+                # connect to server immediately
+                self.service.initiateOutgoingStream(host)
 
         self.xmlstream.addObserver("/bind", self.consume)
+        self.xmlstream.addObserver("/presence", self.presence, 100)
         self.xmlstream.addObserver("/presence", self.dispatch)
         self.xmlstream.addObserver("/iq", self.dispatch)
         self.xmlstream.addObserver("/message", self.dispatch)
@@ -577,6 +582,12 @@ class NetComponent(xmlstream2.SocketComponent):
     def consume(self, stanza):
         stanza.consumed = True
         log.debug("consuming stanza %s" % (stanza.toXml(), ))
+
+    def presence(self, stanza):
+        # presence broadcast from local c2s, intended for remote resolver
+        host = util.jid_host(stanza['from'])
+        if host == self.servername and not stanza.hasAttribute('destination'):
+            stanza['destination'] = self.network
 
     def dispatch(self, stanza):
         """Handle incoming stanza from router to the proper server stream."""
