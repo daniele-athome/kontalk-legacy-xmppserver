@@ -192,6 +192,20 @@ class Handler:
 
         reactor.callLater(delay, _count)
 
+    def roster(self, peers, delay=0):
+        def _count():
+            r = domish.Element((None, 'iq'))
+            r.addUniqueId()
+            r['type'] = 'get'
+            q = r.addElement((xmppim.NS_ROSTER, 'query'))
+            for n in peers:
+                _jid = jid.JID(n)
+                item = q.addElement((None, 'item'))
+                item['jid'] = _jid.userhost()
+            self.client.send(r)
+
+        reactor.callLater(delay, _count)
+
     def probe(self, peer, delay=0):
         def _probe():
             p = xmppim.ProbePresence(jid.JID(peer))

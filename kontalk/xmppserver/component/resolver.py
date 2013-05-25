@@ -124,57 +124,35 @@ class IQHandler(XMPPHandler):
     def roster(self, stanza):
         _items = stanza.query.elements(uri=xmlstream2.NS_IQ_ROSTER, name='item')
         if _items:
-            items = []
-            for item in _items:
-                items.append(jid.internJID(item['jid']))
-
             stanza.consumed = True
-            dlist = []
-            if len(items) > 200:
-                wait_factor = len(items) / 200
-            else:
-                wait_factor = 1
-            t1 = time.time()
-            for item in items:
-                #log.debug("checking for roster: %s" % (item, ))
-                dlist.append(self.parent.cache.lookup(item, refresh=True, wait_factor=wait_factor))
-            log.debug("roster request added in %.2f seconds" % ((time.time() - t1), ))
+            response = xmlstream2.toResponse(stanza, 'result')
+            roster = response.addElement((xmlstream2.NS_IQ_ROSTER, 'query'))
 
-            def _roster(data, stanza):
-                #log.debug("roster result: %r" % (data, ))
-                log.debug("roster returned in %.2f seconds" % ((time.time() - t1), ))
-                response = xmlstream2.toResponse(stanza, 'result')
-                roster = response.addElement((xmlstream2.NS_IQ_ROSTER, 'query'))
-                unique = set([e.userhostJID() for entry in data for e in entry])
-                if len(unique) > 0:
-                    log.debug("roster output: %r" % (unique, ))
-                    for e in unique:
-                        item = roster.addElement((None, 'item'))
-                        item['jid'] = self.parent.translateJID(e).userhost()
+            probes =  []
+            for item in _items:
+                entry = self.parent.cache.lookup(jid.internJID(item['jid']))
+                if entry:
+                    item = roster.addElement((None, 'item'))
+                    item['jid'] = self.parent.translateJID(entry.jid).userhost()
 
-                self.send(response)
+                    probes.append(entry.presence())
 
-                if len(unique) > 0:
-                    # simulate a presence probe
-                    from copy import deepcopy
-                    for entry in data:
-                        gid = util.rand_str(8, util.CHARSBOX_AZN_LOWERCASE)
-                        i = len(entry)
-                        for e in entry:
-                            presence = deepcopy(self.parent.cache.presence_cache[e])
-                            presence['to'] = stanza['from']
-                            # FIXME this will duplicate group elements - actually in storage there should be no group element!!!
-                            group = presence.addElement((xmlstream2.NS_XMPP_STANZA_GROUP, 'group'))
-                            group['id'] = gid
-                            group['count'] = str(i)
-                            i -= 1
-                            self.send(presence)
+            self.send(response)
 
-                # used for the next callback in chain
-                return data
-
-            d = defer.gatherResults(dlist)
-            d.addCallback(_roster, stanza)
+            if len(probes) > 0:
+                # simulate a presence probe
+                from copy import copy
+                for presence_list in probes:
+                    gid = util.rand_str(8, util.CHARSBOX_AZN_LOWERCASE)
+                    i = len(presence_list)
+                    for presence in presence_list:
+                        presence = copy(presence)
+                        presence['to'] = stanza['from']
+                        group = presence.addElement((xmlstream2.NS_XMPP_STANZA_GROUP, 'group'))
+                        group['id'] = gid
+                        group['count'] = str(i)
+                        i -= 1
+                        self.send(presence)
 
     def version(self, stanza):
         if not stanza.consumed:
