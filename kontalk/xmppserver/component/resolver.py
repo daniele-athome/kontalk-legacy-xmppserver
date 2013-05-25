@@ -272,37 +272,53 @@ class MessageHandler(XMPPHandler):
 class PresenceStub(object):
     """VERY UNOPTIMIZED CLASS"""
 
-    def __init__(self, _jid, type=None, show=None, status=None, priority=0, delay=None):
+    def __init__(self, _jid):
         """Creates a presence stub for a bare JID, then push full JIDs."""
+        if _jid.resource:
+            raise ValueError('not a bare JID.')
         self._avail = {}
         self.jid = _jid
-        self.type = type
-        if show in ['away', 'xa', 'chat', 'dnd']:
-            self.show = show
+
+    def __set__(self, name, value):
+        if name == 'type':
+            self.type = value
+        elif name == 'show':
+            if value in ['away', 'xa', 'chat', 'dnd']:
+                self.show = value
+            else:
+                self.show = None
+        elif name == 'status':
+            if value:
+                self.status = value.encode('utf-8')
+            else:
+                self.status = None
+        elif name == 'priority':
+            try:
+                self.priority = int(value)
+            except:
+                self.priority = 0
+        elif name == 'delay':
+            self.delay = value
         else:
-            self.show = None
-
-        self.status = status
-        try:
-            self.priority = int(priority)
-        except:
-            self.priority = 0
-
-        self.delay = delay
+            raise AttributeError(name)
 
     def push(self, stanza):
         """Push a presence to this stub."""
-        # TODO update object attributes with latest data
+        ptype = stanza.getAttribute('type')
+        if ptype == 'unavailable':
+            raise ValueError('only available presences are allowed.')
+
         ujid = jid.JID(stanza['from'])
 
         # recreate presence stanza for local use
         presence = domish.Element((None, 'presence'))
-        for attr in ('type', 'to', 'from'):
+        for attr in ('type', 'from'):
             if stanza.hasAttribute(attr):
                 presence[attr] = stanza[attr]
         for child in ('status', 'show', 'priority', 'delay'):
             e = getattr(stanza, child)
             if e:
+                self.__set__(child, e.__str__())
                 presence.addChild(e)
 
         self._avail[ujid.resource] = presence
@@ -314,8 +330,10 @@ class PresenceStub(object):
             del self._avail[resource]
 
             # no more presences - resource is now unavailable
-            if self._avail == 0:
+            if len(self._avail) == 0:
                 self.type = 'unavailable'
+                # update delay with now
+                self.delay = datetime.utcnow().strftime(xmlstream2.XMPP_STAMP_FORMAT)
 
             return presence
         except:
@@ -352,7 +370,7 @@ class PresenceStub(object):
         else:
             show = None
         if e.status:
-            status = e.status.__str__().encode('utf-8')
+            status = e.status.__str__()
         else:
             status = None
         try:
@@ -365,7 +383,12 @@ class PresenceStub(object):
         except:
             delay = None
 
-        p = PresenceStub(jid.JID(e['from']).userhostJID(), p_type, show, status, priority, delay)
+        p = klass(jid.JID(e['from']).userhostJID())
+        p.type = p_type
+        p.show = show
+        p.status = status
+        p.priority = priority
+        p.delay = delay
         if not p_type:
             p.push(e)
         return p
@@ -494,12 +517,8 @@ class JIDCache(XMPPHandler):
             stub = self.presence_cache[ujid.user]
             stub.push(stanza)
         except KeyError:
-            import traceback
-            traceback.print_exc()
             stub = PresenceStub.fromElement(stanza)
             self.presence_cache[ujid.user] = stub
-
-        print "CACHE:", self.presence_cache
 
     def user_unavailable(self, stanza):
         """Called when receiving a presence unavailable stanza."""
@@ -510,13 +529,11 @@ class JIDCache(XMPPHandler):
             stub = self.presence_cache[ujid.user]
             stub.pop(resource)
         except KeyError:
+            # user not found in cache -- shouldn't happen!!
             import traceback
             traceback.print_exc()
-            # user not found in cache -- shouldn't happen!!
             stub = PresenceStub.fromElement(stanza)
             self.presence_cache[ujid.user] = stub
-
-        print "CACHE:", self.presence_cache
 
     def network_presence_probe(self, to):
         """
@@ -629,8 +646,7 @@ class JIDCache(XMPPHandler):
         try:
             return self.presence_cache[_jid.user]
         except:
-            import traceback
-            traceback.print_exc()
+            pass
 
     def cache_lookup(self, _jid, unavailable=True):
         """
@@ -947,9 +963,7 @@ class Resolver(xmlstream2.SocketComponent):
 
                 # destination was a full JID
                 if to.resource:
-                    # deliver anyway
-                    # TODO how? We have no knowledge of the requested resource
-                    # FIXME for now deliver if resource is available
+                    # deliver if resource is available
                     for _to in jids:
                         if _to.resource == to.resource:
                             stanza['to'] = _to.full()
