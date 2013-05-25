@@ -272,7 +272,7 @@ class MessageHandler(XMPPHandler):
 class PresenceStub(object):
     """VERY UNOPTIMIZED CLASS"""
 
-    def __init__(self, _jid, type=None, show=None, status=None, priority=0):
+    def __init__(self, _jid, type=None, show=None, status=None, priority=0, delay=None):
         """Creates a presence stub for a bare JID, then push full JIDs."""
         self._avail = {}
         self.jid = _jid
@@ -287,6 +287,8 @@ class PresenceStub(object):
             self.priority = int(priority)
         except:
             self.priority = 0
+
+        self.delay = delay
 
     def push(self, stanza):
         """Push a presence to this stub."""
@@ -358,7 +360,12 @@ class PresenceStub(object):
         except:
             priority = 0
 
-        p = PresenceStub(jid.JID(e['from']).userhostJID(), p_type, show, status, priority)
+        try:
+            delay = e.delay['stamp']
+        except:
+            delay = None
+
+        p = PresenceStub(jid.JID(e['from']).userhostJID(), p_type, show, status, priority, delay)
         if not p_type:
             p.push(e)
         return p
@@ -375,6 +382,9 @@ class PresenceStub(object):
             p.addElement((None, 'priority'), content=str(self.priority))
         if self.status:
             p.addElement((None, 'status'), content=self.status)
+        if self.delay:
+            d = p.addElement((xmlstream2.NS_XMPP_DELAY, 'delay'))
+            d['stamp'] = self.delay
 
         return p
 
