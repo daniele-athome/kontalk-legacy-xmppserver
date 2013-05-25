@@ -575,10 +575,10 @@ class MessageHandler(XMPPHandler):
                 to = jid.JID(stanza['to'])
                 # process only our JIDs
                 if to.host == self.parent.servername:
+                    chat_msg = (stanza.getAttribute('type') == 'chat')
                     if to.user is not None:
                         receipt = xmlstream2.extract_receipt(stanza, 'request')
                         received = xmlstream2.extract_receipt(stanza, 'received')
-                        chat_msg = (stanza.getAttribute('type') == 'chat')
                         try:
                             """
                             We are deliberately ignoring messages with sent
