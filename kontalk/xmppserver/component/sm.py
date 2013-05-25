@@ -19,8 +19,6 @@
 """
 
 
-import time
-
 from twisted.internet import reactor
 from twisted.words.protocols.jabber import error, jid, component
 from twisted.words.protocols.jabber.xmlstream import XMPPHandler
@@ -39,7 +37,9 @@ class PresenceHandler(XMPPHandler):
 
     def connectionInitialized(self):
         # initial presence is... well, initial :)
-        self.xmlstream.addOnetimeObserver("/presence[not(@type)]", self.presence)
+        self.xmlstream.addOnetimeObserver("/presence[not(@type)]", self.initialPresence)
+        self.xmlstream.addObserver("/presence[not(@type)]", self.presence)
+        self.xmlstream.addObserver("/presence[@type='unavailable']", self.presence)
 
     def connectionLost(self, reason):
         if self.xmlstream and self.xmlstream.otherEntity is not None:
@@ -53,16 +53,21 @@ class PresenceHandler(XMPPHandler):
     def items(self):
         pass
 
+    def unavailablePresence(self, stanza):
+        # notify c2s about unavailable presence
+        if not stanza.hasAttribute('to'):
+            self.parent.router.local_presence(self.xmlstream.otherEntity, stanza)
+            # TODO disconnection should be triggered immediately
+
     def presence(self, stanza):
+        # store presence stanza in the stream manager
+        self.parent._presence = stanza
+
+    def initialPresence(self, stanza):
         """
         This initial presence is from the client connection. We just notify c2s
         which will do the rest.
         """
-
-        # store presence stanza in the stream manager
-        self.parent._presence = stanza
-
-        # initial presence - tell c2s about it
         if not stanza.hasAttribute('to'):
             self.parent.router.local_presence(self.xmlstream.otherEntity, stanza)
 

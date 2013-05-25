@@ -449,9 +449,6 @@ class JIDCache(XMPPHandler):
         # update usercache with last seen and status
         user = jid.JID(stanza['from'])
         if user.user:
-            if user.host == self.parent.servername:
-                self.parent.presencedb.presence(stanza)
-
             self.user_available(stanza)
 
     def onPresenceUnavailable(self, stanza):
@@ -463,16 +460,6 @@ class JIDCache(XMPPHandler):
         user = jid.JID(stanza['from'])
 
         if user.user:
-            if user.host == self.parent.servername:
-                # consider only stanzas without delay (that is, sent by client or on behalf of it)
-                if not stanza.delay:
-                    if stanza.status is not None:
-                        # update last seen and status
-                        self.parent.presencedb.presence(stanza)
-                    else:
-                        # update last seen only
-                        self.parent.presencedb.touch(user.user)
-
             self.user_unavailable(stanza)
 
     def onProbe(self, stanza):
@@ -819,9 +806,6 @@ class Resolver(xmlstream2.SocketComponent):
     JIDs (prime.kontalk.net), altering the "to" attribute, then it bounces the
     stanza back to the router.
 
-    @ivar presencedb: database connection to the usercache table
-    @type presencedb: L{PresenceStorage}
-
     @ivar subscriptions: a map of user subscriptions (key=watched, value=subscribers)
     @type subscriptions: L{dict}
 
@@ -851,7 +835,6 @@ class Resolver(xmlstream2.SocketComponent):
         self.start_time = time.time()
 
         storage.init(config['database'])
-        self.presencedb = storage.MySQLPresenceStorage()
         self.keyring = keyring.Keyring(storage.MySQLNetworkStorage(), config['fingerprint'], self.network, self.servername)
 
         self.subscriptions = {}

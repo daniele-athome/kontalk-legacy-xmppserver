@@ -868,6 +868,13 @@ class C2SComponent(xmlstream2.SocketComponent):
         Called by sm after receiving a local initial presence.
         """
 
+        # send presence to storage
+        if user.user:
+            if stanza.getAttribute('type') == 'unavailable':
+                self.presencedb.touch(user.user)
+            else:
+                self.presencedb.presence(stanza)
+
         # initial presence - deliver offline storage
         def output(data, user):
             log.debug("data: %r" % (data, ))
