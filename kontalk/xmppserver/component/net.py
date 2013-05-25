@@ -42,16 +42,16 @@ if ssl and not ssl.supported:
 
 def initiateNet(factory, ctxFactory):
     domain = factory.authenticator.otherHost
-    """
-    TEST
     c = XMPPNetConnector(reactor, domain, factory, ctxFactory)
     c.connect()
     """
+    TEST
     ports = {
         'prime.kontalk.net': 5270,
         'beta.kontalk.net': 6270,
     }
     c = reactor.connectSSL('localhost', ports[domain], factory, ctxFactory)
+    """
     return factory.deferred
 
 
