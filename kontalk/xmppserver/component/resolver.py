@@ -45,7 +45,6 @@ class PresenceHandler(XMPPHandler):
     def onPresenceAvailable(self, stanza):
         """Handle availability presence stanzas."""
 
-        print stanza.consumed
         if stanza.consumed:
             return
 
@@ -54,7 +53,6 @@ class PresenceHandler(XMPPHandler):
     def onPresenceUnavailable(self, stanza):
         """Handle unavailable presence stanzas."""
 
-        print stanza.consumed
         if stanza.consumed:
             return
 
@@ -1047,7 +1045,7 @@ class Resolver(xmlstream2.SocketComponent):
             # other JIDs, use unchanged
             watched = user
 
-        log.debug("checking subscriptions to %s" % (watched.full(), ))
+        #log.debug("checking subscriptions to %s" % (watched.full(), ))
         bareWatched = watched.userhostJID()
         if bareWatched in self.subscriptions:
             #stanza['from'] = watched.full()
