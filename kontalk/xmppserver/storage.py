@@ -259,8 +259,7 @@ class MySQLPresenceStorage(PresenceStorage):
 
     def presence(self, stanza):
         global dbpool
-        sender = jid.JID(stanza['from'])
-        userid, unused = util.jid_to_userid(sender, True)
+        userid = util.jid_user(stanza['from'])
 
         def encode_not_empty(val):
             if val is not None:
