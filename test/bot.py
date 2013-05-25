@@ -213,6 +213,14 @@ class Handler:
 
         reactor.callLater(delay, _probe)
 
+    def subscribe(self, peer, delay=0):
+        def _probe():
+            p = xmppim.SubscriptionPresence(jid.JID(peer))
+            p.stanzaType = 'subscribe'
+            self.client.send(p.toElement())
+
+        reactor.callLater(delay, _probe)
+
     def quit(self):
         self.client.xmlstream.sendFooter()
 
