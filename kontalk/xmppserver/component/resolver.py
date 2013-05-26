@@ -315,7 +315,12 @@ class PresenceStub(object):
         if delay:
             delay = datetime.strptime(delay['stamp'], xmlstream2.XMPP_STAMP_FORMAT)
             diff = delay - self.delay
-            if diff.total_seconds() >= 0:
+            try:
+                diff_seconds = diff.total_seconds()
+            except AttributeError:
+                diff_seconds = (diff.microseconds + (diff.seconds + diff.days * 24 * 3600) * 10**6) / 10**6
+
+            if diff_seconds >= 0:
                 ujid = jid.JID(stanza['from'])
                 # update local jid
                 self.jid = ujid.userhostJID()
