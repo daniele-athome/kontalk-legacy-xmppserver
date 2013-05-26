@@ -273,7 +273,7 @@ class PresenceStub(object):
     """VERY UNOPTIMIZED CLASS"""
 
     def __init__(self, _jid):
-        """Creates a presence stub for a bare JID, then push full JIDs."""
+        """Creates a presence stub for a bare JID."""
         if _jid.resource:
             raise ValueError('not a bare JID.')
         self._avail = {}
@@ -298,9 +298,40 @@ class PresenceStub(object):
             except:
                 self.priority = 0
         elif name == 'delay':
-            self.delay = value
+            self.delay = datetime.strptime(value, xmlstream2.XMPP_STAMP_FORMAT)
         else:
             raise AttributeError(name)
+
+    def update(self, stanza):
+        """
+        Update this stub with data from the given unavailable presence.
+        Presence data is updated only if delay is more recent than the old one.
+        """
+        ptype = stanza.getAttribute('type')
+        if ptype != 'unavailable':
+            raise ValueError('only unavailable presences are allowed.')
+
+        delay = stanza.delay
+        if delay:
+            delay = datetime.strptime(delay['stamp'], xmlstream2.XMPP_STAMP_FORMAT)
+            diff = delay - self.delay
+            if diff.total_seconds() >= 0:
+                ujid = jid.JID(stanza['from'])
+                # update local jid
+                self.jid = ujid.userhostJID()
+
+                if stanza.hasAttribute('type'):
+                    self.type = stanza['type']
+                else:
+                    self.type = None
+
+                # delay already parsed
+                self.delay = delay
+
+                for child in ('status', 'show', 'priority'):
+                    e = getattr(stanza, child)
+                    if e:
+                        self.__set__(child, e.__str__())
 
     def push(self, stanza):
         """Push a presence to this stub."""
@@ -309,12 +340,20 @@ class PresenceStub(object):
             raise ValueError('only available presences are allowed.')
 
         ujid = jid.JID(stanza['from'])
+        # update local jid
+        self.jid = ujid.userhostJID()
 
         # recreate presence stanza for local use
         presence = domish.Element((None, 'presence'))
         for attr in ('type', 'from'):
             if stanza.hasAttribute(attr):
                 presence[attr] = stanza[attr]
+
+        if stanza.hasAttribute('type'):
+            self.type = stanza['type']
+        else:
+            self.type = None
+
         for child in ('status', 'show', 'priority', 'delay'):
             e = getattr(stanza, child)
             if e:
@@ -333,7 +372,7 @@ class PresenceStub(object):
             if len(self._avail) == 0:
                 self.type = 'unavailable'
                 # update delay with now
-                self.delay = datetime.utcnow().strftime(xmlstream2.XMPP_STAMP_FORMAT)
+                self.delay = datetime.utcnow()
 
             return presence
         except:
@@ -384,11 +423,11 @@ class PresenceStub(object):
             delay = None
 
         p = klass(jid.JID(e['from']).userhostJID())
-        p.type = p_type
-        p.show = show
-        p.status = status
-        p.priority = priority
-        p.delay = delay
+        p.__set__('type', p_type)
+        p.__set__('show', show)
+        p.__set__('status', status)
+        p.__set__('priority', priority)
+        p.__set__('delay', delay)
         if not p_type:
             p.push(e)
         return p
@@ -407,7 +446,7 @@ class PresenceStub(object):
             p.addElement((None, 'status'), content=self.status)
         if self.delay:
             d = p.addElement((xmlstream2.NS_XMPP_DELAY, 'delay'))
-            d['stamp'] = self.delay
+            d['stamp'] = self.delay.strftime(xmlstream2.XMPP_STAMP_FORMAT)
 
         return p
 
@@ -514,7 +553,11 @@ class JIDCache(XMPPHandler):
 
         try:
             stub = self.presence_cache[ujid.user]
-            stub.pop(resource)
+            if resource:
+                stub.pop(resource)
+            else:
+                # update stub data if stanza is more recent
+                stub.update(stanza)
         except KeyError:
             # user not found in cache -- shouldn't happen!!
             import traceback
