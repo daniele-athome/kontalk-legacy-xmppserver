@@ -23,7 +23,7 @@ import time
 from datetime import datetime
 
 from twisted.python import failure
-from twisted.internet import defer, reactor
+from twisted.internet import defer, reactor, task
 from twisted.words.protocols.jabber.xmlstream import XMPPHandler
 from twisted.words.xish import domish
 from twisted.words.protocols.jabber import jid, error
@@ -460,14 +460,10 @@ class JIDCache(XMPPHandler):
     """
     Cache maintaining JID distributed in this Kontalk network.
     An instance is kept by the L{Resolver} component.
-    @ivar jid_cache: cache of JIDs location [userid][resource]=(timestamp, host)
-    @type jid_cache: C{dict}
     @ivar presence_cache: cache of presence stanzas
     @type presence_cache: C{dict} [userid]=PresenceStub
     """
 
-    """Seconds should pass to consider the cache to be old."""
-    MAX_CACHE_REFRESH_DELAY = 60
     """Seconds to wait for presence probe response from servers."""
     MAX_LOOKUP_TIMEOUT = 5
 
@@ -476,6 +472,12 @@ class JIDCache(XMPPHandler):
         self.lookups = {}
         self.presence_cache = {}
         self._last_lookup = 0
+
+        """ TEST TEST TEST
+        def _print_cache():
+            log.debug("CACHE: %r" % (self.presence_cache, ))
+        task.LoopingCall(_print_cache).start(5.0)
+        """
 
     def connectionInitialized(self):
         self.xmlstream.addObserver("/presence[not(@type)]", self.onPresenceAvailable, 200)
@@ -542,24 +544,23 @@ class JIDCache(XMPPHandler):
 
     def user_available(self, stanza):
         """Called when receiving a presence stanza."""
-        ujid = jid.JID(stanza['from'])
+        userid = util.jid_user(stanza['from'])
 
         try:
-            stub = self.presence_cache[ujid.user]
+            stub = self.presence_cache[userid]
             stub.push(stanza)
         except KeyError:
             stub = PresenceStub.fromElement(stanza)
-            self.presence_cache[ujid.user] = stub
+            self.presence_cache[userid] = stub
 
     def user_unavailable(self, stanza):
         """Called when receiving a presence unavailable stanza."""
         ujid = jid.JID(stanza['from'])
-        unused, resource = util.jid_to_userid(ujid, True)
 
         try:
             stub = self.presence_cache[ujid.user]
-            if resource:
-                stub.pop(resource)
+            if ujid.resource:
+                stub.pop(ujid.resource)
             else:
                 # update stub data if stanza is more recent
                 stub.update(stanza)
@@ -682,169 +683,6 @@ class JIDCache(XMPPHandler):
             return self.presence_cache[_jid.user]
         except:
             pass
-
-    def cache_lookup(self, _jid, unavailable=True):
-        """
-        Search a JID in the server caches. If jid is a bare JID, all matches
-        are returned.
-        @return a list of translated server JIDs if found.
-        """
-
-        if _jid.resource is not None:
-            # full JID
-            try:
-                stamp, host = self.jid_cache[_jid.user][_jid.resource]
-                hit = jid.JID(tuple=(_jid.user, host, _jid.resource))
-                # FIXME redundant condition
-                if not unavailable and self.jid_available(hit):
-                    return set((hit, ))
-                else:
-                    return set((hit, ))
-            except:
-                pass
-        else:
-            # bare JID
-            try:
-                stub = self.presence_cache[_jid.user]
-                out = set([jid.JID(stanza['from']) for stanza in stub.presence()])
-                print out
-                if not unavailable:
-                    tmp = set()
-                    for u in out:
-                        if self.jid_available(u): tmp.add(u)
-                    out = tmp
-                return out
-            except:
-                import traceback
-                traceback.print_exc()
-
-        return None
-
-    def __lookup(self, _jid, refresh=False, wait_factor=1.0):
-        """
-        Lookup a L{JID} in the network.
-        @param refresh: if true lookup is started over the whole network
-        immediately; otherwise, just cached results are returned if cache is not
-        so old; in that case, a lookup is started anyway. A lookup is started
-        also if refresh is false and no results are found in cache - just to be
-        sure the requested L{JID} doesn't exist.
-        @rtype: L{Deferred}
-        """
-
-        # TEST remote lookup not used any more because of global presence sync
-        hits = self.cache_lookup(_jid)
-        log.debug("[%s] local cache hits: %r (%r)" % (_jid.full(), hits, self.presence_cache))
-        if hits:
-            return defer.succeed(hits)
-        else:
-            return defer.succeed([])
-
-        #log.debug("[%s] looking up" % (_jid.full(), ))
-
-        # force refresh is cache is too old
-        now = time.time()
-        diff = now - self._last_lookup
-        #log.debug("[%s] now=%d, last=%d, diff=%.2f" % (_jid.full(), now, self._last_lookup, diff))
-        if diff > self.MAX_CACHE_REFRESH_DELAY:
-            refresh = True
-
-        if not refresh:
-            hits = self.cache_lookup(_jid)
-            #log.debug("[%s] local cache hits: %r (%r)" % (_jid.full(), hits, self.jid_cache))
-
-            if hits:
-                #log.debug("[%s] found: %r" % (_jid.full(), hits))
-                return defer.succeed(hits)
-            else:
-                refresh = True
-
-        # evaluate refresh again
-        if refresh:
-            if _jid in self.lookups:
-                return self.lookups[_jid]
-
-            # refreshing, lookup the network
-            d = self.find(_jid, wait_factor)
-
-            self._last_lookup = now
-
-            # cumulative response
-            clientDeferred = defer.Deferred()
-
-            d.addBoth(self._lookup_cb, _jid, clientDeferred)
-
-            self.lookups[_jid] = clientDeferred
-            return clientDeferred
-
-    def _lookup_cb(self, result, _jid, clientDeferred):
-        #log.debug("result = %r" % (result, ))
-        out = set()
-        try:
-            del self.lookups[_jid]
-        except KeyError:
-            pass
-
-        # TODO this is always true since errbacks are not really used
-        if not isinstance(result, failure.Failure):
-            # FIXME this is really a messy algorithm
-            for hit in result:
-                if hit:
-                    for x in hit:
-                        added = False
-                        for cur in out:
-                            if cur.user == x.user and cur.resource == x.resource and cur.host != x.host:
-                                log.debug("duplicate found: %r/%r" % (cur, x))
-                                """
-                                Take the most recent presence:
-                                1. available presence is always the most recent (without type)
-                                2. difference between <delay/> extensions
-                                2. unavailable presences without <delay/> are considered
-                                   only if 1 and 2 are not a match
-                                """
-                                def _presencecmp(p1, p2):
-                                    """
-                                    strcmp for presence stanzas :)
-                                    """
-
-                                    # available presence is always the most recent (without type)
-                                    if not p1.getAttribute('type'):
-                                        return 1
-                                    elif not p2.getAttribute('type'):
-                                        return -1
-
-                                    # difference between <delay/> extensions
-                                    if p1.delay and p2.delay:
-                                        # both delay present, compare them
-                                        p1_time = datetime.strptime(p1.delay['stamp'], xmlstream2.XMPP_STAMP_FORMAT)
-                                        p2_time = datetime.strptime(p2.delay['stamp'], xmlstream2.XMPP_STAMP_FORMAT)
-                                        if p1_time > p2_time:
-                                            return 1
-                                        elif p1_time < p2_time:
-                                            return -1
-                                        return 0
-
-                                    # only p1 has <delay/>
-                                    if p1.delay:
-                                        return 1
-                                    # only p2 has <delay/>
-                                    elif p2.delay:
-                                        return -1
-
-                                    # no <delay/> found on both stanzas
-                                    # no way to compare stanzas
-                                    return 0
-
-                                # already found, discard obsolete value
-                                if _presencecmp(self.presence_cache[cur], self.presence_cache[x]) < 0:
-                                    #log.debug("discarding %s and adding %s" % (cur.full(), x.full()))
-                                    out.discard(cur)
-                                    out.add(x)
-                                added = True
-
-                        if not added:
-                            out.add(x)
-
-        clientDeferred.callback(out)
 
 
 class Resolver(xmlstream2.SocketComponent):
