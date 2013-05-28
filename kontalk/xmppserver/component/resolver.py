@@ -298,7 +298,10 @@ class PresenceStub(object):
             except:
                 self.priority = 0
         elif name == 'delay':
-            self.delay = datetime.strptime(value, xmlstream2.XMPP_STAMP_FORMAT)
+            try:
+                self.delay = datetime.strptime(value, xmlstream2.XMPP_STAMP_FORMAT)
+            except:
+                self.delay = None
         else:
             raise AttributeError(name)
 
