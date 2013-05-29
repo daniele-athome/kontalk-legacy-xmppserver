@@ -19,6 +19,8 @@
 """
 
 
+import copy
+
 from twisted.cred import error as cred_error
 from twisted.internet import reactor, defer
 from twisted.words.protocols.jabber import client, ijabber, xmlstream, sasl
@@ -717,4 +719,10 @@ def toResponse(stanza, stanzaType=None):
     if stanzaType:
         response['type'] = stanzaType
 
+    return response
+
+def errorResponse(error, stanza):
+    response = toResponse(stanza, stanzaType='error')
+    response.children = copy.copy(stanza.children)
+    response.addChild(error.getElement())
     return response

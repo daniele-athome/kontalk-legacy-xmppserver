@@ -20,13 +20,13 @@
 
 
 from twisted.words.protocols.jabber.component import XMPPComponentServerFactory
-from twisted.words.protocols.jabber import jid, error
+from twisted.words.protocols.jabber import error
 from twisted.words.xish import domish
 
 from wokkel import component
 from wokkel.xmppim import Presence, UnavailablePresence
 
-from kontalk.xmppserver import log, util
+from kontalk.xmppserver import log, util, xmlstream2
 
 
 class Router(component.Router):
@@ -136,7 +136,7 @@ class Router(component.Router):
             except KeyError:
                 log.warn("unroutable stanza, bouncing back to component")
                 e = error.StanzaError('service-unavailable')
-                xs.send(e.toResponse(stanza))
+                xs.send(xmlstream2.errorResponse(e, stanza))
 
     def broadcast(self, stanza, same=False):
         """
