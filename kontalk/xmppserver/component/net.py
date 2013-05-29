@@ -22,7 +22,7 @@
 import os
 
 from twisted.internet import reactor
-from twisted.names.srvconnect import SRVConnector
+from twisted.names.srvconnect import SRVConnector, _SRVConnector_ClientFactoryWrapper
 from twisted.application.internet import StreamServerEndpointService
 from twisted.words.protocols.jabber import jid, xmlstream, error
 from twisted.words.xish import domish
@@ -47,16 +47,32 @@ def initiateNet(factory, credentials):
         }
         c = tls_reactor.connectTLS(reactor, 'localhost', ports[domain], factory, credentials)
     else:
-        c = XMPPNetConnector(tls_reactor, domain, factory, credentials, reactor)
+        c = XMPPNetConnector(reactor, domain, factory, credentials, tls_reactor)
         c.connect()
     return factory.deferred
 
 
 class XMPPNetConnector(SRVConnector):
-    def __init__(self, tls_reactor, domain, factory, credentials, reactor):
-        # HACK to make it work :)
-        SRVConnector.__init__(self, tls_reactor, 'xmpp-net', domain, factory,
-            connectFuncName='connectTLS', connectFuncKwArgs={'credentials':credentials, 'reactor': reactor})
+    def __init__(self, reactor, domain, factory, credentials, tls_reactor):
+        self.tls_reactor = tls_reactor
+        SRVConnector.__init__(self, reactor, 'xmpp-net', domain, factory,
+            connectFuncName='connectTLS', connectFuncKwArgs={'credentials':credentials})
+
+    # HACK HACK HACK
+    def _reallyConnect(self):
+        if self.stopAfterDNS:
+            self.stopAfterDNS=0
+            return
+
+        self.host, self.port = self.pickServer()
+        assert self.host is not None, 'Must have a host to connect to.'
+        assert self.port is not None, 'Must have a port to connect to.'
+
+        connectFunc = getattr(self.tls_reactor, self.connectFuncName)
+        self.connector=connectFunc(
+            self.reactor, self.host, self.port,
+            _SRVConnector_ClientFactoryWrapper(self, self.factory),
+            *self.connectFuncArgs, **self.connectFuncKwArgs)
 
 
     def pickServer(self):
