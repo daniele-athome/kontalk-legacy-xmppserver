@@ -78,8 +78,8 @@ class PingHandler(XMPPHandler):
     http://xmpp.org/extensions/xep-0199.html
     """
 
-    PING_DELAY = 2
-    PING_TIMEOUT = 1
+    PING_DELAY = 240
+    PING_TIMEOUT = 240
 
     def __init__(self):
         XMPPHandler.__init__(self)
