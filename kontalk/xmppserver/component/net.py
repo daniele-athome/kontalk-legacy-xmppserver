@@ -47,15 +47,16 @@ def initiateNet(factory, credentials):
         }
         c = tls_reactor.connectTLS(reactor, 'localhost', ports[domain], factory, credentials)
     else:
-        c = XMPPNetConnector(tls_reactor, domain, factory, credentials)
+        c = XMPPNetConnector(tls_reactor, domain, factory, credentials, reactor)
         c.connect()
     return factory.deferred
 
 
 class XMPPNetConnector(SRVConnector):
-    def __init__(self, reactor, domain, factory, credentials):
-        SRVConnector.__init__(self, reactor, 'xmpp-net', domain, factory,
-            connectFuncName='connectTLS', connectFuncKwArgs={'credentials':credentials})
+    def __init__(self, tls_reactor, domain, factory, credentials, reactor):
+        # HACK to make it work :)
+        SRVConnector.__init__(self, tls_reactor, 'xmpp-net', domain, factory,
+            connectFuncName='connectTLS', connectFuncKwArgs={'credentials':credentials, 'reactor': reactor})
 
 
     def pickServer(self):
