@@ -78,8 +78,8 @@ class PingHandler(XMPPHandler):
     http://xmpp.org/extensions/xep-0199.html
     """
 
-    PING_DELAY = 120
-    PING_TIMEOUT = 120
+    PING_DELAY = 2
+    PING_TIMEOUT = 1
 
     def __init__(self):
         XMPPHandler.__init__(self)
@@ -87,7 +87,11 @@ class PingHandler(XMPPHandler):
         self.pinger = None
 
     def connectionInitialized(self):
-        self.xmlstream.addObserver("/iq[@type='get'][@to='%s']/ping[@xmlns='%s']" % (self.parent.network, xmlstream2.NS_XMPP_PING, ), self.ping, 100)
+        """
+        This is a special case: ping to network is handled by us because it's
+        a local issue, no need to forward to resolver.
+        """
+        self.xmlstream.addObserver("/iq[@type='get'][@to='%s']/ping[@xmlns='%s']" % (self.parent.network, xmlstream2.NS_XMPP_PING, ), self.ping, 600)
         # first ping request
         self.pinger = reactor.callLater(self.PING_DELAY, self._ping)
 
@@ -112,13 +116,20 @@ class PingHandler(XMPPHandler):
         self.pinger = None
         self.ping_timeout = reactor.callLater(self.PING_TIMEOUT, self._timeout)
         # observe pong
-        self.xmlstream.addObserver("/iq[@type='result'][@id='%s']" % (ping['id'], ), self.pong, 100)
+        self.xmlstream.addObserver("/iq[@type='result'][@id='%s']" % (ping['id'], ), self.pong, 600)
 
     def _timeout(self):
         self.ping_timeout = None
         # send stream error
         e = error.StreamError('connection-timeout')
         self.xmlstream.sendStreamError(e)
+        # abort connection after 1 second
+        def _abort():
+            try:
+                self.xmlstream.transport.abortConnection()
+            except:
+                pass
+        reactor.callLater(1, _abort)
 
     def ping(self, stanza):
         if not stanza.hasAttribute('to') or stanza['to'] == self.parent.network:
@@ -134,6 +145,8 @@ class PingHandler(XMPPHandler):
             self.ping_timeout = None
         # unobserve pong
         self.xmlstream.removeObserver("/iq[@type='result'][@id='%s']" % (stanza['id'], ), self.pong)
+        # consume stanza
+        stanza.consumed = True
         # restart pinger
         self.pinger = reactor.callLater(self.PING_DELAY, self._ping)
 
