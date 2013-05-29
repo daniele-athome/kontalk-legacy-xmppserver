@@ -78,8 +78,8 @@ class PingHandler(XMPPHandler):
     http://xmpp.org/extensions/xep-0199.html
     """
 
-    PING_DELAY = 60
-    PING_TIMEOUT = 60
+    PING_DELAY = 120
+    PING_TIMEOUT = 120
 
     def __init__(self):
         XMPPHandler.__init__(self)
@@ -90,7 +90,7 @@ class PingHandler(XMPPHandler):
         self.xmlstream.addObserver("/iq[@type='get'][@to='%s']/ping[@xmlns='%s']" % (self.parent.network, xmlstream2.NS_XMPP_PING, ), self.ping, 100)
         self.xmlstream.addObserver("/iq[@type='result'][@to='%s']/ping[@xmlns='%s']" % (self.parent.network, xmlstream2.NS_XMPP_PING, ), self.pong, 100)
         # first ping request
-        self.pinger = reactor.callLater(self.PING_DELAY*2, self._ping)
+        self.pinger = reactor.callLater(self.PING_DELAY, self._ping)
 
     def connectionLost(self, reason):
         XMPPHandler.connectionLost(self, reason)
