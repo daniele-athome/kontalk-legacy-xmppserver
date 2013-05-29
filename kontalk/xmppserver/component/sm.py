@@ -88,7 +88,6 @@ class PingHandler(XMPPHandler):
 
     def connectionInitialized(self):
         self.xmlstream.addObserver("/iq[@type='get'][@to='%s']/ping[@xmlns='%s']" % (self.parent.network, xmlstream2.NS_XMPP_PING, ), self.ping, 100)
-        self.xmlstream.addObserver("/iq[@type='result'][@to='%s']/ping[@xmlns='%s']" % (self.parent.network, xmlstream2.NS_XMPP_PING, ), self.pong, 100)
         # first ping request
         self.pinger = reactor.callLater(self.PING_DELAY, self._ping)
 
@@ -123,6 +122,7 @@ class PingHandler(XMPPHandler):
 
     def ping(self, stanza):
         if not stanza.hasAttribute('to') or stanza['to'] == self.parent.network:
+            # reply with same stanza
             self.parent.bounce(stanza)
         else:
             self.parent.forward(stanza)
