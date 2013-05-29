@@ -22,8 +22,8 @@
 import os
 
 from twisted.internet import reactor
-from twisted.application import internet
 from twisted.names.srvconnect import SRVConnector
+from twisted.application.internet import StreamServerEndpointService
 from twisted.words.protocols.jabber import jid, xmlstream, error
 from twisted.words.xish import domish
 
@@ -31,18 +31,13 @@ from wokkel import component, server
 
 from zope.interface import Interface, implements
 
-from kontalk.xmppserver import log, util, keyring, storage, xmlstream2
+import gnutls.interfaces.twisted as tls_reactor
+from gnutls.crypto import OpenPGPCertificate, OpenPGPPrivateKey
 
-try:
-    from OpenSSL import crypto, SSL
-    from twisted.internet import ssl
-except ImportError:
-    ssl = None
-if ssl and not ssl.supported:
-    ssl = None
+from kontalk.xmppserver import auth, tls, log, util, keyring, storage, xmlstream2
 
 
-def initiateNet(factory, ctxFactory):
+def initiateNet(factory, credentials):
     domain = factory.authenticator.otherHost
     # TEST :)
     if os.getenv('TEST', '0') == '1':
@@ -50,31 +45,17 @@ def initiateNet(factory, ctxFactory):
             'prime.kontalk.net': 5270,
             'beta.kontalk.net': 6270,
         }
-        c = reactor.connectSSL('localhost', ports[domain], factory, ctxFactory)
+        c = tls_reactor.connectTLS(reactor, 'localhost', ports[domain], factory, credentials)
     else:
-        c = XMPPNetConnector(reactor, domain, factory, ctxFactory)
+        c = XMPPNetConnector(tls_reactor, domain, factory, credentials)
         c.connect()
     return factory.deferred
 
 
-class CtxFactory(ssl.ClientContextFactory):
-    def __init__(self, certfile, keyfile):
-        self.certfile = certfile
-        self.keyfile = keyfile
-
-    def getContext(self):
-        self.method = SSL.SSLv23_METHOD
-        ctx = ssl.ClientContextFactory.getContext(self)
-        ctx.use_certificate_file(self.certfile)
-        ctx.use_privatekey_file(self.keyfile)
-        # TODO peer certificate should be checked even on initiating connection
-        return ctx
-
-
 class XMPPNetConnector(SRVConnector):
-    def __init__(self, reactor, domain, factory, ctxFactory):
+    def __init__(self, reactor, domain, factory, credentials):
         SRVConnector.__init__(self, reactor, 'xmpp-net', domain, factory,
-            connectFuncName='connectSSL', connectFuncKwArgs={'contextFactory':ctxFactory})
+            connectFuncName='connectTLS', connectFuncKwArgs={'credentials':credentials})
 
 
     def pickServer(self):
@@ -99,9 +80,10 @@ class XMPPNetConnectAuthenticator(xmlstream.ConnectAuthenticator):
     """
     namespace = 'jabber:net'
 
-    def __init__(self, thisHost, otherHost):
+    def __init__(self, thisHost, otherHost, keyring):
         self.thisHost = thisHost
         self.otherHost = otherHost
+        self.keyring = keyring
         xmlstream.ConnectAuthenticator.__init__(self, otherHost)
 
     def connectionMade(self):
@@ -114,19 +96,34 @@ class XMPPNetConnectAuthenticator(xmlstream.ConnectAuthenticator):
         xs.initializers = []
 
     def streamStarted(self, rootElement):
-        xmlstream.ConnectAuthenticator.streamStarted(self, rootElement)
+        # TODO same checking code on listening authenticator
+
+        # check that from attribute is associated to the right key
+        host = rootElement['from']
+        fingerprint = self.xmlstream.transport.getPeerCertificate().fingerprint
+        log.debug("%s fingerprint is %s" % (host, fingerprint, ))
+
+        valid = False
+        # FIXME accessing Keyring internals
+        for fpr, fhost in self.keyring._list.iteritems():
+            if fhost == host and fpr.upper() == fingerprint:
+                log.debug("fingerprint matching (%s = %s)" % (host, fpr))
+                valid = True
+
+        if valid:
+            xmlstream.ConnectAuthenticator.streamStarted(self, rootElement)
+        else:
+            self.xmlstream.sendStreamError(error.StreamError('not-authorized'))
 
 
 class XMPPNetListenAuthenticator(xmlstream.ListenAuthenticator):
-    """
-    XMPP authenticator for receiving entity in this Kontalk network.
-    STARTTLS negotiation using GPG keys is required.
-    """
+    """XMPP authenticator for receiving entity in this Kontalk network."""
     namespace = 'jabber:net'
 
-    def __init__(self, service):
+    def __init__(self, defaultDomain, keyring):
         xmlstream.ListenAuthenticator.__init__(self)
-        self.service = service
+        self.defaultDomain = defaultDomain
+        self.keyring = keyring
 
     def associateWithStream(self, xs):
         xmlstream.ListenAuthenticator.associateWithStream(self, xs)
@@ -153,7 +150,7 @@ class XMPPNetListenAuthenticator(xmlstream.ListenAuthenticator):
         try:
             if self.xmlstream.version < (1, 0):
                 raise error.StreamError('unsupported-version')
-            if self.xmlstream.thisEntity.host != self.service.defaultDomain:
+            if self.xmlstream.thisEntity.host != self.defaultDomain:
                 raise error.StreamError('not-authorized')
         except error.StreamError, exc:
             self.xmlstream.sendHeader()
@@ -173,9 +170,20 @@ class XMPPNetListenAuthenticator(xmlstream.ListenAuthenticator):
 
             self.xmlstream.send(features)
 
-            # TEST auto auth :)
-            self.xmlstream.otherEntity = jid.internJID(rootElement['from'])
-            self.xmlstream.dispatch(self.xmlstream, xmlstream.STREAM_AUTHD_EVENT)
+            # check that from attribute is associated to the right key
+            host = rootElement['from']
+            fingerprint = self.xmlstream.transport.getPeerCertificate().fingerprint
+            log.debug("%s fingerprint is %s" % (host, fingerprint, ))
+
+            # FIXME accessing Keyring internals
+            for fpr, fhost in self.keyring._list.iteritems():
+                if fhost == host and fpr.upper() == fingerprint:
+                    log.debug("fingerprint matching (%s = %s)" % (host, fpr))
+                    self.xmlstream.otherEntity = jid.internJID(host)
+                    self.xmlstream.dispatch(self.xmlstream, xmlstream.STREAM_AUTHD_EVENT)
+
+            if not self.xmlstream.otherEntity:
+                self.xmlstream.sendStreamError(error.StreamError('not-authorized'))
 
     def canInitialize(self, initializer):
         inits = self.xmlstream.initializers[0:self.xmlstream.initializers.index(initializer)]
@@ -217,7 +225,7 @@ class XMPPNetServerFactory(xmlstream.XmlStreamServerFactory):
         self.service = service
 
         def authenticatorFactory():
-            return XMPPNetListenAuthenticator(service)
+            return XMPPNetListenAuthenticator(service.defaultDomain, service.keyring)
 
         xmlstream.XmlStreamServerFactory.__init__(self, authenticatorFactory)
         self.addBootstrap(xmlstream.STREAM_CONNECTED_EVENT,
@@ -226,23 +234,6 @@ class XMPPNetServerFactory(xmlstream.XmlStreamServerFactory):
                           self.onAuthenticated)
 
         self.serial = 0
-        self.tls_ctx = None
-
-    def loadPEM(self, certfile, keyfile):
-        if ssl is None:
-            raise xmlstream.TLSNotSupported()
-
-        cert = open(certfile, 'rb')
-        cert_buf = cert.read()
-        cert.close()
-        cert = open(keyfile, 'rb')
-        key_buf = cert.read()
-        cert.close()
-
-        pkey = crypto.load_privatekey(crypto.FILETYPE_PEM, key_buf)
-        cert = crypto.load_certificate(crypto.FILETYPE_PEM, cert_buf)
-        self.tls_ctx = ssl.CertificateOptions(privateKey=pkey, certificate=cert)
-
 
     def onConnectionMade(self, xs):
         """
@@ -332,7 +323,7 @@ class NetService(object):
 
     implements(INetService)
 
-    def __init__(self, config, router, keyring):
+    def __init__(self, config, router, keyring, credentials):
         self.config = config
         self.fingerprint = config['fingerprint']
         self.defaultDomain = config['host']
@@ -341,8 +332,7 @@ class NetService(object):
         self.domains.add(self.defaultDomain)
         self.router = router
         self.keyring = keyring
-        # SSL context for initiating connections
-        self.tls_ctx = CtxFactory(config['ssl_cert'], config['ssl_key'])
+        self.credentials = credentials
 
         self._outgoingStreams = {}
         self._outgoingQueues = {}
@@ -427,7 +417,7 @@ class NetService(object):
         if otherHost in self._outgoingConnecting:
             return
 
-        authenticator = XMPPNetConnectAuthenticator(self.defaultDomain, otherHost)
+        authenticator = XMPPNetConnectAuthenticator(self.defaultDomain, otherHost, self.keyring)
         factory = server.DeferredS2SClientFactory(authenticator)
         factory.addBootstrap(xmlstream.STREAM_AUTHD_EVENT,
                              self.outgoingInitialized)
@@ -435,7 +425,7 @@ class NetService(object):
 
         self._outgoingConnecting.add(otherHost)
 
-        d = initiateNet(factory, self.tls_ctx)
+        d = initiateNet(factory, self.credentials)
         d.addCallback(resetConnecting)
         d.addErrback(bounceError)
         return d
@@ -543,20 +533,27 @@ class NetComponent(xmlstream2.SocketComponent):
     def setup(self):
         storage.init(self.config['database'])
 
+        cert = OpenPGPCertificate(open(self.config['pgp_cert']).read())
+        key = OpenPGPPrivateKey(open(self.config['pgp_key']).read())
+
+        cred = auth.OpenPGPKontalkCredentials(cert, key, str(self.config['pgp_keyring']))
+        cred.verify_peer = True
+
         ring = keyring.Keyring(storage.MySQLNetworkStorage(), self.config['fingerprint'], self.network, self.servername)
-        self.service = NetService(self.config, self, ring)
+        self.service = NetService(self.config, self, ring, cred)
         self.service.logTraffic = self.logTraffic
         self.sfactory = XMPPNetServerFactory(self.service)
         self.sfactory.logTraffic = self.logTraffic
-        self.sfactory.loadPEM(self.config['ssl_cert'], self.config['ssl_key'])
 
-        ctx = self.sfactory.tls_ctx.getContext()
-        ctx.set_verify(SSL.VERIFY_PEER | SSL.VERIFY_FAIL_IF_NO_PEER_CERT, self.sfactory.verifyPeer)
-        ctx.load_verify_locations(self.config['ssl_store'])
+        tls_svc = StreamServerEndpointService(
+            tls.TLSServerEndpoint(reactor=reactor,
+                port=int(self.config['bind'][1]),
+                interface=str(self.config['bind'][0]),
+                credentials=cred),
+            self.sfactory)
+        tls_svc._raiseSynchronously = True
 
-        return internet.SSLServer(port=int(self.config['bind'][1]),
-            factory=self.sfactory, contextFactory=self.sfactory.tls_ctx,
-            interface=str(self.config['bind'][0]))
+        return tls_svc
 
     """ Connection with router """
 
