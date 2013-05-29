@@ -1,4 +1,5 @@
 *.sock
+*.sock.lock
 *.pyc
 *.pid
 dropin.cache
@@ -6,3 +7,5 @@ dropin.cache
 /keyring.gpg
 /server-pgp.crt
 /server-pgp.key
+/server-pgp.beta.crt
+/server-pgp.beta.key
