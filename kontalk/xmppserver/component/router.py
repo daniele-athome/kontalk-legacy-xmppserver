@@ -123,6 +123,20 @@ class Router(component.Router):
             """
             FIXME we have encoding problems here... (why not in other components?!?!?)
             """
+
+            # check for stanza loops
+            errors = 0
+            for child in stanza.children:
+                if child.name == 'error':
+                    errors += 1
+                    if errors > 1:
+                        if self.logTraffic:
+                            log.debug("error loop, dropping stanza %s" % (stanza.toXml().encode('utf-8'), ))
+                        else:
+                            log.debug("error loop, dropping stanza")
+
+                        return
+
             if self.logTraffic:
                 log.debug("routing stanza %s" % (stanza.toXml().encode('utf-8'), ))
             try:
