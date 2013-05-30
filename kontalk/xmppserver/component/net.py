@@ -293,7 +293,7 @@ class XMPPNetServerFactory(xmlstream.XmlStreamServerFactory):
             """
             p = domish.Element((None, 'presence'))
             p['from'] = self.service.defaultDomain
-            p['origin'] = self.service.network
+            # TRANSLATED BY OBSERVER p['origin'] = self.service.network
             p['to'] = otherHost
             xs.send(p)
 
@@ -375,7 +375,7 @@ class NetService(object):
         """
         p = domish.Element((None, 'presence'))
         p['from'] = self.defaultDomain
-        p['origin'] = self.network
+        # TRANSLATED BY OBSERVER p['origin'] = self.network
         p['to'] = otherHost
         xs.send(p)
 
@@ -598,10 +598,26 @@ class NetComponent(xmlstream2.SocketComponent):
         log.debug("consuming stanza %s" % (stanza.toXml(), ))
 
     def presence(self, stanza):
-        # presence broadcast from local c2s, intended for remote resolver
+        """
+        Presence broadcast from local c2s (intended for remote c2s), deliver
+        also to remote resolver.
+        """
         host = util.jid_host(stanza['from'])
-        if host == self.servername and not stanza.hasAttribute('destination'):
-            stanza['destination'] = self.network
+        if host == self.servername:
+            """
+            Original stanza will be sent to remote c2s, which will provider
+            offline storage delivery and network conflicts.
+            """
+            self.dispatch(stanza)
+
+            """
+            Intended destination is not remote resolver, so be sure to deliver.
+            """
+            if stanza.getAttribute('destination') != self.servername:
+                # be sure to unconsume for the next dispatch
+                stanza.consumed = False
+                stanza['destination'] = self.network
+                # dispatch will handle the stanza
 
     def dispatch(self, stanza):
         """Handle incoming stanza from router to the proper server stream."""
