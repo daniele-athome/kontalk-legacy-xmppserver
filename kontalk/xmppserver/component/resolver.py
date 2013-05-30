@@ -842,13 +842,13 @@ class Resolver(xmlstream2.SocketComponent):
                     # no available resources, deliver to bare JID if force delivery
                     if len(jids) == 0 and force_delivery:
                         stanza['to'] = rcpts.jid.userhost()
-                        self._send(stanza)
+                        component.Component.send(self, stanza)
                     # deliver if resource is available
                     else:
                         for _to in jids:
                             if _to.resource == to.resource:
                                 stanza['to'] = _to.full()
-                                self._send(stanza)
+                                component.Component.send(self, stanza)
                                 break
 
                 # destination was a bare JID
@@ -856,34 +856,15 @@ class Resolver(xmlstream2.SocketComponent):
                     # no available resources, send to first network bare JID
                     if len(jids) == 0:
                         stanza['to'] = rcpts.jid.userhost()
-                        self._send(stanza)
+                        component.Component.send(self, stanza)
                     else:
                         for _to in jids:
                             stanza['to'] = _to.full()
-                            self._send(stanza)
+                            component.Component.send(self, stanza)
 
         # otherwise send to router
         else:
-            self._send(stanza)
-
-    def _send(self, stanza):
-        """Sends a stanza to the router. Handles other things in the way too."""
-
-        to = jid.JID(stanza['to'])
-        if stanza.name == 'message' and to.host != self.servername and to.host in self.keyring.hostlist():
-            log.debug("message to remote server - CHECK!")
-            received = xmlstream2.extract_receipt(stanza, 'received')
-            if received:
-                log.debug("message receipt going to server - sending notice to c2s to delete message %s" % (received['id'], ))
-                msg = domish.Element((None, 'message'))
-                msg['type'] = stanza['type']
-                msg['from'] = self.network
-                msg['to'] = self.servername
-                rec = msg.addElement((xmlstream2.NS_XMPP_SERVER_RECEIPTS, 'received'))
-                rec['id'] = received['id']
-                component.Component.send(self, msg)
-
-        return component.Component.send(self, stanza)
+            component.Component.send(self, stanza)
 
     def cancelSubscriptions(self, user):
         """Cancel all subscriptions requested by the given user."""

@@ -612,6 +612,15 @@ class C2SManager(xmlstream2.StreamManager):
         if not stanza.hasAttribute('to'):
             stanza['to'] = self.xmlstream.otherEntity.userhost()
 
+        # if message is a received receipt, we can delete the original message
+        # TODO move this to MessageHandler
+        if stanza.getAttribute('type') == 'chat':
+            received = xmlstream2.extract_receipt(stanza, 'received')
+            if stanza.received:
+                # delete the received message
+                # TODO safe delete with sender/recipient
+                self.router.message_offline_delete(received['id'])
+
         self.handle(stanza)
 
     def _disconnected(self, reason):

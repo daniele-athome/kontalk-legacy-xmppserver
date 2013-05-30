@@ -564,7 +564,7 @@ class MessageHandler(XMPPHandler):
     def dispatch(self, stanza):
         if not stanza.consumed:
             if self.parent.logTraffic:
-                log.debug("incoming stanza: %s" % (stanza.toXml().encode('utf-8')))
+                log.debug("incoming message: %s" % (stanza.toXml().encode('utf-8')))
 
             stanza.consumed = True
 
@@ -611,14 +611,19 @@ class MessageHandler(XMPPHandler):
 
                         stamp = time.time()
 
-                        # sent receipt will be sent only if message is not coming from storage
-                        if chat_msg and not xmlstream2.has_element(stanza, xmlstream2.NS_XMPP_STORAGE, 'storage'):
+                        """
+                        Sent receipt will be sent only if message is not coming
+                        from storage or the message is from a remote server.
+                        """
+                        host = util.jid_host(stanza['from'])
+                        if chat_msg and (not xmlstream2.has_element(stanza, xmlstream2.NS_XMPP_STORAGE, 'storage') or
+                                host != self.parent.servername):
                             # send ack only for chat messages (if requested)
                             if stanza.getAttribute('type') == 'chat' and xmlstream2.extract_receipt(stanza, 'request'):
                                 self.send_ack(stanza, 'sent', stamp)
                             # send receipt to originating server, if requested
                             try:
-                                origin = stanza.request.getAttribute['origin']
+                                origin = stanza.request['origin']
                                 stanza['to'] = origin
                                 self.send_ack(stanza, 'sent', stamp)
                             except:
@@ -850,11 +855,8 @@ class C2SComponent(xmlstream2.SocketComponent):
 
     def local(self, stanza):
         """Handle stanzas delivered to this component."""
-        if stanza.name == 'message' and stanza['from'] == self.network and stanza.getAttribute('type') == 'chat':
-            log.debug("message stanza from resolver - CHECK!")
-            receipt = xmlstream2.extract_receipt(stanza, 'received')
-            if receipt:
-                self.message_offline_delete(receipt['id'])
+        # nothing here yet...
+        pass
 
     def not_found(self, stanza):
         """Handle stanzas for unavailable resources."""
