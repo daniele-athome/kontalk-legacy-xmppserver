@@ -266,7 +266,7 @@ class MessageHandler(XMPPHandler):
                 stanza['to'] = jid.JID(stanza['from']).userhost()
 
             # send to router (without implicitly consuming)
-            self.parent.send(stanza)
+            self.parent.send(stanza, force_delivery=True)
 
 
 class PresenceStub(object):
@@ -317,11 +317,15 @@ class PresenceStub(object):
         delay = stanza.delay
         if delay:
             delay = datetime.strptime(delay['stamp'], xmlstream2.XMPP_STAMP_FORMAT)
-            diff = delay - self.delay
-            try:
-                diff_seconds = diff.total_seconds()
-            except AttributeError:
-                diff_seconds = (diff.microseconds + (diff.seconds + diff.days * 24 * 3600) * 10**6) / 10**6
+            if self.delay:
+                diff = delay - self.delay
+                try:
+                    diff_seconds = diff.total_seconds()
+                except AttributeError:
+                    diff_seconds = (diff.microseconds + (diff.seconds + diff.days * 24 * 3600) * 10**6) / 10**6
+            else:
+                # no delay :)
+                diff_seconds = 1
 
             if diff_seconds >= 0:
                 ujid = jid.JID(stanza['from'])
@@ -783,7 +787,7 @@ class Resolver(xmlstream2.SocketComponent):
             stanza.consumed = True
             self.send(stanza, *args, **kwargs)
 
-    def send(self, stanza):
+    def send(self, stanza, force_delivery=False):
         """
         Resolves stanza recipient and send the stanza to the router.
         @todo document parameters
@@ -835,13 +839,17 @@ class Resolver(xmlstream2.SocketComponent):
 
                 # destination was a full JID
                 if to.resource:
+                    # no available resources, deliver to bare JID if force delivery
+                    if len(jids) == 0 and force_delivery:
+                        stanza['to'] = rcpts.jid.userhost()
+                        self._send(stanza)
                     # deliver if resource is available
-                    for _to in jids:
-                        if _to.resource == to.resource:
-                            stanza['to'] = _to.full()
-                            self._send(stanza)
-                            break
-                    # TODO otherwise should be error, shouldn't it?
+                    else:
+                        for _to in jids:
+                            if _to.resource == to.resource:
+                                stanza['to'] = _to.full()
+                                self._send(stanza)
+                                break
 
                 # destination was a bare JID
                 else:

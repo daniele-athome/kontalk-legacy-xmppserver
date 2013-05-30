@@ -99,7 +99,6 @@ class XMPPServerFactory(xish_xmlstream.XmlStreamFactoryMixin, ServerFactory):
         if userid not in self.streams:
             self.streams[userid] = {}
 
-        # TODO what about network conflicts??
         if resource in self.streams[userid]:
             log.debug("resource conflict for %s" % (xs.otherEntity, ))
             self.streams[userid][resource].conflict()
