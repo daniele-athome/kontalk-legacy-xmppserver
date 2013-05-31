@@ -386,6 +386,8 @@ class InitialPresenceHandler(XMPPHandler):
                     """
                     if msg['stanza'].request:
                         msg['stanza'].request['origin'] = self.parent.servername
+                    elif msg['stanza'].received:
+                        msg['stanza'].received['origin'] = self.parent.servername
 
                     self.send(msg['stanza'])
                     """
@@ -543,10 +545,21 @@ class MessageHandler(XMPPHandler):
 
     def connectionInitialized(self):
         self.xmlstream.addObserver("/message", self.dispatch)
+        self.xmlstream.addObserver("/message/ack[@xmlns='%s']" % (xmlstream2.NS_XMPP_SERVER_RECEIPTS), self.ack, 100)
         self.xmlstream.addObserver("/message[@type='error']/error/network-server-timeout", self.network_timeout, 100)
 
     def features(self):
         return tuple()
+
+    def ack(self, stanza):
+        stanza.consumed = True
+        msgId = stanza['id']
+        if msgId:
+            try:
+                if stanza['to'] == self.parent.servername:
+                    self.parent.message_offline_delete(msgId)
+            except:
+                traceback.print_exc()
 
     def network_timeout(self, stanza):
         """
@@ -555,7 +568,7 @@ class MessageHandler(XMPPHandler):
         stanza.consumed = True
         util.resetNamespace(stanza, component.NS_COMPONENT_ACCEPT)
         message = stanza.original.firstChildElement()
-        self.not_found(message)
+        self.parent.not_found(message)
 
         # send ack only for chat messages
         if message.getAttribute('type') == 'chat':
@@ -583,7 +596,7 @@ class MessageHandler(XMPPHandler):
                             We are deliberately ignoring messages with sent
                             receipt because they are assumed to be volatile.
                             """
-                            if chat_msg and (receipt or received):
+                            if chat_msg and not xmlstream2.has_element(stanza, xmlstream2.NS_XMPP_STORAGE, 'storage') and (receipt or received):
                                 # send message to offline storage just to be safe
                                 stanza['id'] = self.parent.message_offline_store(stanza, True)
 
@@ -622,12 +635,21 @@ class MessageHandler(XMPPHandler):
                             if stanza.getAttribute('type') == 'chat' and xmlstream2.extract_receipt(stanza, 'request'):
                                 self.send_ack(stanza, 'sent', stamp)
                             # send receipt to originating server, if requested
-                            try:
-                                origin = stanza.request['origin']
-                                stanza['to'] = origin
-                                self.send_ack(stanza, 'sent', stamp)
-                            except:
-                                pass
+                            if stanza.request:
+                                try:
+                                    origin = stanza.request['origin']
+                                    stanza['from'] = origin
+                                    self.send_ack(stanza, 'sent', stamp, 'request')
+                                except:
+                                    pass
+                            if stanza.received:
+                                try:
+                                    origin = stanza.received['origin']
+                                    stanza['from'] = origin
+                                    del stanza['origin']
+                                    self.send_ack(stanza, 'ack', stamp, 'received')
+                                except:
+                                    pass
 
                     else:
                         # deliver local stanza
@@ -655,8 +677,8 @@ class MessageHandler(XMPPHandler):
                 else:
                     log.debug("stanza is not our concern or is an error")
 
-    def send_ack(self, stanza, status, stamp=None):
-        request = xmlstream2.extract_receipt(stanza, 'request')
+    def send_ack(self, stanza, status, stamp=None, receipt='request'):
+        request = xmlstream2.extract_receipt(stanza, receipt)
         ack = xmlstream2.toResponse(stanza, stanza.getAttribute('type'))
         rec = ack.addElement((xmlstream2.NS_XMPP_SERVER_RECEIPTS, status))
         rec['id'] = request['id']
@@ -890,6 +912,8 @@ class C2SComponent(xmlstream2.SocketComponent):
                     """
                     if msg['stanza'].request:
                         msg['stanza'].request['origin'] = self.servername
+                    elif msg['stanza'].received:
+                        msg['stanza'].received['origin'] = self.servername
 
                     # mark delayed delivery
                     delay = msg['stanza'].addElement((xmlstream2.NS_XMPP_DELAY, 'delay'))
