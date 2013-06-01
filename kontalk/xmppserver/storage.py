@@ -19,7 +19,7 @@
 """
 
 
-from twisted.internet import defer
+from twisted.internet import defer, reactor
 from twisted.enterprise import adbapi
 from twisted.words.protocols.jabber import jid
 
@@ -32,6 +32,7 @@ try:
 except:
     from ordereddict import OrderedDict
 
+from kontalk.xmppserver.component import sm
 import util, xmlstream2, log
 
 dbpool = None
@@ -48,7 +49,7 @@ def init(config):
 class StanzaStorage:
     """Stanza storage system."""
 
-    def store(self, stanza):
+    def store(self, stanza, network, delayed=False, reuseId=False):
         """Store a stanza."""
         pass
 
@@ -137,7 +138,87 @@ class FileStorage:
 
 class MySQLStanzaStorage(StanzaStorage):
 
-    def store(self, stanza):
+    OFFLINE_STORE_DELAY = 10
+
+    def __init__(self):
+        """
+        This dictionary keeps track of messages currently pending for offline
+        storage. Keys are message IDs, values are (L{IDelayedCall}, stanza)
+        which can be canceled when a message is going to be deleted (also
+        avoiding to do the actual database delete).
+        """
+        self._pending_offline = {}
+
+    def store(self, stanza, network, delayed=False, reuseId=False):
+        def _store(stanza, network, _id):
+            # remove ourselves from pending
+            try:
+                del self._pending_offline[_id]
+            except:
+                pass
+
+            # WARNING using deepcopy is not safe
+            from copy import deepcopy
+            stanza = deepcopy(stanza)
+
+            # if no receipt request is found, generate a unique id for the message
+            receipt = xmlstream2.extract_receipt(stanza, 'request')
+            if not receipt:
+                if _id:
+                    stanza['id'] = _id
+                else:
+                    stanza['id'] = util.rand_str(30, util.CHARSBOX_AZN_LOWERCASE)
+
+            # store message for bare network JID
+            jid_to = jid.JID(stanza['to'])
+            # WARNING this is actually useless
+            jid_to.host = network
+            stanza['to'] = jid_to.userhost()
+
+            # sender JID should be a network JID
+            jid_from = jid.JID(stanza['from'])
+            # WARNING this is actually useless
+            jid_from.host = network
+            stanza['from'] = jid_from.full()
+
+            try:
+                del stanza['origin']
+            except KeyError:
+                pass
+
+            # safe uri for persistance
+            stanza.uri = stanza.defaultUri = sm.C2SManager.namespace
+
+            log.debug("storing offline message for %s" % (stanza['to'], ))
+            try:
+                self._do_store(stanza)
+            except:
+                # TODO log this
+                import traceback
+                traceback.print_exc()
+
+            return stanza['id']
+
+        receipt = xmlstream2.extract_receipt(stanza, 'request')
+        if not receipt:
+            if reuseId:
+                _id = stanza['id']
+            else:
+                _id = util.rand_str(30, util.CHARSBOX_AZN_LOWERCASE)
+        else:
+            _id = receipt['id']
+
+        # cancel any previous delayed call
+        self._cancel_pending(_id)
+
+        if delayed:
+            # delay our call
+            self._pending_offline[_id] = (reactor.callLater(self.OFFLINE_STORE_DELAY, _store, stanza=stanza, network=network, _id=_id), stanza)
+            return _id
+        else:
+            return _store(stanza, network, _id)
+
+    def _do_store(self, stanza):
         global dbpool
         receipt = xmlstream2.extract_receipt(stanza, 'request')
         if receipt:
@@ -155,6 +236,14 @@ class MySQLStanzaStorage(StanzaStorage):
         )
         return dbpool.runOperation('INSERT INTO stanzas (id, sender, recipient, content, timestamp) VALUES(?, ?, ?, ?, ?)', args)
 
+    def _cancel_pending(self, stanzaId):
+        if stanzaId in self._pending_offline:
+            if self._pending_offline[stanzaId][0].active():
+                self._pending_offline[stanzaId][0].cancel()
+                del self._pending_offline[stanzaId]
+                return True
+        return False
+
     def get_by_id(self, stanzaId):
         global dbpool
         def _translate(tx, stanzaId):
@@ -171,10 +260,9 @@ class MySQLStanzaStorage(StanzaStorage):
 
     def get_by_recipient(self, recipient):
         global dbpool
-        def _translate(tx, recipient):
+        def _translate(tx, recipient, out):
             tx.execute('SELECT id, timestamp, content FROM stanzas WHERE recipient = ? ORDER BY timestamp', (recipient.user, ))
             data = tx.fetchall()
-            out = []
             for row in data:
                 stanzaId = str(row[0])
                 d = { 'id': stanzaId, 'timestamp': datetime.datetime.utcfromtimestamp(row[1] / 1e3) }
@@ -189,9 +277,27 @@ class MySQLStanzaStorage(StanzaStorage):
 
                 out.append(d)
             return out
-        return dbpool.runInteraction(_translate, recipient)
+
+        # include any pending message?
+        out = []
+        for stanzaId, pend in self._pending_offline.iteritems():
+            delayed, stanza = pend
+            if util.jid_user(stanza['to']) == recipient.user:
+                stanza.consumed = False
+                out.append({'id': stanzaId, 'stanza': stanza})
+                # reset delayed timer
+                delayed.reset(self.OFFLINE_STORE_DELAY)
+
+        return dbpool.runInteraction(_translate, recipient, out)
 
     def delete(self, stanzaId, sender=None, recipient=None):
+        # check if message is pending to offline
+        if self._cancel_pending(stanzaId):
+            return True
+
+        return self._delete(stanzaId, sender, recipient)
+
+    def _delete(self, stanzaId, sender=None, recipient=None):
         global dbpool
         #import traceback
         #log.debug("deleting stanza %s -- traceback:\n%s" % (stanzaId, ''.join(traceback.format_stack())))
