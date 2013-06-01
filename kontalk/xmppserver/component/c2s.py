@@ -601,6 +601,7 @@ class MessageHandler(XMPPHandler):
                 if to.host == self.parent.servername:
                     chat_msg = (stanza.getAttribute('type') == 'chat')
                     if to.user is not None:
+                        keepId = None
                         receipt = xmlstream2.extract_receipt(stanza, 'request')
                         received = xmlstream2.extract_receipt(stanza, 'received')
                         try:
@@ -610,7 +611,7 @@ class MessageHandler(XMPPHandler):
                             """
                             if chat_msg and not xmlstream2.has_element(stanza, xmlstream2.NS_XMPP_STORAGE, 'storage') and (receipt or received):
                                 # send message to offline storage just to be safe
-                                stanza['id'] = self.parent.message_offline_store(stanza, delayed=True)
+                                keepId = self.parent.message_offline_store(stanza, delayed=True)
 
                             # send message to sm only to non-negative resources
                             log.debug("sending message %s" % (stanza['id'], ))
@@ -625,7 +626,7 @@ class MessageHandler(XMPPHandler):
                             real now.
                             """
                             if chat_msg and (stanza.body or received):
-                                stanza['id'] = self.parent.message_offline_store(stanza, delayed=False, reuseId=True)
+                                self.parent.message_offline_store(stanza, delayed=False, reuseId=keepId)
                             if self.parent.push_manager and chat_msg and stanza.body and (not receipt or receipt.name == 'request'):
                                 self.parent.push_manager.notify(to)
 
@@ -974,14 +975,14 @@ class C2SComponent(xmlstream2.SocketComponent):
         """
         return self.stanzadb.delete(stanzaId, sender, recipient)
 
-    def message_offline_store(self, stanza, delayed=False, reuseId=False):
+    def message_offline_store(self, stanza, delayed=False, reuseId=None):
         """
         Stores a message stanza to the offline storage.
         @param delayed: True to delay the actual store action; this is useful
         when waiting for a confirmation receipt, in order to avoid storing the
         message before sending it. If confirmation is not received after a
         defined time, message will be stored.
-        @param reuseId: True to reuse an existing stanza id if present;
-        otherwise a new random id will be generated.
+        @param reuseId: string to reuse an existing stanza id if present;
+        None to generate a random id.
         """
         return self.stanzadb.store(stanza, self.network, delayed, reuseId)

@@ -149,7 +149,7 @@ class MySQLStanzaStorage(StanzaStorage):
         """
         self._pending_offline = {}
 
-    def store(self, stanza, network, delayed=False, reuseId=False):
+    def store(self, stanza, network, delayed=False, reuseId=None):
         def _store(stanza, network, _id):
             # remove ourselves from pending
             try:
@@ -201,8 +201,8 @@ class MySQLStanzaStorage(StanzaStorage):
 
         receipt = xmlstream2.extract_receipt(stanza, 'request')
         if not receipt:
-            if reuseId:
-                _id = stanza['id']
+            if reuseId is not None:
+                _id = reuseId
             else:
                 _id = util.rand_str(30, util.CHARSBOX_AZN_LOWERCASE)
         else:
