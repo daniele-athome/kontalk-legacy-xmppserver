@@ -690,12 +690,23 @@ class C2SManager(xmlstream2.StreamManager):
         # TODO should we force self.network if no sender?
 
         # remove reserved elements
-        if stanza.name == 'message' and stanza.storage and stanza.storage.uri == xmlstream2.NS_XMPP_STORAGE:
-            stanza.children.remove(stanza.storage)
+        if stanza.name == 'message':
+            # storage child
+            if stanza.storage and stanza.storage.uri == xmlstream2.NS_XMPP_STORAGE:
+                stanza.children.remove(stanza.storage)
+            # origin in receipt
+            if stanza.request and stanza.request.hasAttribute('origin'):
+                del stanza.request['origin']
+            elif stanza.received and stanza.received.hasAttribute('origin'):
+                del stanza.received['origin']
         if stanza.name == 'presence':
+            # push device id
             for c in stanza.elements(name='c', uri=xmlstream2.NS_PRESENCE_PUSH):
                 stanza.children.remove(c)
                 break
+        # origin
+        if stanza.hasAttribute('origin'):
+            del stanza['origin']
 
         # force destination address
         stanza['to'] = self.xmlstream.otherEntity.full()
