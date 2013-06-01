@@ -395,8 +395,8 @@ class InitialPresenceHandler(XMPPHandler):
                     sure remote sm has received it.
                     """
                 except:
-                    traceback.print_exc()
                     log.debug("offline message delivery failed (%s)" % (msg['id'], ))
+                    traceback.print_exc()
 
         d = self.parent.stanzadb.get_by_recipient(sender)
         d.addCallback(output)
@@ -575,6 +575,13 @@ class MessageHandler(XMPPHandler):
             self.send_ack(message, 'sent')
 
     def dispatch(self, stanza):
+        """
+        Incoming message from router.
+        A message may come from any party:
+        1. local resolver
+        2. remote c2s
+        3. remote resolver
+        """
         if not stanza.consumed:
             if self.parent.logTraffic:
                 log.debug("incoming message: %s" % (stanza.toXml().encode('utf-8')))
@@ -598,9 +605,10 @@ class MessageHandler(XMPPHandler):
                             """
                             if chat_msg and not xmlstream2.has_element(stanza, xmlstream2.NS_XMPP_STORAGE, 'storage') and (receipt or received):
                                 # send message to offline storage just to be safe
-                                stanza['id'] = self.parent.message_offline_store(stanza, True)
+                                stanza['id'] = self.parent.message_offline_store(stanza, delayed=True)
 
                             # send message to sm only to non-negative resources
+                            log.debug("sending message %s" % (stanza['id'], ))
                             self.parent.sfactory.dispatch(stanza)
 
                         except:
@@ -611,9 +619,9 @@ class MessageHandler(XMPPHandler):
                             was with delayed parameter, we need to store for
                             real now.
                             """
-                            if chat_msg and stanza.body:
-                                stanza['id'] = self.parent.message_offline_store(stanza)
-                            if self.parent.push_manager and (chat_msg and stanza.body and (not receipt or receipt.name == 'request')):
+                            if chat_msg and (stanza.body or received):
+                                stanza['id'] = self.parent.message_offline_store(stanza, delayed=False, reuseId=True)
+                            if self.parent.push_manager and chat_msg and stanza.body and (not receipt or receipt.name == 'request'):
                                 self.parent.push_manager.notify(to)
 
                         # if message is a received receipt, we can delete the original message
@@ -639,14 +647,29 @@ class MessageHandler(XMPPHandler):
                                 try:
                                     origin = stanza.request['origin']
                                     stanza['from'] = origin
+                                    try:
+                                        del stanza['origin']
+                                    except:
+                                        pass
+                                    try:
+                                        del stanza['destination']
+                                    except:
+                                        pass
                                     self.send_ack(stanza, 'sent', stamp, 'request')
                                 except:
                                     pass
-                            if stanza.received:
+                            elif stanza.received:
                                 try:
                                     origin = stanza.received['origin']
                                     stanza['from'] = origin
-                                    del stanza['origin']
+                                    try:
+                                        del stanza['origin']
+                                    except:
+                                        pass
+                                    try:
+                                        del stanza['destination']
+                                    except:
+                                        pass
                                     self.send_ack(stanza, 'ack', stamp, 'received')
                                 except:
                                     pass
@@ -660,9 +683,7 @@ class MessageHandler(XMPPHandler):
                     the message from our storage.
                     """
                     r_sent = xmlstream2.extract_receipt(stanza, 'sent')
-                    r_received = xmlstream2.extract_receipt(stanza, 'received')
-                    receipt = r_sent if r_sent else r_received
-                    if chat_msg and receipt is not None:
+                    if chat_msg and r_sent:
                         sender_host = util.jid_host(stanza['from'])
                         """
                         We are receiving a sent receipt from another server,
@@ -670,9 +691,9 @@ class MessageHandler(XMPPHandler):
                         message - we can delete it now.
                         """
                         if sender_host != self.parent.servername:
-                            log.debug("remote server now has responsibility for message %s - deleting" % (receipt['id'], ))
+                            log.debug("remote server now has responsibility for message %s - deleting" % (r_sent['id'], ))
                             # TODO safe delete with sender/recipient
-                            self.parent.message_offline_delete(receipt['id'])
+                            self.parent.message_offline_delete(r_sent['id'])
 
                 else:
                     log.debug("stanza is not our concern or is an error")
@@ -968,16 +989,18 @@ class C2SComponent(xmlstream2.SocketComponent):
 
         return self.stanzadb.delete(stanzaId, sender, recipient)
 
-    def message_offline_store(self, stanza, delayed=False):
+    def message_offline_store(self, stanza, delayed=False, reuseId=False):
         """
         Stores a message stanza to the offline storage.
         @param delayed: True to delay the actual store action; this is useful
         when waiting for a confirmation receipt, in order to avoid storing the
         message before sending it. If confirmation is not received after a
         defined time, message will be stored.
+        @param reuseId: True to reuse an existing stanza id if present;
+        otherwise a new random id will be generated.
         """
 
-        def _offline(stanza):
+        def _offline(stanza, _id=None):
             # TEST using deepcopy is not safe
             from copy import deepcopy
             stanza = deepcopy(stanza)
@@ -985,7 +1008,10 @@ class C2SComponent(xmlstream2.SocketComponent):
             # if no receipt request is found, generate a unique id for the message
             receipt = xmlstream2.extract_receipt(stanza, 'request')
             if not receipt:
-                stanza['id'] = util.rand_str(30, util.CHARSBOX_AZN_LOWERCASE)
+                if _id:
+                    stanza['id'] = _id
+                else:
+                    stanza['id'] = util.rand_str(30, util.CHARSBOX_AZN_LOWERCASE)
 
             # store message for bare network JID
             jid_to = jid.JID(stanza['to'])
@@ -1016,13 +1042,12 @@ class C2SComponent(xmlstream2.SocketComponent):
 
             return stanza['id']
 
-        """
-        Check for a receipt request. In this case we need to manipulate the
-        original stanza because we need a reference to the message.
-        """
         receipt = xmlstream2.extract_receipt(stanza, 'request')
         if not receipt:
-            _id = stanza['id'] = util.rand_str(30, util.CHARSBOX_AZN_LOWERCASE)
+            if reuseId:
+                _id = stanza['id']
+            else:
+                _id = util.rand_str(30, util.CHARSBOX_AZN_LOWERCASE)
         else:
             _id = receipt['id']
 
@@ -1031,7 +1056,7 @@ class C2SComponent(xmlstream2.SocketComponent):
 
         if delayed:
             # delay our call
-            self.pending_offline[_id] = reactor.callLater(self.OFFLINE_STORE_DELAY, _offline, stanza)
-            return stanza['id']
+            self.pending_offline[_id] = reactor.callLater(self.OFFLINE_STORE_DELAY, _offline, stanza, _id)
+            return _id
         else:
             return _offline(stanza)
