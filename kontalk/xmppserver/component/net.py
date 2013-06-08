@@ -393,6 +393,14 @@ class NetService(object):
 
         del self._outgoingStreams[otherHost]
 
+        # broadcast unavailable presence
+        p = domish.Element((None, 'presence'))
+        p['type'] = 'unavailable'
+        p['from'] = otherHost
+        p['to'] = self.network
+        self.router.send(p)
+
+
     def initiateOutgoingStream(self, otherHost):
         """
         Initiate an outgoing XMPP server-to-server connection.
@@ -459,6 +467,13 @@ class NetService(object):
         otherHost = xs.otherEntity.host
         if otherHost in self._outgoingStreams:
             del self._outgoingStreams[otherHost]
+
+        # broadcast unavailable presence
+        p = domish.Element((None, 'presence'))
+        p['type'] = 'unavailable'
+        p['from'] = otherHost
+        p['to'] = self.network
+        self.router.send(p)
 
     def onElement(self, xs, element):
         """

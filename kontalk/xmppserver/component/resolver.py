@@ -510,10 +510,22 @@ class JIDCache(XMPPHandler):
             log.debug("user unavailable: %s" % (stanza.toXml().encode('utf-8'), ))
         else:
             log.debug("user unavailable from %s" % (stanza['from'], ))
-        user = jid.JID(stanza['from'])
 
-        if user.user:
-            self.user_unavailable(stanza)
+        # local c2s or remote server has disconnected, remove presences from cache
+        if stanza['from'] in self.parent.keyring.hostlist():
+            log.debug("PRESENCE(1): %r" % (self.presence_cache, ))
+            keys = self.presence_cache.keys()
+            for key in keys:
+                stub = self.presence_cache[key]
+                if stub.jid.host == stanza['from']:
+                    del self.presence_cache[key]
+
+            log.debug("PRESENCE(2): %r" % (self.presence_cache, ))
+        else:
+            user = jid.JID(stanza['from'])
+
+            if user.user:
+                self.user_unavailable(stanza)
 
     def onProbe(self, stanza):
         """Handle presence probes."""
