@@ -34,6 +34,13 @@ class Handler:
         """Client just sent initial presence."""
 
         print "Now available."
+        """
+        TEST conflict stress test
+        def dummy():
+            self.client.send(domish.Element((None, 'presence')))
+            reactor.callLater(0, dummy)
+        reactor.callLater(0, dummy)
+        """
 
         for action in self.config['actions']:
             name = action['name']

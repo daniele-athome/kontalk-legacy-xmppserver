@@ -121,15 +121,9 @@ class PingHandler(XMPPHandler):
     def _timeout(self):
         self.ping_timeout = None
         # send stream error
-        e = error.StreamError('connection-timeout')
-        self.xmlstream.sendStreamError(e)
-        # abort connection after 1 second
-        def _abort():
-            try:
-                self.xmlstream.transport.abortConnection()
-            except:
-                pass
-        reactor.callLater(1, _abort)
+        self.xmlstream.sendStreamError(error.StreamError('connection-timeout'))
+        # refuse to process any more stanza
+        self.xmlstream.setDispatchFn(None)
 
     def ping(self, stanza):
         if not stanza.hasAttribute('to') or stanza['to'] == self.parent.network:
@@ -549,11 +543,15 @@ class C2SManager(xmlstream2.StreamManager):
     def conflict(self):
         if self.xmlstream:
             self.xmlstream.sendStreamError(error.StreamError('conflict'))
+            # refuse to process any more stanza
+            self.xmlstream.setDispatchFn(None)
 
     def _unauthorized(self, stanza):
         if not stanza.consumed and (not stanza.hasAttribute('to') or stanza['to'] != self.network):
             stanza.consumed = True
             self.xmlstream.sendStreamError(error.StreamError('not-authorized'))
+            # refuse to process any more stanza
+            self.xmlstream.setDispatchFn(None)
 
     def _authd(self, xs):
         xmlstream2.StreamManager._authd(self, xs)
