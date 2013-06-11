@@ -55,7 +55,7 @@ def initiateNet(factory, credentials):
 class XMPPNetConnector(SRVConnector):
     def __init__(self, reactor, domain, factory, credentials, tls_reactor):
         self.tls_reactor = tls_reactor
-        SRVConnector.__init__(self, reactor, 'xmpp-net', domain, factory,
+        SRVConnector.__init__(self, reactor, 'xmpp-net', str(domain), factory,
             connectFuncName='connectTLS', connectFuncKwArgs={'credentials':credentials})
 
     # HACK HACK HACK
