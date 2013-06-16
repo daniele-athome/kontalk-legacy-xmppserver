@@ -986,3 +986,12 @@ class C2SComponent(xmlstream2.SocketComponent):
         None to generate a random id.
         """
         return self.stanzadb.store(stanza, self.network, delayed, reuseId)
+
+    def link_public_key(self, publickey, userid=None):
+        """
+        Link the provided public key to a userid.
+        @param userid: TODO if None, the public key fingerprint will be used.
+        """
+        # TODO publickey to presence
+        pass
+
