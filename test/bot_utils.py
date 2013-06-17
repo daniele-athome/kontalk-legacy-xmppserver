@@ -143,7 +143,7 @@ class KontalkXMPPAuthenticator(xmlstream.ConnectAuthenticator):
         xmlstream.ConnectAuthenticator.__init__(self, network)
         if fingerprint:
             self.fingerprint = fingerprint
-        elif token:
+        else:
             self.token = token
         # this is for making twisted bits not complaining
         self.jid = jid.JID('anon@example.com')
@@ -161,17 +161,20 @@ class KontalkXMPPAuthenticator(xmlstream.ConnectAuthenticator):
         xmlstream.ConnectAuthenticator.associateWithStream(self, xs)
 
         xs.initializers = [CheckVersionInitializer(xs)]
-        inits = [
-            (xmlstream.TLSInitiatingInitializer, False),
-            (KontalkSASLInitiatingInitializer, True),
-            (BindInitializer, True),
-            (SessionInitializer, True),
-        ]
+        if self.token:
+            inits = [
+                (xmlstream.TLSInitiatingInitializer, False),
+                (KontalkSASLInitiatingInitializer, True),
+                (BindInitializer, True),
+                (SessionInitializer, True),
+            ]
 
-        for initClass, required in inits:
-            init = initClass(xs)
-            init.required = required
-            xs.initializers.append(init)
+            for initClass, required in inits:
+                init = initClass(xs)
+                init.required = required
+                xs.initializers.append(init)
+        else:
+            self.xmlstream.dispatch(self.xmlstream, xmlstream.STREAM_AUTHD_EVENT)
 
 
 class Client(object):
@@ -180,7 +183,10 @@ class Client(object):
 
     def __init__(self, config, handler):
         self.config = config
-        self.token = user_token(config['identity'], config['fingerprint'])
+        if config['identity']:
+            self.token = user_token(config['identity'], config['fingerprint'])
+        else:
+            self.token = None
         try:
             self.fingerprint = config['key']
         except:
@@ -233,14 +239,15 @@ class Client(object):
         xs.addObserver('/presence', self.handler.presence)
         xs.addObserver('/iq', self.handler.iq)
 
-        pcfg = self.config['presence']
-        p = domish.Element((None, 'presence'))
-        if pcfg['type'] != 'available':
-            p['type'] = pcfg['type']
-        p.addElement((None, 'status'), content=pcfg['status'])
-        p.addElement((None, 'priority'), content=pcfg['priority'])
-        p.addElement((None, 'show'), content=pcfg['show'])
-        xs.send(p)
+        if self.xmlstream.authenticator.token:
+            pcfg = self.config['presence']
+            p = domish.Element((None, 'presence'))
+            if pcfg['type'] != 'available':
+                p['type'] = pcfg['type']
+            p.addElement((None, 'status'), content=pcfg['status'])
+            p.addElement((None, 'priority'), content=pcfg['priority'])
+            p.addElement((None, 'show'), content=pcfg['show'])
+            xs.send(p)
 
         self.handler.ready()
 

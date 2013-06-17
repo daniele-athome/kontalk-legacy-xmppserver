@@ -5,6 +5,7 @@
 from twisted.internet import reactor
 from twisted.words.xish import domish
 from twisted.words.protocols.jabber import jid
+from twisted.words.protocols.jabber import client
 
 from wokkel import xmppim
 
@@ -227,6 +228,56 @@ class Handler:
             self.client.send(p.toElement())
 
         reactor.callLater(delay, _probe)
+
+    def registerRequest(self, delay=0):
+        reg = client.IQ(self.client.xmlstream, 'get')
+        reg.addElement((xmlstream2.NS_IQ_REGISTER, 'query'))
+        reg.send(self.client.network)
+
+    def register(self, delay=0):
+        reg = client.IQ(self.client.xmlstream, 'set')
+        query = reg.addElement((xmlstream2.NS_IQ_REGISTER, 'query'))
+        form = query.addElement(('jabber:x:data', 'x'))
+        form['type'] = 'submit'
+
+        hidden = form.addElement((None, 'field'))
+        hidden['type'] = 'hidden'
+        hidden['var'] = 'FORM_TYPE'
+        hidden.addElement((None, 'value'), content=xmlstream2.NS_IQ_REGISTER)
+
+        phone = form.addElement((None, 'field'))
+        phone['type'] = 'text-single'
+        phone['label'] = 'Phone number'
+        phone['var'] = 'phone'
+        phone.addElement((None, 'value'), content='+39123456')
+
+        reg.send(self.client.network)
+
+    def validate(self, code, publickey, delay=0):
+        reg = client.IQ(self.client.xmlstream, 'set')
+        query = reg.addElement((xmlstream2.NS_IQ_REGISTER, 'query'))
+        form = query.addElement(('jabber:x:data', 'x'))
+        form['type'] = 'submit'
+
+        hidden = form.addElement((None, 'field'))
+        hidden['type'] = 'hidden'
+        hidden['var'] = 'FORM_TYPE'
+        hidden.addElement((None, 'value'), content='http://kontalk.org/protocol/register#code')
+
+        vcode = form.addElement((None, 'field'))
+        vcode['type'] = 'text-single'
+        vcode['label'] = 'Validation code'
+        vcode['var'] = 'code'
+        vcode.addElement((None, 'value'), content=code)
+
+        pkey = form.addElement((None, 'field'))
+        pkey['type'] = 'text-single'
+        pkey['label'] = 'Public key'
+        pkey['var'] = 'publickey'
+        pkey.addElement((None, 'value'), content=publickey)
+
+        reg.send(self.client.network)
+        #reactor.callLater(1, xs.reset)
 
     def quit(self):
         self.client.xmlstream.sendFooter()
