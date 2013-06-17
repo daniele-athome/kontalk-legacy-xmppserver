@@ -19,6 +19,8 @@
 """
 
 
+import base64
+
 from twisted.internet import reactor
 from twisted.words.protocols.jabber import xmlstream, error
 from twisted.words.xish import domish
@@ -81,7 +83,7 @@ class SMSRegistrationProvider(XMPPRegistrationProvider):
         phone['var'] = 'phone'
         phone.addElement((None, 'required'))
 
-        manager.send(iq)
+        manager.send(iq, True)
 
     def register(self, manager, stanza):
         # TODO some checking would be nice :)
@@ -104,7 +106,7 @@ class SMSRegistrationProvider(XMPPRegistrationProvider):
                 e = error.StanzaError('bad-request', 'modify', 'Bad phone number.')
                 iq = xmlstream.toResponse(stanza, 'error')
                 iq.addChild(e.getElement())
-                return manager.send(iq)
+                return manager.send(iq, True)
 
             n = var_phone.value.__str__().encode('utf-8')
 
@@ -129,7 +131,7 @@ class SMSRegistrationProvider(XMPPRegistrationProvider):
 
             # generate userid
             userid = util.sha1(phone) + util.rand_str(8, util.CHARSBOX_AZN_UPPERCASE)
-            d = self.component.validationdb.register(userid, publickey=pkey)
+            d = self.component.validationdb.register(userid)
 
             def _continue(code, stanza, phone):
                 self.send_sms(phone, code)
@@ -153,14 +155,14 @@ class SMSRegistrationProvider(XMPPRegistrationProvider):
                 phone['var'] = 'from'
                 phone.addElement((None, 'value'), content=self.config['from'])
 
-                return manager.send(iq)
+                return manager.send(iq, True)
 
             def _error(failure, stanza):
                 log.debug("error: %s" % (failure, ))
                 e = error.StanzaError('service-unavailable', 'wait', failure.getErrorMessage())
                 iq = xmlstream.toResponse(stanza, 'error')
                 iq.addChild(e.getElement())
-                manager.send(iq)
+                manager.send(iq, True)
 
             d.addCallback(_continue, stanza, phone)
             d.addErrback(_error, stanza)
@@ -172,29 +174,40 @@ class SMSRegistrationProvider(XMPPRegistrationProvider):
             d = self.component.validationdb.validate(code)
 
             def _continue(userid):
-                # TODO key should be checked before consuming validation code
-                pkey = var_pkey.value.__str__().encode('utf-8')
-                manager.link_public_key(pkey, userid)
+                pkey = base64.b64decode(var_pkey.value.__str__().encode('utf-8'))
+                signed_pkey = manager.link_public_key(pkey, userid[:util.USERID_LENGTH])
+                if signed_pkey:
+                    iq = xmlstream.toResponse(stanza, 'result')
+                    query = iq.addElement((xmlstream2.NS_IQ_REGISTER, 'query'))
 
-                iq = xmlstream.toResponse(stanza, 'result')
-                query = iq.addElement((xmlstream2.NS_IQ_REGISTER, 'query'))
+                    form = query.addElement(('jabber:x:data', 'x'))
+                    form['type'] = 'form'
 
-                form = query.addElement(('jabber:x:data', 'x'))
-                form['type'] = 'form'
+                    hidden = form.addElement((None, 'field'))
+                    hidden['type'] = 'hidden'
+                    hidden['var'] = 'FORM_TYPE'
+                    hidden.addElement((None, 'value'), content='http://kontalk.org/protocol/register#code')
 
-                hidden = form.addElement((None, 'field'))
-                hidden['type'] = 'hidden'
-                hidden['var'] = 'FORM_TYPE'
-                hidden.addElement((None, 'value'), content='http://kontalk.org/protocol/register#code')
+                    str_token = self.component.keyring.generate_user_token(userid)
+                    token = form.addElement((None, 'field'))
+                    token['type'] = 'text-single'
+                    token['label'] = 'Authentication token'
+                    token['var'] = 'token'
+                    token.addElement((None, 'value'), content=str_token)
 
-                str_token = self.component.keyring.generate_user_token(userid)
-                token = form.addElement((None, 'field'))
-                token['type'] = 'text-single'
-                token['label'] = 'Authentication token'
-                token['var'] = 'token'
-                token.addElement((None, 'value'), content=str_token)
+                    signed = form.addElement((None, 'field'))
+                    signed['type'] = 'text-single'
+                    signed['label'] = 'Signed public key'
+                    signed['var'] = 'publickey'
+                    signed.addElement((None, 'value'), content=base64.b64encode(signed_pkey))
 
-                return manager.send(iq)
+                    return manager.send(iq, True)
+
+                else:
+                    e = error.StanzaError('bad-request', 'modify', 'Invalid public key.')
+                    iq = xmlstream.toResponse(stanza, 'error')
+                    iq.addChild(e.getElement())
+                    manager.send(iq, True)
 
             def _error(failure):
                 log.debug("error: %s" % (failure, ))
@@ -204,7 +217,7 @@ class SMSRegistrationProvider(XMPPRegistrationProvider):
                     e = error.StanzaError('service-unavailable', 'wait', failure.getErrorMessage())
                 iq = xmlstream.toResponse(stanza, 'error')
                 iq.addChild(e.getElement())
-                manager.send(iq)
+                manager.send(iq, True)
 
             d.addCallback(_continue)
             d.addErrback(_error)
@@ -213,7 +226,7 @@ class SMSRegistrationProvider(XMPPRegistrationProvider):
             e = error.StanzaError('bad-request', 'modify', 'Please provider phone number and public key or verification code.')
             iq = xmlstream.toResponse(stanza, 'error')
             iq.addChild(e.getElement())
-            manager.send(iq)
+            manager.send(iq, True)
 
 
     def send_sms(self, number, code):

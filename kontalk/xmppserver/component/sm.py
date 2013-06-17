@@ -19,6 +19,8 @@
 """
 
 
+import base64
+
 from twisted.internet import reactor
 from twisted.words.protocols.jabber import error, jid, component
 from twisted.words.protocols.jabber.xmlstream import XMPPHandler
@@ -707,7 +709,8 @@ class C2SManager(xmlstream2.StreamManager):
             del stanza['origin']
 
         # force destination address
-        stanza['to'] = self.xmlstream.otherEntity.full()
+        if self.xmlstream.otherEntity:
+            stanza['to'] = self.xmlstream.otherEntity.full()
 
         if not stanza.hasAttribute('id'):
             stanza['id'] = util.rand_str(8, util.CHARSBOX_AZN_LOWERCASE)
@@ -737,3 +740,19 @@ class C2SManager(xmlstream2.StreamManager):
             _jid = jid.JID(_jid)
             _jid.host = self.servername
             return _jid
+
+    def link_public_key(self, publickey, userid):
+        """
+        Link the provided public key to a userid.
+        @param publickey: public key in DER format
+        @return: the signed public key, in DER binary format, base64-encoded.
+        """
+        # import public key and sign it
+        keydata = self.router.keyring.sign_public_key(publickey, userid)
+
+        if keydata:
+            # signed public key to presence table
+            self.router.presencedb.public_key(userid, keydata)
+
+            # return signed public key
+            return keydata

@@ -18,7 +18,8 @@
  along with this program.  If not, see <http://www.gnu.org/licenses/>.
 '''
 
-import base64, gpgme
+import base64
+import gpgme, gpgme.editutil
 
 from twisted.words.protocols.jabber import jid
 
@@ -42,7 +43,7 @@ class Keyring:
 
     def __init__(self, db, fingerprint, network, servername):
         self._db = db
-        self.fingerprint = fingerprint
+        self.fingerprint = str(fingerprint)
         self.network = network
         self.servername = servername
         self._list = {}
@@ -51,6 +52,8 @@ class Keyring:
         self.ctx = gpgme.Context()
         self.ctx.armor = False
         self.ctx.keylist_mode = gpgme.KEYLIST_MODE_SIGS
+        # signing key
+        self.ctx.signers = [self.ctx.get_key(self.fingerprint, True)]
 
         self._reload()
 
@@ -235,6 +238,34 @@ class Keyring:
 
         return None
 
+    def sign_public_key(self, keydata, userid):
+        try:
+            # import key
+            result = self.ctx.import_(BytesIO(keydata))
+            fp = str(result.imports[0][0])
+            keyfp = self.ctx.get_key(fp)
+
+            # check that at least one of the key uids is userid@network
+            check = False
+            check_email = '%s@%s' % (userid, self.network)
+            for uid in keyfp.uids:
+                if uid.email == check_email:
+                    check = True
+
+            # TODO some other checks?
+
+            if check:
+                # sign key
+                gpgme.editutil.edit_sign(self.ctx, keyfp, check=0)
+
+                # export signed key
+                keydata = BytesIO()
+                self.ctx.export(fp, keydata)
+                return keydata.getvalue()
+
+        except:
+            import traceback
+            traceback.print_exc()
 
     def generate_user_token(self, userid):
         """Generates a user token."""
@@ -248,9 +279,6 @@ class Keyring:
         string = '%s|%s' % (str(userid), fp)
         plain = BytesIO(string)
         cipher = BytesIO()
-
-        # signing key
-        self.ctx.signers = [self.ctx.get_key(fp, True)]
 
         self.ctx.sign(plain, cipher, gpgme.SIG_MODE_NORMAL)
         token = cipher.getvalue()

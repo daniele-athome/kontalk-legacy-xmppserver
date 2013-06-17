@@ -89,6 +89,10 @@ class PresenceStorage:
         """Update last seen timestamp of a user."""
         pass
 
+    def public_key(self, userid, keydata):
+        """Update a user public key."""
+        pass
+
 
 class NetworkStorage:
     """Network info storage."""
@@ -341,7 +345,7 @@ class MySQLPresenceStorage(PresenceStorage):
                     'priority': data[4],
                 }
 
-        query = 'SELECT `userid`, `timestamp`, `status`, `show`, `priority` FROM presence WHERE userid = ?'
+        query = 'SELECT `userid`, `timestamp`, `status`, `show`, `priority` FROM presence WHERE userid = ? AND `timestamp` IS NOT NULL'
         args = (userid[:util.USERID_LENGTH], )
         return dbpool.runInteraction(_fetchone, query, args)
 
@@ -360,7 +364,7 @@ class MySQLPresenceStorage(PresenceStorage):
                 })
             return out
 
-        query = 'SELECT `userid`, `timestamp`, `status`, `show`, `priority` FROM presence'
+        query = 'SELECT `userid`, `timestamp`, `status`, `show`, `priority` FROM presence WHERE `timestamp` IS NOT NULL'
         return dbpool.runInteraction(_fetchall, query)
 
     def presence(self, stanza):
@@ -385,6 +389,12 @@ class MySQLPresenceStorage(PresenceStorage):
     def touch(self, userid):
         global dbpool
         return dbpool.runOperation('UPDATE presence SET timestamp = UTC_TIMESTAMP() WHERE userid = ?', (userid, ))
+
+    def public_key(self, userid, keydata):
+        """Update a user public key."""
+        global dbpool
+        buf = buffer(keydata)
+        return dbpool.runOperation('INSERT INTO presence (userid, publickey) VALUES(?, ?) ON DUPLICATE KEY UPDATE publickey = ?', (userid, buf, buf))
 
 
 class MySQLUserValidationStorage(UserValidationStorage):

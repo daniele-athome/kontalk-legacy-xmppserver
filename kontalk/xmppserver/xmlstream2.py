@@ -287,14 +287,14 @@ class RegistrationInitializer(BaseFeatureReceivingInitializer):
             return
 
         stanza.consumed = True
-        self.xmlstream.manager.router.registration.request(self.xmlstream, stanza)
+        self.xmlstream.manager.router.registration.request(self.xmlstream.manager, stanza)
 
     def onRegister(self, stanza):
         if not self.canInitialize(self):
             return
 
         stanza.consumed = True
-        self.xmlstream.manager.router.registration.register(self.xmlstream, stanza)
+        self.xmlstream.manager.router.registration.register(self.xmlstream.manager, stanza)
 
 
 class ISASLServerMechanism(Interface):
