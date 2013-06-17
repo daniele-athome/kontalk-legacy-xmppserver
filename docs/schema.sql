@@ -1,13 +1,13 @@
 -- phpMyAdmin SQL Dump
--- version 3.4.11.1deb1
+-- version 4.0.3deb1
 -- http://www.phpmyadmin.net
 --
 -- Host: localhost
--- Generato il: Apr 16, 2013 alle 18:39
--- Versione del server: 5.5.30
--- Versione PHP: 5.4.4-14
+-- Generation Time: Jun 17, 2013 at 06:05 PM
+-- Server version: 5.5.31-1
+-- PHP Version: 5.4.4-15
 
-SET SQL_MODE="NO_AUTO_VALUE_ON_ZERO";
+SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
 SET time_zone = "+00:00";
 
 
@@ -19,26 +19,29 @@ SET time_zone = "+00:00";
 --
 -- Database: `xmppmessenger`
 --
+CREATE DATABASE IF NOT EXISTS `xmppmessenger` DEFAULT CHARACTER SET utf8 COLLATE utf8_unicode_ci;
+USE `xmppmessenger`;
 
 -- --------------------------------------------------------
 
 --
--- Struttura della tabella `presence`
+-- Table structure for table `presence`
 --
 
 CREATE TABLE `presence` (
   `userid` char(40) NOT NULL COMMENT 'User ID',
-  `timestamp` datetime NOT NULL COMMENT 'Cache entry timestamp',
+  `timestamp` datetime DEFAULT NULL COMMENT 'Cache entry timestamp',
   `status` varchar(500) CHARACTER SET ascii COLLATE ascii_bin DEFAULT NULL COMMENT 'Status message',
   `show` varchar(30) CHARACTER SET ascii COLLATE ascii_bin DEFAULT NULL COMMENT 'Availability',
   `priority` smallint(5) NOT NULL DEFAULT '0' COMMENT 'Priority',
+  `publickey` mediumblob COMMENT 'Public key',
   PRIMARY KEY (`userid`)
 ) ENGINE=MyISAM DEFAULT CHARSET=ascii COMMENT='User presence cache';
 
 -- --------------------------------------------------------
 
 --
--- Struttura della tabella `servers`
+-- Table structure for table `servers`
 --
 
 CREATE TABLE `servers` (
@@ -50,7 +53,7 @@ CREATE TABLE `servers` (
 -- --------------------------------------------------------
 
 --
--- Struttura della tabella `stanzas`
+-- Table structure for table `stanzas`
 --
 
 CREATE TABLE `stanzas` (
@@ -65,7 +68,7 @@ CREATE TABLE `stanzas` (
 -- --------------------------------------------------------
 
 --
--- Struttura della tabella `validations`
+-- Table structure for table `validations`
 --
 
 CREATE TABLE `validations` (
