@@ -47,6 +47,7 @@ NS_IQ_LAST = 'jabber:iq:last'
 NS_XMPP_DELAY = 'urn:xmpp:delay'
 NS_XMPP_PING = 'urn:xmpp:ping'
 NS_PROTO_COMMANDS = 'http://jabber.org/protocol/commands'
+NS_XMPP_VCARD4 = 'urn:ietf:params:xml:ns:vcard-4.0'
 
 NS_XMPP_STANZA_GROUP = 'urn:xmpp:stanza-group'
 NS_XMPP_SERVER_RECEIPTS = 'urn:xmpp:server-receipts'

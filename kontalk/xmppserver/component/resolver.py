@@ -491,6 +491,8 @@ class JIDCache(XMPPHandler):
         self.xmlstream.addObserver("/presence[@type='unavailable']", self.onPresenceUnavailable, 200)
         # presence probes MUST be handled by server so the high priority
         self.xmlstream.addObserver("/presence[@type='probe']", self.onProbe, 600)
+        # vcards are handled here but also follow normal routing
+        self.xmlstream.addObserver("/iq[@type='set']/vcard[@xmlns='%s']" % (xmlstream2.NS_XMPP_VCARD4, ), self.onVCard, 200)
 
     def onPresenceAvailable(self, stanza):
         """Handle availability presence stanzas."""
@@ -526,6 +528,12 @@ class JIDCache(XMPPHandler):
 
             if user.user:
                 self.user_unavailable(stanza)
+
+    def onVCard(self, stanza):
+        """Handle vCards set IQs."""
+        # TODO parse vcard for interesting sections
+        # public key goes to presencedb
+        pass
 
     def onProbe(self, stanza):
         """Handle presence probes."""
