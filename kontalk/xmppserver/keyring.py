@@ -142,6 +142,17 @@ class Keyring:
         """List of host servers."""
         return self._list.values()
 
+    def import_key(self, keydata):
+        try:
+            # import key
+            result = self.ctx.import_(BytesIO(keydata))
+            fp = str(result.imports[0][0])
+            keyfp = self.ctx.get_key(fp)
+        except:
+            import traceback
+            traceback.print_exc()
+            return False
+
     def check_token(self, token_data):
         """Checks a Kontalk token. Data must be already base64-decoded."""
         cipher = BytesIO(token_data)

@@ -20,6 +20,7 @@
 
 
 import time
+import base64
 from datetime import datetime
 
 from twisted.python import failure
@@ -530,10 +531,25 @@ class JIDCache(XMPPHandler):
                 self.user_unavailable(stanza)
 
     def onVCard(self, stanza):
-        """Handle vCards set IQs."""
+        """
+        Handle vCards set IQs from c2s.
+        This simply takes care of importing the key in the keyring for future
+        signature verification. Actual key verification is done by c2s when
+        accepting vCards coming from clients.
+        WARNING/1 does this mean that we bindly accept keys from components?
+        WARNING/2 importing the key means that keys coming from local c2s are
+        imported twice because the keyring is the same. Unless we want to make
+        a separated keyring only for resolver?
+        """
         # TODO parse vcard for interesting sections
         # public key goes to presencedb
-        pass
+        keydata = stanza.vcard.key.uri.__str__()
+        #data:application/pgp-keys;base64,.....BASE64 DATA....
+        prefix = "data:application/pgp-keys;base64,"
+
+        if keydata.startswith(prefix):
+            keydata = base64.b64decode(keydata[len(prefix):])
+            self.parent.keyring.import_key(keydata)
 
     def onProbe(self, stanza):
         """Handle presence probes."""
