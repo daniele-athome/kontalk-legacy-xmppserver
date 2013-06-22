@@ -3,7 +3,7 @@
 *.pyc
 *.pid
 dropin.cache
-.gnupg
+.gnupg*
 /keyring.gpg
 /server-pgp.crt
 /server-pgp.key
