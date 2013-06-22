@@ -1,2 +1,2 @@
 #!/bin/sh
-exec twistd --pidfile resolver.pid -n kontalk-resolver
+GNUPGHOME=$PWD/.gnupg-cache exec twistd --pidfile resolver.pid -n kontalk-resolver

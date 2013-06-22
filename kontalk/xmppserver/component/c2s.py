@@ -20,6 +20,7 @@
 
 
 import time
+import base64
 import traceback
 
 from twisted.internet import reactor
@@ -353,6 +354,25 @@ class InitialPresenceHandler(XMPPHandler):
                     else:
                         log.debug("presence sent: %s" % (response['from'], ))
 
+                    # send vcard
+                    iq_vcard = domish.Element((None, 'iq'))
+                    iq_vcard['type'] = 'set'
+                    iq_vcard['from'] = response_from
+                    iq_vcard['to'] = to
+
+                    # add vcard
+                    vcard = iq_vcard.addElement((xmlstream2.NS_XMPP_VCARD4, 'vcard'))
+                    if user['publickey']:
+                        vcard_key = vcard.addElement((None, 'key'))
+                        vcard_data = vcard_key.addElement((None, 'uri'))
+                        vcard_data.addContent("data:application/pgp-keys;base64," + base64.b64encode(user['publickey']))
+
+                    self.send(iq_vcard)
+                    if self.parent.logTraffic:
+                        log.debug("vCard sent: %s" % (iq_vcard.toXml().encode('utf-8'), ))
+                    else:
+                        log.debug("vCard sent: %s" % (iq_vcard['from'], ))
+
         d = self.parent.presencedb.get_all()
         d.addCallback(_db, to, destination)
 
@@ -495,6 +515,52 @@ class PresenceProbeHandler(XMPPHandler):
         userid = util.jid_user(stanza['to'])
         d = self.parent.presencedb.get(userid)
         d.addCallback(_db, stanza)
+
+
+class VCardHandler(XMPPHandler):
+    """
+    XEP-0292: vCard4 Over XMPP
+    http://xmpp.org/extensions/xep-0292.html
+    """
+    def __init__(self):
+        XMPPHandler.__init__(self)
+
+    def connectionInitialized(self):
+        self.xmlstream.addObserver("/iq[@type='set']/vcard[@xmlns='%s']" % (xmlstream2.NS_XMPP_VCARD4, ), self.set, 100)
+
+    def set(self, stanza):
+        log.debug("client sent vcard: %s" % (stanza.toXml(), ))
+        stanza.consumed = True
+
+        user = jid.JID(stanza['to'])
+        sender = jid.JID(stanza['from'])
+        # setting our own vcard
+        if user.userhost() == sender.userhost():
+            # TODO parse vcard for interesting sections
+
+            if stanza.vcard.key is not None:
+                # we do this because of the uri member in domish.Element
+                keydata = stanza.vcard.key.firstChildElement()
+                if keydata.name == 'uri':
+                    keydata = str(keydata)
+                    #data:application/pgp-keys;base64,.....BASE64 DATA....
+                    prefix = "data:application/pgp-keys;base64,"
+
+                    if keydata.startswith(prefix):
+                        keydata = base64.b64decode(keydata[len(prefix):])
+                        # check key
+                        fp = self.parent.keyring.check_user_key(keydata, user.user)
+                        if fp:
+                            # update presencedb
+                            self.parent.presencedb.public_key(user.user, keydata, fp)
+                            # send result
+                            self.send(xmlstream2.toResponse(stanza, 'result'))
+                        else:
+                            # TODO key check error
+                            pass
+        else:
+            log.debug("authorization to vCard denied")
+            # TODO send error
 
 
 class LastActivityHandler(XMPPHandler):
@@ -730,6 +796,7 @@ class C2SComponent(xmlstream2.SocketComponent):
         InitialPresenceHandler,
         PresenceProbeHandler,
         LastActivityHandler,
+        VCardHandler,
         MessageHandler,
     )
 

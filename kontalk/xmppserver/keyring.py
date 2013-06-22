@@ -41,7 +41,7 @@ class Keyring:
         'messages' : (0, 100)
     }
 
-    def __init__(self, db, fingerprint, network, servername):
+    def __init__(self, db, fingerprint, network, servername, disable_signers=False):
         self._db = db
         self.fingerprint = str(fingerprint)
         self.network = network
@@ -52,8 +52,9 @@ class Keyring:
         self.ctx = gpgme.Context()
         self.ctx.armor = False
         self.ctx.keylist_mode = gpgme.KEYLIST_MODE_SIGS
-        # signing key
-        self.ctx.signers = [self.ctx.get_key(self.fingerprint, True)]
+        # signing key (optional)
+        if not disable_signers:
+            self.ctx.signers = [self.ctx.get_key(self.fingerprint, True)]
 
         self._reload()
 
@@ -143,15 +144,53 @@ class Keyring:
         return self._list.values()
 
     def import_key(self, keydata):
+        """Imports a key without checking."""
         try:
             # import key
             result = self.ctx.import_(BytesIO(keydata))
             fp = str(result.imports[0][0])
-            keyfp = self.ctx.get_key(fp)
+            return self.ctx.get_key(fp)
         except:
             import traceback
             traceback.print_exc()
             return False
+
+    def check_user_key(self, keydata, userid):
+        """
+        Does some checks on a user public key, checking for server signatures
+        and if uid matches.
+        FIXME this method has the side effect of importing the key into the
+        keyring and leaving it there.
+        @return: key fingerprint on success, None otherwise
+        """
+        try:
+            # TODO this should remove the key from the keyring when it's done
+
+            # import key
+            result = self.ctx.import_(BytesIO(keydata))
+            fp = str(result.imports[0][0])
+            key = self.ctx.get_key(fp)
+
+            # check that at least one of the key uids is userid@network
+            check_email = '%s@%s' % (userid, self.network)
+            for uid in key.uids:
+                # uid found, check signatures
+                if uid.email == check_email:
+                    for sig in uid.signatures:
+                        mkey = self.ctx.get_key(sig.keyid, False)
+                        if mkey:
+                            fpr = mkey.subkeys[0].fpr.upper()
+
+                            if fpr == self.fingerprint.upper():
+                                return fp
+
+                            # no direct match - compare with keyring
+                            for rkey in self._list.iterkeys():
+                                if fpr == rkey.upper():
+                                    return fp
+        except:
+            import traceback
+            traceback.print_exc()
 
     def check_token(self, token_data):
         """Checks a Kontalk token. Data must be already base64-decoded."""
@@ -250,6 +289,11 @@ class Keyring:
         return None
 
     def sign_public_key(self, keydata, userid):
+        """
+        Signs the provided public key with our server private key.
+        At least one uid in the public key must match this form: userid@network
+        @return: fingerprint, signed_keydata
+        """
         try:
             # import key
             result = self.ctx.import_(BytesIO(keydata))
@@ -272,7 +316,7 @@ class Keyring:
                 # export signed key
                 keydata = BytesIO()
                 self.ctx.export(fp, keydata)
-                return keydata.getvalue()
+                return fp, keydata.getvalue()
 
         except:
             import traceback

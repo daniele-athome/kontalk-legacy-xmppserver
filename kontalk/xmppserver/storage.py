@@ -361,10 +361,11 @@ class MySQLPresenceStorage(PresenceStorage):
                     'status': base64.b64decode(data[2]).decode('utf-8') if data[2] is not None else '',
                     'show': data[3],
                     'priority': data[4],
+                    'publickey': data[5],
                 })
             return out
 
-        query = 'SELECT `userid`, `timestamp`, `status`, `show`, `priority` FROM presence WHERE `timestamp` IS NOT NULL'
+        query = 'SELECT `userid`, `timestamp`, `status`, `show`, `priority`, `publickey` FROM presence WHERE `timestamp` IS NOT NULL'
         return dbpool.runInteraction(_fetchall, query)
 
     def presence(self, stanza):
@@ -383,18 +384,20 @@ class MySQLPresenceStorage(PresenceStorage):
         except:
             priority = 0
 
-        values = (userid, encode_not_empty(stanza.status), util.str_none(stanza.show), priority)
-        return dbpool.runOperation('REPLACE INTO presence VALUES(?, UTC_TIMESTAMP(), ?, ?, ?)', values)
+        status = encode_not_empty(stanza.status)
+        show = encode_not_empty(stanza.show)
+        values = (userid, status, show, priority, status, show, priority)
+        return dbpool.runOperation('INSERT INTO presence (`userid`, `timestamp`, `status`, `show`, `priority`) VALUES(?, UTC_TIMESTAMP(), ?, ?, ?) ON DUPLICATE KEY UPDATE `timestamp` = UTC_TIMESTAMP(), `status` = ?, `show` = ?, `priority` = ?', values)
 
     def touch(self, userid):
         global dbpool
-        return dbpool.runOperation('UPDATE presence SET timestamp = UTC_TIMESTAMP() WHERE userid = ?', (userid, ))
+        return dbpool.runOperation('UPDATE presence SET `timestamp` = UTC_TIMESTAMP() WHERE userid = ?', (userid, ))
 
-    def public_key(self, userid, keydata):
+    def public_key(self, userid, keydata, fingerprint):
         """Update a user public key."""
         global dbpool
         buf = buffer(keydata)
-        return dbpool.runOperation('INSERT INTO presence (userid, publickey) VALUES(?, ?) ON DUPLICATE KEY UPDATE publickey = ?', (userid, buf, buf))
+        return dbpool.runOperation('INSERT INTO presence (userid, publickey, fingerprint) VALUES(?, ?, ?) ON DUPLICATE KEY UPDATE publickey = ?, fingerprint = ?', (userid, buf, fingerprint, buf, fingerprint))
 
 
 class MySQLUserValidationStorage(UserValidationStorage):

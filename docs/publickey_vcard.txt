@@ -1,0 +1,46 @@
+Public key is published/updated using vCard4 over XMPP:
+http://xmpp.org/extensions/xep-0292.html
+
+At user registration, at the validation step, user sends his public key:
+<iq to='kontalk.net' type='set' id='H_0'>
+  <query xmlns='jabber:iq:register'>
+    <x xmlns='jabber:x:data' type='submit'>
+      <field var='FORM_TYPE' type='hidden'>
+        <value>http://kontalk.org/protocol/register#code</value>
+      </field>
+      <field var='code' type='text-single' label='Validation code'>
+        <value>123456</value>
+      </field>
+      <field var='publickey' type='text-single' label='Public key'>
+        <value>[PUBLIC KEY BASE64 DATA]</value>
+      </field>
+    </x>
+  </query>
+</iq>
+
+Key uid (at least one of them) must be in the form: userid@network, otherwise
+key is refused. If key is accepted, server signs and returns it:
+
+<iq from='kontalk.net' type='result' id='H_0'>
+  <query xmlns='jabber:iq:register'>
+    <x xmlns='jabber:x:data' type='form'>
+      <field var='FORM_TYPE' type='hidden'>
+        <value>http://kontalk.org/protocol/register#code</value>
+      </field>
+      <field var='token' type='text-single' label='Authentication token'>
+        <value>[SIGNED PUBLIC KEY BASE64 DATA]</value>
+      </field>
+    </x>
+  </query>
+</iq>
+
+At this time, c2s has registered the public key and stored its fingerprint.
+Key is published to resolver(s) through XEP-0292 together with initial presence
+bunch data or immediately after user registration.
+
+When a client wants to update its public key (e.g. new signatures), it can use
+the same XEP-0292 to publish it. Key will be accepted only if signed by the
+server and matches the userid in the authentication token. Changing the key pair
+requires a new registration.
+Client requests its own vCard at login. If it's empty or the public key doesn't
+match its own, the client will send a new vCard containing the new public key.

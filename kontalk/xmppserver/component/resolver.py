@@ -119,6 +119,7 @@ class IQHandler(XMPPHandler):
         self.xmlstream.addObserver("/iq[@type='get']/query[@xmlns='%s']" % (xmlstream2.NS_IQ_ROSTER), self.roster, 100)
         self.xmlstream.addObserver("/iq[@type='get']/query[@xmlns='%s']" % (xmlstream2.NS_IQ_LAST, ), self.last_activity, 100)
         self.xmlstream.addObserver("/iq[@type='get']/query[@xmlns='%s']" % (xmlstream2.NS_IQ_VERSION, ), self.version, 100)
+        self.xmlstream.addObserver("/iq[@type='set']/vcard[@xmlns='%s']" % (xmlstream2.NS_XMPP_VCARD4, ), self.vcard, 100)
         self.xmlstream.addObserver("/iq[@type='result']", self.parent.bounce, 100)
         self.xmlstream.addObserver("/iq/query", self.parent.error, 80)
 
@@ -247,6 +248,9 @@ class IQHandler(XMPPHandler):
                     tmpTo.host = server
                     lastIq['to'] = tmpTo.full()
                     self.send(lastIq)
+
+    def vcard(self, stanza):
+        self.parent.send(stanza, force_bare=True)
 
 
 class MessageHandler(XMPPHandler):
@@ -492,8 +496,8 @@ class JIDCache(XMPPHandler):
         self.xmlstream.addObserver("/presence[@type='unavailable']", self.onPresenceUnavailable, 200)
         # presence probes MUST be handled by server so the high priority
         self.xmlstream.addObserver("/presence[@type='probe']", self.onProbe, 600)
-        # vcards are handled here but also follow normal routing
-        self.xmlstream.addObserver("/iq[@type='set']/vcard[@xmlns='%s']" % (xmlstream2.NS_XMPP_VCARD4, ), self.onVCard, 200)
+        # vCards MUST be handled by server so the high priority
+        self.xmlstream.addObserver("/iq[@type='set']/vcard[@xmlns='%s']" % (xmlstream2.NS_XMPP_VCARD4, ), self.onVCard, 600)
 
     def onPresenceAvailable(self, stanza):
         """Handle availability presence stanzas."""
@@ -532,7 +536,7 @@ class JIDCache(XMPPHandler):
 
     def onVCard(self, stanza):
         """
-        Handle vCards set IQs from c2s.
+        Handle vCards set IQs.
         This simply takes care of importing the key in the keyring for future
         signature verification. Actual key verification is done by c2s when
         accepting vCards coming from clients.
@@ -542,14 +546,23 @@ class JIDCache(XMPPHandler):
         a separated keyring only for resolver?
         """
         # TODO parse vcard for interesting sections
-        # public key goes to presencedb
-        keydata = stanza.vcard.key.uri.__str__()
-        #data:application/pgp-keys;base64,.....BASE64 DATA....
-        prefix = "data:application/pgp-keys;base64,"
 
-        if keydata.startswith(prefix):
-            keydata = base64.b64decode(keydata[len(prefix):])
-            self.parent.keyring.import_key(keydata)
+        if stanza.vcard.key is not None:
+            # we do this because of the uri member in domish.Element
+            keydata = stanza.vcard.key.firstChildElement()
+            if keydata.name == 'uri':
+                keydata = str(keydata)
+                #data:application/pgp-keys;base64,.....BASE64 DATA....
+                prefix = "data:application/pgp-keys;base64,"
+
+                if keydata.startswith(prefix):
+                    keydata = base64.b64decode(keydata[len(prefix):])
+                    # import into cache keyring
+                    userid = util.jid_user(stanza['from'])
+                    if self.parent.keyring.check_user_key(keydata, userid):
+                        log.debug("key cached successfully")
+                    else:
+                        log.warn("invalid key")
 
     def onProbe(self, stanza):
         """Handle presence probes."""
@@ -764,7 +777,7 @@ class Resolver(xmlstream2.SocketComponent):
         self.start_time = time.time()
 
         storage.init(config['database'])
-        self.keyring = keyring.Keyring(storage.MySQLNetworkStorage(), config['fingerprint'], self.network, self.servername)
+        self.keyring = keyring.Keyring(storage.MySQLNetworkStorage(), config['fingerprint'], self.network, self.servername, True)
 
         self.subscriptions = {}
 
@@ -823,7 +836,7 @@ class Resolver(xmlstream2.SocketComponent):
             stanza.consumed = True
             self.send(stanza, *args, **kwargs)
 
-    def send(self, stanza, force_delivery=False):
+    def send(self, stanza, force_delivery=False, force_bare=False):
         """
         Resolves stanza recipient and send the stanza to the router.
         @todo document parameters
@@ -874,7 +887,7 @@ class Resolver(xmlstream2.SocketComponent):
                 jids = rcpts.jids()
 
                 # destination was a full JID
-                if to.resource:
+                if to.resource and not force_bare:
                     # no available resources, deliver to bare JID if force delivery
                     if len(jids) == 0 and force_delivery:
                         stanza['to'] = rcpts.jid.userhost()
@@ -889,8 +902,9 @@ class Resolver(xmlstream2.SocketComponent):
 
                 # destination was a bare JID
                 else:
+                    log.debug("destination was a bare JID (force_bare=%s)" % (force_bare, ))
                     # no available resources, send to first network bare JID
-                    if len(jids) == 0:
+                    if len(jids) == 0 or force_bare:
                         stanza['to'] = rcpts.jid.userhost()
                         component.Component.send(self, stanza)
                     else:

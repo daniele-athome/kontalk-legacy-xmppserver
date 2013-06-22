@@ -279,6 +279,15 @@ class Handler:
         reg.send(self.client.network)
         #reactor.callLater(1, xs.reset)
 
+    def vcardSet(self, publickey):
+        iq = client.IQ(self.client.xmlstream, 'set')
+        vcard = iq.addElement((xmlstream2.NS_XMPP_VCARD4, 'vcard'))
+        vcard_key = vcard.addElement((None, 'key'))
+        vcard_data = vcard_key.addElement((None, 'uri'))
+        vcard_data.addContent("data:application/pgp-keys;base64," + publickey)
+
+        iq.send(self.client.xmlstream.authenticator.jid.userhost())
+
     def quit(self):
         self.client.xmlstream.sendFooter()
 

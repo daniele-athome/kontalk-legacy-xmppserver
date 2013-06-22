@@ -325,6 +325,7 @@ class IQHandler(XMPPHandler):
             fn=self.parent.forward, componentfn=self.version)
         self.xmlstream.addObserver("/iq/query[@xmlns='%s']" % (xmlstream2.NS_IQ_REGISTER), self.register, 100)
         self.xmlstream.addObserver("/iq[@type='result']", self.parent.forward, 100)
+        self.xmlstream.addObserver("/iq[@type='set']/vcard[@xmlns='%s']" % (xmlstream2.NS_XMPP_VCARD4, ), self.parent.forward, 100)
 
         # fallback: service unavailable
         self.xmlstream.addObserver("/iq", self.parent.error, 50)
@@ -748,11 +749,11 @@ class C2SManager(xmlstream2.StreamManager):
         @return: the signed public key, in DER binary format, base64-encoded.
         """
         # import public key and sign it
-        keydata = self.router.keyring.sign_public_key(publickey, userid)
+        fp, keydata = self.router.keyring.sign_public_key(publickey, userid)
 
-        if keydata:
+        if fp and keydata:
             # signed public key to presence table
-            self.router.presencedb.public_key(userid, keydata)
+            self.router.presencedb.public_key(userid, keydata, fp)
 
             # return signed public key
             return keydata
