@@ -119,7 +119,6 @@ class IQHandler(XMPPHandler):
         self.xmlstream.addObserver("/iq[@type='get']/query[@xmlns='%s']" % (xmlstream2.NS_IQ_ROSTER), self.roster, 100)
         self.xmlstream.addObserver("/iq[@type='get']/query[@xmlns='%s']" % (xmlstream2.NS_IQ_LAST, ), self.last_activity, 100)
         self.xmlstream.addObserver("/iq[@type='get']/query[@xmlns='%s']" % (xmlstream2.NS_IQ_VERSION, ), self.version, 100)
-        self.xmlstream.addObserver("/iq[@type='set']/vcard[@xmlns='%s']" % (xmlstream2.NS_XMPP_VCARD4, ), self.vcard, 100)
         self.xmlstream.addObserver("/iq[@type='result']", self.parent.bounce, 100)
         self.xmlstream.addObserver("/iq/query", self.parent.error, 80)
 
@@ -248,9 +247,6 @@ class IQHandler(XMPPHandler):
                     tmpTo.host = server
                     lastIq['to'] = tmpTo.full()
                     self.send(lastIq)
-
-    def vcard(self, stanza):
-        self.parent.send(stanza, force_bare=True)
 
 
 class MessageHandler(XMPPHandler):
@@ -520,14 +516,14 @@ class JIDCache(XMPPHandler):
 
         # local c2s or remote server has disconnected, remove presences from cache
         if stanza['from'] in self.parent.keyring.hostlist():
-            log.debug("PRESENCE(1): %r" % (self.presence_cache, ))
+            #log.debug("PRESENCE(1): %r" % (self.presence_cache, ))
             keys = self.presence_cache.keys()
             for key in keys:
                 stub = self.presence_cache[key]
                 if stub.jid.host == stanza['from']:
                     del self.presence_cache[key]
 
-            log.debug("PRESENCE(2): %r" % (self.presence_cache, ))
+            #log.debug("PRESENCE(2): %r" % (self.presence_cache, ))
         else:
             user = jid.JID(stanza['from'])
 
@@ -540,10 +536,11 @@ class JIDCache(XMPPHandler):
         This simply takes care of importing the key in the keyring for future
         signature verification. Actual key verification is done by c2s when
         accepting vCards coming from clients.
-        WARNING/1 does this mean that we bindly accept keys from components?
+        WARNING/1 does this mean that we bindly accept keys from components? --
+         YES blindly :P c2s will filter invalid requests
         WARNING/2 importing the key means that keys coming from local c2s are
         imported twice because the keyring is the same. Unless we want to make
-        a separated keyring only for resolver?
+        a separated keyring only for resolver? -- YES USING .gnupg-cache
         """
         # TODO parse vcard for interesting sections
 

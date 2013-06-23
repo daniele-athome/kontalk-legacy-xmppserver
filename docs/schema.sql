@@ -3,7 +3,7 @@
 -- http://www.phpmyadmin.net
 --
 -- Host: localhost
--- Generation Time: Jun 17, 2013 at 06:05 PM
+-- Generation Time: Jun 23, 2013 at 03:31 PM
 -- Server version: 5.5.31-1
 -- PHP Version: 5.4.4-15
 
@@ -15,12 +15,6 @@ SET time_zone = "+00:00";
 /*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;
 /*!40101 SET @OLD_COLLATION_CONNECTION=@@COLLATION_CONNECTION */;
 /*!40101 SET NAMES utf8 */;
-
---
--- Database: `xmppmessenger`
---
-CREATE DATABASE IF NOT EXISTS `xmppmessenger` DEFAULT CHARACTER SET utf8 COLLATE utf8_unicode_ci;
-USE `xmppmessenger`;
 
 -- --------------------------------------------------------
 
@@ -35,6 +29,7 @@ CREATE TABLE `presence` (
   `show` varchar(30) CHARACTER SET ascii COLLATE ascii_bin DEFAULT NULL COMMENT 'Availability',
   `priority` smallint(5) NOT NULL DEFAULT '0' COMMENT 'Priority',
   `publickey` mediumblob COMMENT 'Public key',
+  `fingerprint` char(40) DEFAULT NULL COMMENT 'Public key fingerprint',
   PRIMARY KEY (`userid`)
 ) ENGINE=MyISAM DEFAULT CHARSET=ascii COMMENT='User presence cache';
 

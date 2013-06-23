@@ -359,6 +359,8 @@ class InitialPresenceHandler(XMPPHandler):
                     iq_vcard['type'] = 'set'
                     iq_vcard['from'] = response_from
                     iq_vcard['to'] = to
+                    # for vcards destination is resolver
+                    iq_vcard['destination'] = self.parent.network
 
                     # add vcard
                     vcard = iq_vcard.addElement((xmlstream2.NS_XMPP_VCARD4, 'vcard'))
@@ -386,7 +388,7 @@ class InitialPresenceHandler(XMPPHandler):
 
         # receiving initial presence from remote server or from local resolver, send all presence
         if stanza['from'] == self.parent.network or (stanza['from'] != self.parent.servername and stanza['from'] in self.parent.keyring.hostlist()):
-            log.debug("resolver appeared, sending all local presence to %s" % (stanza['from'], ))
+            log.debug("resolver appeared, sending all local presence and vCards to %s" % (stanza['from'], ))
             self.send_presence(stanza['from'], stanza['origin'] if stanza.hasAttribute('origin') else None)
 
         sender = jid.JID(stanza['from'])
@@ -515,52 +517,6 @@ class PresenceProbeHandler(XMPPHandler):
         userid = util.jid_user(stanza['to'])
         d = self.parent.presencedb.get(userid)
         d.addCallback(_db, stanza)
-
-
-class VCardHandler(XMPPHandler):
-    """
-    XEP-0292: vCard4 Over XMPP
-    http://xmpp.org/extensions/xep-0292.html
-    """
-    def __init__(self):
-        XMPPHandler.__init__(self)
-
-    def connectionInitialized(self):
-        self.xmlstream.addObserver("/iq[@type='set']/vcard[@xmlns='%s']" % (xmlstream2.NS_XMPP_VCARD4, ), self.set, 100)
-
-    def set(self, stanza):
-        log.debug("client sent vcard: %s" % (stanza.toXml(), ))
-        stanza.consumed = True
-
-        user = jid.JID(stanza['to'])
-        sender = jid.JID(stanza['from'])
-        # setting our own vcard
-        if user.userhost() == sender.userhost():
-            # TODO parse vcard for interesting sections
-
-            if stanza.vcard.key is not None:
-                # we do this because of the uri member in domish.Element
-                keydata = stanza.vcard.key.firstChildElement()
-                if keydata.name == 'uri':
-                    keydata = str(keydata)
-                    #data:application/pgp-keys;base64,.....BASE64 DATA....
-                    prefix = "data:application/pgp-keys;base64,"
-
-                    if keydata.startswith(prefix):
-                        keydata = base64.b64decode(keydata[len(prefix):])
-                        # check key
-                        fp = self.parent.keyring.check_user_key(keydata, user.user)
-                        if fp:
-                            # update presencedb
-                            self.parent.presencedb.public_key(user.user, keydata, fp)
-                            # send result
-                            self.send(xmlstream2.toResponse(stanza, 'result'))
-                        else:
-                            # TODO key check error
-                            pass
-        else:
-            log.debug("authorization to vCard denied")
-            # TODO send error
 
 
 class LastActivityHandler(XMPPHandler):
@@ -796,7 +752,6 @@ class C2SComponent(xmlstream2.SocketComponent):
         InitialPresenceHandler,
         PresenceProbeHandler,
         LastActivityHandler,
-        VCardHandler,
         MessageHandler,
     )
 
@@ -971,6 +926,9 @@ class C2SComponent(xmlstream2.SocketComponent):
         # TODO if stanza.name == ...
         pass
 
+    def consume(self, stanza):
+        stanza.consumed = True
+
     def local_presence(self, user, stanza):
         """
         Called by sm after receiving a local initial presence.
@@ -1026,6 +984,116 @@ class C2SComponent(xmlstream2.SocketComponent):
 
         d = self.stanzadb.get_by_recipient(user)
         d.addCallback(output, user)
+
+    def local_vcard(self, user, stanza):
+        """
+        Called by SM when receiving a vCard from a local client.
+        It checks vcard info (including public key) and if positive, sends the
+        vCard to all resolvers.
+        @return: iq result or error stanza for the client
+        """
+        if self.logTraffic:
+            log.debug("client sent vcard: %s" % (stanza.toXml(), ))
+        else:
+            log.debug("client sent vcard: %s" % (stanza['to'], ))
+        stanza.consumed = True
+
+        entity = jid.JID(stanza['to'])
+        # setting our own vcard
+        if entity.userhost() == user.userhost():
+            # TODO parse vcard for interesting sections
+
+            if stanza.vcard.key is not None:
+                # we do this because of the uri member in domish.Element
+                keydata = stanza.vcard.key.firstChildElement()
+                if keydata and keydata.name == 'uri':
+                    keydata = str(keydata)
+                    #data:application/pgp-keys;base64,.....BASE64 DATA....
+                    prefix = "data:application/pgp-keys;base64,"
+
+                    if keydata.startswith(prefix):
+                        try:
+                            keydata = base64.b64decode(keydata[len(prefix):])
+                        except:
+                            log.debug("invalid base64 data")
+                            e = xmlstream.error.StanzaError('bad-request', text='Invalid public key.')
+                            iq = xmlstream.toResponse(stanza, 'error')
+                            iq.addChild(e.getElement())
+                            return iq
+
+                        # check key
+                        fp = self.keyring.check_user_key(keydata, user.user)
+                        if fp:
+                            # generate response beforing tampering with the stanza
+                            response = xmlstream.toResponse(stanza, 'result')
+                            # update presencedb
+                            self.presencedb.public_key(user.user, keydata, fp)
+                            # send vcard to local resolver
+                            stanza['from'] = self.resolveJID(user).full()
+                            stanza['to'] = self.network
+                            # origin is actually c2s (for errors)
+                            stanza['origin'] = self.servername
+                            self.send(stanza)
+
+                            # send vcard to remote resolvers
+                            for server in self.keyring.hostlist():
+                                if server != self.servername:
+                                    stanza['id'] = util.rand_str(8)
+                                    # remote server
+                                    stanza['to'] = server
+                                    # actual destination is remote resolver
+                                    stanza['destination'] = self.network
+                                    # consume any response (very high priority)
+                                    self.xmlstream.addObserver("/iq[@id='%s']" % stanza['id'], self.consume, 500)
+                                    # send!
+                                    self.send(stanza)
+
+                            # send response
+                            return response
+                        else:
+                            log.debug("invalid key - authorization to vCard denied")
+                            e = xmlstream.error.StanzaError('bad-request', text='Invalid public key.')
+                            iq = xmlstream.toResponse(stanza, 'error')
+                            iq.addChild(e.getElement())
+                            return iq
+        else:
+            log.debug("authorization to vCard denied")
+            e = xmlstream.error.StanzaError('not-allowed', text='Not authorized.')
+            iq = xmlstream.toResponse(stanza, 'error')
+            iq.addChild(e.getElement())
+            return iq
+
+    def broadcast_public_key(self, userid, keydata):
+        """Broadcasts to all resolvers the given public key."""
+        # create vcard
+        iq_vcard = domish.Element((None, 'iq'))
+        iq_vcard['type'] = 'set'
+        iq_vcard['from'] = util.userid_to_jid(userid, self.servername).full()
+        iq_vcard['to'] = self.network
+
+        # add vcard
+        vcard = iq_vcard.addElement((xmlstream2.NS_XMPP_VCARD4, 'vcard'))
+        if keydata:
+            vcard_key = vcard.addElement((None, 'key'))
+            vcard_data = vcard_key.addElement((None, 'uri'))
+            vcard_data.addContent("data:application/pgp-keys;base64," + base64.b64encode(keydata))
+
+        self.send(iq_vcard)
+
+        # send the same vcard to remote resolvers
+        iq_vcard['origin'] = self.servername
+        for server in self.keyring.hostlist():
+            if server != self.servername:
+                iq_vcard['id'] = util.rand_str(8)
+                # remote server
+                iq_vcard['to'] = server
+                # actual destination is remote resolver
+                iq_vcard['destination'] = self.network
+                # consume any response (very high priority)
+                self.xmlstream.addObserver("/iq[@id='%s']" % iq_vcard['id'], self.consume, 500)
+                # send!
+                self.send(iq_vcard)
+
 
     def resolveJID(self, _jid):
         """Transform host attribute of JID from network name to server name."""

@@ -23,7 +23,6 @@ import base64
 
 from twisted.internet import reactor
 from twisted.words.protocols.jabber import xmlstream, error
-from twisted.words.xish import domish
 
 from kontalk.xmppserver import log, xmlstream2, util
 
