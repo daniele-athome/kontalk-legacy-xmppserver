@@ -396,6 +396,11 @@ class InitialPresenceHandler(XMPPHandler):
         # check for external conflict
         self.parent.sfactory.check_conflict(sender)
 
+        # initial presence from a client connected to another server, clear it from our presence table
+        if sender.host != self.parent.servername and sender.host in self.parent.keyring.hostlist():
+            log.debug("deleting %s from presence table" % (sender.user, ))
+            self.parent.presencedb.delete(sender.user)
+
         # initial presence - deliver offline storage
         def output(data):
             log.debug("data: %r" % (data, ))

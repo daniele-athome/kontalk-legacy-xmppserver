@@ -93,6 +93,10 @@ class PresenceStorage:
         """Update a user public key."""
         pass
 
+    def delete(self, userid):
+        """Delete a presence."""
+        pass
+
 
 class NetworkStorage:
     """Network info storage."""
@@ -394,10 +398,13 @@ class MySQLPresenceStorage(PresenceStorage):
         return dbpool.runOperation('UPDATE presence SET `timestamp` = UTC_TIMESTAMP() WHERE userid = ?', (userid, ))
 
     def public_key(self, userid, keydata, fingerprint):
-        """Update a user public key."""
         global dbpool
         buf = buffer(keydata)
         return dbpool.runOperation('INSERT INTO presence (userid, publickey, fingerprint) VALUES(?, ?, ?) ON DUPLICATE KEY UPDATE publickey = ?, fingerprint = ?', (userid, buf, fingerprint, buf, fingerprint))
+
+    def delete(self, userid):
+        global dbpool
+        return dbpool.runOperation('DELETE FROM presence WHERE userid = ?', (userid, ))
 
 
 class MySQLUserValidationStorage(UserValidationStorage):
