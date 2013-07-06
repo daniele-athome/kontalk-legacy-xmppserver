@@ -1,0 +1,52 @@
+Romeo requests presence subscription to Juliet:
+
+<presence id='xk3h1v69'
+    to='juliet@example.com'
+    type='subscribe'/>
+
+Server checks if Romeo's public key is signed by Juliet. If that's the case,
+presence subscription is accepted and server replies on behalf of Juliet:
+
+<presence id='xk3h1v69'
+    from='juliet@example.com'
+    to='romeo@example.com'
+    type='subscribed'/>
+
+If Romeo's key has not been signed by Juliet, server appends Romeo's public key
+(stripped of all signatures) to the subscription requests and forwards it to
+Juliet:
+
+<presence id='xk3h1v69'
+    from='romeo@example.com/balcony'
+    to='juliet@example.com'
+    type='subscribe'>
+    [include Romeo's public key using capabilities maybe?]
+</presence>
+
+All of Juliet active resources (or the first one connecting - meaning this
+request should be stored for later delivery by the server if necessary) will
+receive this request. Juliet will sign Romeo's public key using her own private
+key, and send back the subscribe confirmation with the signed public key:
+
+<presence id='xk3h1v69'
+    from='juliet@example.com'
+    to='romeo@example.com/balcony'
+    type='subscribed'>
+    [include Romeo's signed public key using capabilities maybe?]
+</presence>
+
+Server will forward this to Romeo which now can see Juliet's presence.
+Note that the included public key is not necessary. The fact that presence is
+subscribed implies that Romeo's key has been signed by Juliet.
+If Juliet refuses the invitation, she sends an unsubscribed stanza:
+
+<presence id='xk3h1v69'
+    from='juliet@example.com'
+    to='romeo@example.com/balcony'
+    type='unsubscribed'/>
+
+This stanza would be handled by the server and must not be sent to Romeo.
+
+If Juliet accepted Romeo's invitation, Juliet can do the same for Rome if she
+wants to - although it's not mandatory. However this would be worthless because
+presence subscription approval is mandatory for message delivery.

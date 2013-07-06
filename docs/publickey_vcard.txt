@@ -44,3 +44,9 @@ server and matches the userid in the authentication token. Changing the key pair
 requires a new registration.
 Client requests its own vCard at login. If it's empty or the public key doesn't
 match its own, the client will send a new vCard containing the new public key.
+
+SOME BIG NOTES
+* when sending public keys to users different from the key owner, the key must
+  be stripped of all signatures, because it would leak his/her web of trust
+* vcard-get requests are allowed only if the user requesting it has his/her own
+  key signed by the user for which he/she requesting the key
