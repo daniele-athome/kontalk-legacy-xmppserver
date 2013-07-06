@@ -91,7 +91,7 @@ class PingHandler(XMPPHandler):
         This is a special case: ping to network is handled by us because it's
         a local issue, no need to forward to resolver.
         """
-        self.xmlstream.addObserver("/iq[@type='get'][@to='%s']/ping[@xmlns='%s']" % (self.parent.network, xmlstream2.NS_XMPP_PING, ), self.ping, 600)
+        self.xmlstream.addObserver("/iq[@type='get']/ping[@xmlns='%s']" % (xmlstream2.NS_XMPP_PING, ), self.ping, 600)
         # first ping request
         self.pinger = reactor.callLater(self.PING_DELAY, self._ping)
 
