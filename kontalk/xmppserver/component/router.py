@@ -127,7 +127,7 @@ class Router(component.Router):
             # check for stanza loops
             errors = 0
             for child in stanza.children:
-                if child.name == 'error':
+                if domish.IElement.providedBy(child) and child.name == 'error':
                     errors += 1
                     if errors > 1:
                         if self.logTraffic:
