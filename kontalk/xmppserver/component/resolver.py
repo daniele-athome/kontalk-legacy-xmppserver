@@ -493,7 +493,8 @@ class JIDCache(XMPPHandler):
         # presence probes MUST be handled by server so the high priority
         self.xmlstream.addObserver("/presence[@type='probe']", self.onProbe, 600)
         # vCards MUST be handled by server so the high priority
-        self.xmlstream.addObserver("/iq[@type='set']/vcard[@xmlns='%s']" % (xmlstream2.NS_XMPP_VCARD4, ), self.onVCard, 600)
+        self.xmlstream.addObserver("/iq[@type='set']/vcard[@xmlns='%s']" % (xmlstream2.NS_XMPP_VCARD4, ), self.onVCardSet, 600)
+        self.xmlstream.addObserver("/iq[@type='get']/vcard[@xmlns='%s']" % (xmlstream2.NS_XMPP_VCARD4, ), self.onVCardGet, 600)
 
     def onPresenceAvailable(self, stanza):
         """Handle availability presence stanzas."""
@@ -530,7 +531,23 @@ class JIDCache(XMPPHandler):
             if user.user:
                 self.user_unavailable(stanza)
 
-    def onVCard(self, stanza):
+    def onVCardGet(self, stanza):
+        log.debug("%s requested vCard for %s" % (stanza['from'], stanza['to']))
+        sender = util.jid_user(stanza['from'])
+        user = util.jid_user(stanza['to'])
+        fp, keydata = self.parent.keyring.get_user_key(user, sender)
+        if fp and keydata:
+            iq = xmlstream2.toResponse(stanza, 'result')
+            # add vcard
+            vcard = iq.addElement((xmlstream2.NS_XMPP_VCARD4, 'vcard'))
+            vcard_key = vcard.addElement((None, 'key'))
+            vcard_data = vcard_key.addElement((None, 'uri'))
+            vcard_data.addContent("data:application/pgp-keys;base64," + base64.b64encode(keydata))
+            self.send(iq)
+        else:
+            self.parent.error(stanza)
+
+    def onVCardSet(self, stanza):
         """
         Handle vCards set IQs.
         This simply takes care of importing the key in the keyring for future

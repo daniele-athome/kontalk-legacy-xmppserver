@@ -155,6 +155,50 @@ class Keyring:
             traceback.print_exc()
             return False
 
+    def get_user_key(self, userid, signed_by=None):
+        """
+        Retrieves a user's key from the cache keyring.
+        @param signed_by: key is returned only if it's signed by this user
+        @return (fingerprint, keydata) on success, (None, None) otherwise
+        """
+
+        # retrieve the requested key
+        uid = str('%s@%s' % (userid, self.network))
+        log.debug("retriving key for %r" % (uid, ))
+        try:
+            key = self.ctx.get_key(uid)
+            if key:
+                signed = True
+
+                # we need to check for a signature
+                if signed_by:
+                    signed = False
+                    signer_key = self.ctx.get_key(str('%s@%s' % (signed_by, self.network)))
+                    if signer_key:
+                        signer_fpr = signer_key.subkeys[0].fpr.upper()
+
+                        for _uid in key.uids:
+                            # uid found, check signatures
+                            if _uid.email == uid:
+                                for sig in _uid.signatures:
+                                    mkey = self.ctx.get_key(sig.keyid, False)
+                                    if mkey:
+                                        fpr = mkey.subkeys[0].fpr.upper()
+
+                                        if fpr == signer_fpr:
+                                            signed = True
+                                            break;
+
+                if signed:
+                    keydata = BytesIO()
+                    self.ctx.export(key.subkeys[0].fpr, keydata, gpgme.EXPORT_MODE_MINIMAL)
+                    return key.subkeys[0].fpr, keydata.getvalue()
+        except:
+            import traceback
+            traceback.print_exc()
+
+        return None, None
+
     def check_user_key(self, keydata, userid):
         """
         Does some checks on a user public key, checking for server signatures

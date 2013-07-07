@@ -288,6 +288,11 @@ class Handler:
 
         iq.send(self.client.xmlstream.authenticator.jid.userhost())
 
+    def vcardGet(self, peer):
+        iq = client.IQ(self.client.xmlstream, 'get')
+        iq.addElement((xmlstream2.NS_XMPP_VCARD4, 'vcard'))
+        iq.send(peer)
+
     def quit(self):
         self.client.xmlstream.sendFooter()
 

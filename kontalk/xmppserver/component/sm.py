@@ -323,7 +323,8 @@ class IQHandler(XMPPHandler):
             fn=self.parent.forward, componentfn=self.version)
         self.xmlstream.addObserver("/iq/query[@xmlns='%s']" % (xmlstream2.NS_IQ_REGISTER), self.register, 100)
         self.xmlstream.addObserver("/iq[@type='result']", self.parent.forward, 100)
-        self.xmlstream.addObserver("/iq[@type='set']/vcard[@xmlns='%s']" % (xmlstream2.NS_XMPP_VCARD4, ), self.vcard, 100)
+        self.xmlstream.addObserver("/iq[@type='set']/vcard[@xmlns='%s']" % (xmlstream2.NS_XMPP_VCARD4, ), self.vcard_set, 100)
+        self.xmlstream.addObserver("/iq[@type='get']/vcard[@xmlns='%s']" % (xmlstream2.NS_XMPP_VCARD4, ), self.vcard_get, 100)
 
         # fallback: service unavailable
         self.xmlstream.addObserver("/iq", self.parent.error, 50)
@@ -374,9 +375,14 @@ class IQHandler(XMPPHandler):
         elif stanza['type'] == 'set':
             self.parent.router.registration.register(self.parent, stanza)
 
-    def vcard(self, stanza):
+    def vcard_set(self, stanza):
         # let c2s handle this
         self.send(self.parent.router.local_vcard(self.xmlstream.otherEntity, stanza))
+
+    def vcard_get(self, stanza):
+        if not stanza.hasAttribute('to'):
+            stanza['to'] = self.xmlstream.otherEntity.userhost()
+        self.parent.forward(stanza)
 
     def features(self):
         ft = [
