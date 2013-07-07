@@ -4,8 +4,7 @@
 
 from twisted.internet import reactor
 from twisted.words.xish import domish
-from twisted.words.protocols.jabber import jid
-from twisted.words.protocols.jabber import client
+from twisted.words.protocols.jabber import jid, xmlstream, client
 
 from wokkel import xmppim
 
@@ -96,7 +95,11 @@ class Handler:
 
     def presence(self, stanza):
         """Presence stanza received."""
-        pass
+        ptype = stanza.getAttribute('type')
+        if ptype == 'subscribe':
+            # reply immediately with empty subscribed (EEEHHH???)
+            r = xmlstream.toResponse(stanza, 'unsubscribed')
+            self.client.send(r)
 
     def iq(self, stanza):
         """IQ stanza received."""

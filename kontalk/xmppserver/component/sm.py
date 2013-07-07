@@ -699,7 +699,7 @@ class C2SManager(xmlstream2.StreamManager):
         # TODO should we force self.network if no sender?
 
         # remove reserved elements
-        if stanza.name == 'message':
+        if stanza.name in ('presence', 'message'):
             # storage child
             if stanza.storage and stanza.storage.uri == xmlstream2.NS_XMPP_STORAGE:
                 stanza.children.remove(stanza.storage)

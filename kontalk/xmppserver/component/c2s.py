@@ -572,6 +572,74 @@ class LastActivityHandler(XMPPHandler):
         d.addCallback(_db, stanza)
 
 
+class PresenceSubscriptionHandler(XMPPHandler):
+    """Presence subscription handler."""
+
+    def connectionInitialized(self):
+        self.xmlstream.addObserver("/presence[@type='subscribe']", self.dispatch)
+        self.xmlstream.addObserver("/presence[@type='subscribed']", self.subscribed)
+        self.xmlstream.addObserver("/presence[@type='unsubscribed']", self.unsubscribed)
+
+    def features(self):
+        return tuple()
+
+    def subscribed(self, stanza):
+        log.debug("user has accepted subscription")
+        # TODO
+        pass
+
+    def unsubscribed(self, stanza):
+        log.debug("user has refused subscription")
+        # TODO
+        pass
+
+    def dispatch(self, stanza):
+        """
+        TODO this method does not handle in a reliable way delayed delivery of
+        presence subscriptions.
+        """
+        if not stanza.consumed:
+            if self.parent.logTraffic:
+                log.debug("incoming subscription request: %s" % (stanza.toXml().encode('utf-8')))
+
+            stanza.consumed = True
+
+            util.resetNamespace(stanza, component.NS_COMPONENT_ACCEPT)
+
+            if stanza.hasAttribute('to'):
+                to = jid.JID(stanza['to'])
+                # process only our JIDs
+                if to.host == self.parent.servername:
+                    if to.user is not None:
+                        keepId = None
+                        try:
+                            # send stanza to offline storage just to be safe
+                            keepId = self.parent.message_offline_store(stanza, delayed=True)
+
+                            # send stanza to sm only to non-negative resources
+                            log.debug("sending stanza %s" % (keepId, ))
+                            self.parent.sfactory.dispatch(stanza)
+
+                        except:
+                            # manager not found - send error or send to offline storage
+                            log.debug("c2s manager for %s not found" % (stanza['to'], ))
+                            """
+                            Since our previous call to message_offline_store()
+                            was with delayed parameter, we need to store for
+                            real now.
+                            """
+                            self.parent.message_offline_store(stanza, delayed=False, reuseId=keepId)
+                            # do we need to push notify for this?
+                            # TODO self.parent.push_manager.notify(to)
+
+                    else:
+                        # deliver local stanza
+                        self.parent.local(stanza)
+
+                else:
+                    log.debug("stanza is not our concern or is an error")
+
+
 class MessageHandler(XMPPHandler):
     """Message stanzas handler."""
 
@@ -757,6 +825,7 @@ class C2SComponent(xmlstream2.SocketComponent):
         InitialPresenceHandler,
         PresenceProbeHandler,
         LastActivityHandler,
+        PresenceSubscriptionHandler,
         MessageHandler,
     )
 
