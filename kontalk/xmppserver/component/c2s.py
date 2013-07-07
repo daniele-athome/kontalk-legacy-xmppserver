@@ -1013,12 +1013,10 @@ class C2SComponent(xmlstream2.SocketComponent):
                 keydata = stanza.vcard.key.firstChildElement()
                 if keydata and keydata.name == 'uri':
                     keydata = str(keydata)
-                    #data:application/pgp-keys;base64,.....BASE64 DATA....
-                    prefix = "data:application/pgp-keys;base64,"
 
-                    if keydata.startswith(prefix):
+                    if keydata.startswith(xmlstream2.DATA_PGP_PREFIX):
                         try:
-                            keydata = base64.b64decode(keydata[len(prefix):])
+                            keydata = base64.b64decode(keydata[len(xmlstream2.DATA_PGP_PREFIX):])
                         except:
                             log.debug("invalid base64 data")
                             e = xmlstream.error.StanzaError('bad-request', text='Invalid public key.')
@@ -1081,7 +1079,7 @@ class C2SComponent(xmlstream2.SocketComponent):
         if keydata:
             vcard_key = vcard.addElement((None, 'key'))
             vcard_data = vcard_key.addElement((None, 'uri'))
-            vcard_data.addContent("data:application/pgp-keys;base64," + base64.b64encode(keydata))
+            vcard_data.addContent(xmlstream2.DATA_PGP_PREFIX + base64.b64encode(keydata))
 
         self.send(iq_vcard)
 

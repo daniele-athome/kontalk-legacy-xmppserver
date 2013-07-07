@@ -58,6 +58,8 @@ NS_MESSAGE_UPLOAD = 'http://www.kontalk.org/extensions/message#upload'
 
 XMPP_STAMP_FORMAT = '%Y-%m-%dT%H:%M:%SZ'
 
+DATA_PGP_PREFIX = 'data:application/pgp-keys;base64,'
+
 
 def strip_server_receipt(stanza):
     """

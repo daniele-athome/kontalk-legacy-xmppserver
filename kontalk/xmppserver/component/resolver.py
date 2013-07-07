@@ -542,7 +542,7 @@ class JIDCache(XMPPHandler):
             vcard = iq.addElement((xmlstream2.NS_XMPP_VCARD4, 'vcard'))
             vcard_key = vcard.addElement((None, 'key'))
             vcard_data = vcard_key.addElement((None, 'uri'))
-            vcard_data.addContent("data:application/pgp-keys;base64," + base64.b64encode(keydata))
+            vcard_data.addContent(xmlstream2.DATA_PGP_PREFIX + base64.b64encode(keydata))
             self.send(iq)
         else:
             self.parent.error(stanza)
@@ -566,11 +566,9 @@ class JIDCache(XMPPHandler):
             keydata = stanza.vcard.key.firstChildElement()
             if keydata.name == 'uri':
                 keydata = str(keydata)
-                #data:application/pgp-keys;base64,.....BASE64 DATA....
-                prefix = "data:application/pgp-keys;base64,"
 
-                if keydata.startswith(prefix):
-                    keydata = base64.b64decode(keydata[len(prefix):])
+                if keydata.startswith(xmlstream2.DATA_PGP_PREFIX):
+                    keydata = base64.b64decode(keydata[len(xmlstream2.DATA_PGP_PREFIX):])
                     # import into cache keyring
                     userid = util.jid_user(stanza['from'])
                     if self.parent.keyring.check_user_key(keydata, userid):
