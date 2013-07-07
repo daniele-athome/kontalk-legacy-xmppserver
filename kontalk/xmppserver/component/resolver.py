@@ -42,6 +42,7 @@ class PresenceHandler(XMPPHandler):
         self.xmlstream.addObserver("/presence[@type='unavailable']", self.onPresenceUnavailable, 100)
         self.xmlstream.addObserver("/presence[@type='subscribe']", self.onSubscribe, 100)
         self.xmlstream.addObserver("/presence[@type='unsubscribe']", self.onUnsubscribe, 100)
+        self.xmlstream.addObserver("/presence[@type='subscribed']", self.onSubscribed, 600)
 
     def onPresenceAvailable(self, stanza):
         """Handle availability presence stanzas."""
@@ -118,6 +119,37 @@ class PresenceHandler(XMPPHandler):
         jid_from = jid.JID(stanza['from'])
 
         self.parent.unsubscribe(jid_to, jid_from)
+
+    def onSubscribed(self, stanza):
+        if stanza.consumed:
+            return
+
+        log.debug("user %s accepted subscription by %s" % (stanza['from'], stanza['to']))
+        stanza.consumed = True
+        jid_to = jid.JID(stanza['to'])
+
+        keydata = base64.b64decode(str(stanza.pubkey.key))
+        fp = self.parent.keyring.check_user_key(keydata, jid_to.user)
+        if fp:
+            jid_from = jid.JID(stanza['from'])
+            if self.parent.keyring.user_allowed(jid_to.user, jid_from.user):
+                # subscribe presence
+                # TODO only if requester is available right??
+                self.parent.subscribe(jid_from, jid_to)
+
+                # send subcribed
+                log.debug("SUBSCRIPTION SUCCESSFUL")
+                r = domish.Element((None, 'presence'))
+                r['type'] = 'subscribed'
+                r['to'] = stanza['to']
+                r['from'] = stanza['from']
+                self.send(r)
+            else:
+                # TODO not allowed
+                log.debug("SUBSCRIPTION NOT ALLOWED")
+        else:
+            # TODO invalid key
+            log.debug("INVALID KEY")
 
 
 class IQHandler(XMPPHandler):

@@ -36,8 +36,7 @@ key, and send back the subscribe confirmation with the signed public key:
 </presence>
 
 Server will forward this to Romeo which now can see Juliet's presence.
-Note that the included public key is not necessary. The fact that presence is
-subscribed implies that Romeo's key has been signed by Juliet.
+Public key will be stored by server, merging the signature with the other ones.
 If Juliet refuses the invitation, she sends an unsubscribed stanza:
 
 <presence id='xk3h1v69'
