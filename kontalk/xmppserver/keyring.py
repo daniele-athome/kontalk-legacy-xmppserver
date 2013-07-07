@@ -155,16 +155,52 @@ class Keyring:
             traceback.print_exc()
             return False
 
+    def user_allowed(self, sender, recipient):
+        """
+        Checks if sender is allowed to send messages or subscribe to
+        recipient's presence.
+        @return key fingerprint on success, None otherwise
+        """
+        # retrieve the requested key
+        uid = str('%s@%s' % (sender, self.network))
+        try:
+            key = self.ctx.get_key(uid)
+            if key:
+                # check for a signature
+                signed = False
+                signer_key = self.ctx.get_key(str('%s@%s' % (recipient, self.network)))
+                if signer_key:
+                    signer_fpr = signer_key.subkeys[0].fpr.upper()
+
+                    for _uid in key.uids:
+                        # uid found, check signatures
+                        if _uid.email == uid:
+                            for sig in _uid.signatures:
+                                mkey = self.ctx.get_key(sig.keyid, False)
+                                if mkey:
+                                    fpr = mkey.subkeys[0].fpr.upper()
+
+                                    if fpr == signer_fpr:
+                                        signed = True
+                                        break;
+
+                if signed:
+                    return key.subkeys[0].fpr
+        except:
+            import traceback
+            traceback.print_exc()
+
+        return None
+
     def get_user_key(self, userid, signed_by=None):
         """
         Retrieves a user's key from the cache keyring.
         @param signed_by: key is returned only if it's signed by this user
         @return (fingerprint, keydata) on success, (None, None) otherwise
         """
-
+        # TODO we should call user_allowed to check for signatures
         # retrieve the requested key
         uid = str('%s@%s' % (userid, self.network))
-        log.debug("retriving key for %r" % (uid, ))
         try:
             key = self.ctx.get_key(uid)
             if key:

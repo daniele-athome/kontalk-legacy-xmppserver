@@ -78,7 +78,18 @@ class PresenceHandler(XMPPHandler):
         jid_to = jid.JID(stanza['to'])
         jid_from = jid.JID(stanza['from'])
 
-        self.parent.subscribe(jid_to, jid_from)
+        if self.parent.keyring.user_allowed(jid_from.user, jid_to.user):
+            self.parent.subscribe(jid_to, jid_from)
+        else:
+            log.debug("not authorized to subscribe to user's presence, sending request")
+            fp, keydata = self.parent.keyring.get_user_key(jid_from.user)
+            if fp and keydata:
+                pubkey = stanza.addElement(('urn:xmpp:pubkey:2', 'pubkey'))
+                key = pubkey.addElement((None, 'key'))
+                key.addContent(base64.b64encode(keydata))
+                fprint = pubkey.addElement((None, 'print'))
+                fprint.addContent(fp)
+                self.send(stanza)
 
         # simulate a presence probe
         """
