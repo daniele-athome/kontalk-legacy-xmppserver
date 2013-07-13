@@ -176,13 +176,16 @@ class Keyring:
                         # uid found, check signatures
                         if _uid.email == uid:
                             for sig in _uid.signatures:
-                                mkey = self.ctx.get_key(sig.keyid, False)
-                                if mkey:
-                                    fpr = mkey.subkeys[0].fpr.upper()
+                                try:
+                                    mkey = self.ctx.get_key(sig.keyid, False)
+                                    if mkey:
+                                        fpr = mkey.subkeys[0].fpr.upper()
 
-                                    if fpr == signer_fpr:
-                                        signed = True
-                                        break;
+                                        if fpr == signer_fpr:
+                                            signed = True
+                                            break;
+                                except:
+                                    pass
 
                 if signed:
                     return key.subkeys[0].fpr
@@ -217,13 +220,16 @@ class Keyring:
                             # uid found, check signatures
                             if _uid.email == uid:
                                 for sig in _uid.signatures:
-                                    mkey = self.ctx.get_key(sig.keyid, False)
-                                    if mkey:
-                                        fpr = mkey.subkeys[0].fpr.upper()
+                                    try:
+                                        mkey = self.ctx.get_key(sig.keyid, False)
+                                        if mkey:
+                                            fpr = mkey.subkeys[0].fpr.upper()
 
-                                        if fpr == signer_fpr:
-                                            signed = True
-                                            break;
+                                            if fpr == signer_fpr:
+                                                signed = True
+                                                break;
+                                    except:
+                                        pass
 
                 if signed:
                     keydata = BytesIO()
@@ -257,17 +263,20 @@ class Keyring:
                 # uid found, check signatures
                 if uid.email == check_email:
                     for sig in uid.signatures:
-                        mkey = self.ctx.get_key(sig.keyid, False)
-                        if mkey:
-                            fpr = mkey.subkeys[0].fpr.upper()
+                        try:
+                            mkey = self.ctx.get_key(sig.keyid, False)
+                            if mkey:
+                                fpr = mkey.subkeys[0].fpr.upper()
 
-                            if fpr == self.fingerprint.upper():
-                                return fp
-
-                            # no direct match - compare with keyring
-                            for rkey in self._list.iterkeys():
-                                if fpr == rkey.upper():
+                                if fpr == self.fingerprint.upper():
                                     return fp
+
+                                # no direct match - compare with keyring
+                                for rkey in self._list.iterkeys():
+                                    if fpr == rkey.upper():
+                                        return fp
+                        except:
+                            pass
         except:
             import traceback
             traceback.print_exc()
@@ -327,17 +336,20 @@ class Keyring:
                 jabberid.resource = uid.comment
 
                 for sig in uid.signatures:
-                    mkey = self.ctx.get_key(sig.keyid, False)
-                    if mkey:
-                        fpr = mkey.subkeys[0].fpr.upper()
+                    try:
+                        mkey = self.ctx.get_key(sig.keyid, False)
+                        if mkey:
+                            fpr = mkey.subkeys[0].fpr.upper()
 
-                        if fpr == self.fingerprint.upper():
-                            return (jabberid, key.subkeys[0].fpr)
-
-                        # no direct match - compare with keyring
-                        for rkey in self._list.iterkeys():
-                            if fpr == rkey.upper():
+                            if fpr == self.fingerprint.upper():
                                 return (jabberid, key.subkeys[0].fpr)
+
+                            # no direct match - compare with keyring
+                            for rkey in self._list.iterkeys():
+                                if fpr == rkey.upper():
+                                    return (jabberid, key.subkeys[0].fpr)
+                    except:
+                        pass
 
     def check_signature(self, signature, text, fingerprint):
         """
