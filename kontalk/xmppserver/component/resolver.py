@@ -80,11 +80,12 @@ class PresenceHandler(XMPPHandler):
         jid_from = jid.JID(stanza['from'])
 
         # servers are allowed to subscribe to user presence
+
         if not jid_from.user or self.parent.keyring.user_allowed(jid_from.user, jid_to.user):
             self.parent.subscribe(jid_to, jid_from)
         else:
             log.debug("not authorized to subscribe to user's presence, sending request")
-            fp, keydata = self.parent.keyring.get_user_key(jid_from.user)
+            fp, keydata = self.parent.keyring.get_user_key(jid_from.user, jid_from.user)
             if fp and keydata:
                 pubkey = stanza.addElement(('urn:xmpp:pubkey:2', 'pubkey'))
                 key = pubkey.addElement((None, 'key'))
@@ -129,28 +130,31 @@ class PresenceHandler(XMPPHandler):
         stanza.consumed = True
         jid_to = jid.JID(stanza['to'])
 
-        keydata = base64.b64decode(str(stanza.pubkey.key))
-        fp = self.parent.keyring.check_user_key(keydata, jid_to.user)
-        if fp:
-            jid_from = jid.JID(stanza['from'])
-            if self.parent.keyring.user_allowed(jid_to.user, jid_from.user):
-                # subscribe presence now if requester is available
-                if self.parent.cache.jid_available(jid_from):
-                    self.parent.subscribe(jid_from, jid_to)
+        if stanza.pubkey and stanza.pubkey.key:
+            keydata = base64.b64decode(str(stanza.pubkey.key))
+            fp = self.parent.keyring.check_user_key(keydata, jid_to.user)
+            if fp:
+                jid_from = jid.JID(stanza['from'])
+                if self.parent.keyring.user_allowed(jid_to.user, jid_from.user):
+                    # subscribe presence now if requester is available
+                    if self.parent.cache.jid_available(jid_from):
+                        self.parent.subscribe(jid_from, jid_to)
 
-                    # send subcribed
-                    log.debug("SUBSCRIPTION SUCCESSFUL")
-                    r = domish.Element((None, 'presence'))
-                    r['type'] = 'subscribed'
-                    r['to'] = stanza['to']
-                    r['from'] = stanza['from']
-                    self.send(r)
+                        # send subcribed
+                        log.debug("SUBSCRIPTION SUCCESSFUL")
+                        r = domish.Element((None, 'presence'))
+                        r['type'] = 'subscribed'
+                        r['to'] = stanza['to']
+                        r['from'] = stanza['from']
+                        self.send(r)
+                else:
+                    # TODO not allowed
+                    log.debug("SUBSCRIPTION NOT ALLOWED")
             else:
-                # TODO not allowed
-                log.debug("SUBSCRIPTION NOT ALLOWED")
+                # TODO invalid key
+                log.debug("INVALID KEY")
         else:
-            # TODO invalid key
-            log.debug("INVALID KEY")
+            log.debug("SUBSCRIPTION NOT ALLOWED (KEY NOT FOUND)")
 
 
 class IQHandler(XMPPHandler):
@@ -615,7 +619,8 @@ class JIDCache(XMPPHandler):
                     keydata = base64.b64decode(keydata[len(xmlstream2.DATA_PGP_PREFIX):])
                     # import into cache keyring
                     userid = util.jid_user(stanza['from'])
-                    if self.parent.keyring.check_user_key(keydata, userid):
+                    fpr = self.parent.keyring.check_user_key(keydata, userid)
+                    if fpr:
                         log.debug("key cached successfully")
                     else:
                         log.warn("invalid key")

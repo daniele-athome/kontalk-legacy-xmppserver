@@ -47,6 +47,8 @@ class Keyring:
         self.network = network
         self.servername = servername
         self._list = {}
+        # cache of locally discovered fingerprints (userid: fingerprint)
+        self._fingerprints = {}
 
         # gpgme context
         self.ctx = gpgme.Context()
@@ -164,14 +166,13 @@ class Keyring:
         # retrieve the requested key
         uid = str('%s@%s' % (sender, self.network))
         try:
-            key = self.ctx.get_key(uid)
+            key = self.ctx.get_key(self._fingerprints[sender])
             if key:
                 # check for a signature
                 signed = False
-                signer_key = self.ctx.get_key(str('%s@%s' % (recipient, self.network)))
+                signer_fpr = self._fingerprints[recipient]
+                signer_key = self.ctx.get_key(signer_fpr)
                 if signer_key:
-                    signer_fpr = signer_key.subkeys[0].fpr.upper()
-
                     for _uid in key.uids:
                         # uid found, check signatures
                         if _uid.email == uid:
@@ -205,17 +206,15 @@ class Keyring:
         # retrieve the requested key
         uid = str('%s@%s' % (userid, self.network))
         try:
-            key = self.ctx.get_key(uid)
+            key = self.ctx.get_key(self._fingerprints[userid])
             if key:
                 signed = True
 
                 # we need to check for a signature
                 if signed_by:
                     signed = False
-                    signer_key = self.ctx.get_key(str('%s@%s' % (signed_by, self.network)))
+                    signer_key = self.ctx.get_key(self._fingerprints[signed_by])
                     if signer_key:
-                        signer_fpr = signer_key.subkeys[0].fpr.upper()
-
                         for _uid in key.uids:
                             # uid found, check signatures
                             if _uid.email == uid:
@@ -225,7 +224,7 @@ class Keyring:
                                         if mkey:
                                             fpr = mkey.subkeys[0].fpr.upper()
 
-                                            if fpr == signer_fpr:
+                                            if fpr == self._fingerprints[signed_by]:
                                                 signed = True
                                                 break;
                                     except:
@@ -254,7 +253,7 @@ class Keyring:
 
             # import key
             result = self.ctx.import_(BytesIO(keydata))
-            fp = str(result.imports[0][0])
+            fp = str(result.imports[0][0]).upper()
             key = self.ctx.get_key(fp)
 
             # check that at least one of the key uids is userid@network
@@ -269,11 +268,13 @@ class Keyring:
                                 fpr = mkey.subkeys[0].fpr.upper()
 
                                 if fpr == self.fingerprint.upper():
+                                    self._fingerprints[userid] = fp
                                     return fp
 
                                 # no direct match - compare with keyring
                                 for rkey in self._list.iterkeys():
                                     if fpr == rkey.upper():
+                                        self._fingerprints[userid] = fp
                                         return fp
                         except:
                             pass
