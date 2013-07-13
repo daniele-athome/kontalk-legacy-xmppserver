@@ -305,7 +305,10 @@ class Handler:
         reg.send(self.client.network)
         #reactor.callLater(1, xs.reset)
 
-    def vcardSet(self, publickey):
+    def vcardSet(self, publickey=None):
+        if not publickey:
+            publickey = self.config['publickey']['key']
+
         iq = client.IQ(self.client.xmlstream, 'set')
         vcard = iq.addElement((xmlstream2.NS_XMPP_VCARD4, 'vcard'))
         vcard_key = vcard.addElement((None, 'key'))
