@@ -79,7 +79,8 @@ class PresenceHandler(XMPPHandler):
         jid_to = jid.JID(stanza['to'])
         jid_from = jid.JID(stanza['from'])
 
-        if self.parent.keyring.user_allowed(jid_from.user, jid_to.user):
+        # servers are allowed to subscribe to user presence
+        if not jid_from.user or self.parent.keyring.user_allowed(jid_from.user, jid_to.user):
             self.parent.subscribe(jid_to, jid_from)
         else:
             log.debug("not authorized to subscribe to user's presence, sending request")
@@ -133,17 +134,17 @@ class PresenceHandler(XMPPHandler):
         if fp:
             jid_from = jid.JID(stanza['from'])
             if self.parent.keyring.user_allowed(jid_to.user, jid_from.user):
-                # subscribe presence
-                # TODO only if requester is available right??
-                self.parent.subscribe(jid_from, jid_to)
+                # subscribe presence now if requester is available
+                if self.parent.cache.jid_available(jid_from):
+                    self.parent.subscribe(jid_from, jid_to)
 
-                # send subcribed
-                log.debug("SUBSCRIPTION SUCCESSFUL")
-                r = domish.Element((None, 'presence'))
-                r['type'] = 'subscribed'
-                r['to'] = stanza['to']
-                r['from'] = stanza['from']
-                self.send(r)
+                    # send subcribed
+                    log.debug("SUBSCRIPTION SUCCESSFUL")
+                    r = domish.Element((None, 'presence'))
+                    r['type'] = 'subscribed'
+                    r['to'] = stanza['to']
+                    r['from'] = stanza['from']
+                    self.send(r)
             else:
                 # TODO not allowed
                 log.debug("SUBSCRIPTION NOT ALLOWED")
@@ -628,30 +629,32 @@ class JIDCache(XMPPHandler):
         log.debug("probe request: %s" % (stanza.toXml(), ))
         stanza.consumed = True
         to = jid.JID(stanza['to'])
+        sender = jid.JID(stanza['from'])
 
-        gid = stanza.getAttribute('id')
-        stub = self.lookup(to)
-        log.debug("onProbe(%s): found %r" % (gid, stub, ))
-        if stub:
-            data = stub.presence()
-            i = len(data)
-            for x in data:
-                from copy import copy
-                presence = copy(x)
-                presence['to'] = stanza['from']
-                if gid:
-                    # FIXME this will duplicate group elements - actually in storage there should be no group element!!!
-                    group = presence.addElement((xmlstream2.NS_XMPP_STANZA_GROUP, 'group'))
-                    group['id'] = gid
-                    group['count'] = str(i)
-                    i -= 1
+        # servers are allowed to probe presence
+        if not sender.user or self.parent.keyring.user_allowed(sender.user, to.user):
+            gid = stanza.getAttribute('id')
+            stub = self.lookup(to)
+            log.debug("onProbe(%s): found %r" % (gid, stub, ))
+            if stub:
+                data = stub.presence()
+                i = len(data)
+                for x in data:
+                    from copy import copy
+                    presence = copy(x)
+                    presence['to'] = stanza['from']
+                    if gid:
+                        # FIXME this will duplicate group elements - actually in storage there should be no group element!!!
+                        group = presence.addElement((xmlstream2.NS_XMPP_STANZA_GROUP, 'group'))
+                        group['id'] = gid
+                        group['count'] = str(i)
+                        i -= 1
 
-                self.send(presence)
-        else:
-            response = xmlstream2.toResponse(stanza, 'error')
-            # TODO include error cause?
-            self.send(response)
-
+                    self.send(presence)
+            else:
+                response = xmlstream2.toResponse(stanza, 'error')
+                # TODO include error cause?
+                self.send(response)
 
     def user_available(self, stanza):
         """Called when receiving a presence stanza."""
