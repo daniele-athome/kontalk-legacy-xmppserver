@@ -79,9 +79,13 @@ class PresenceHandler(XMPPHandler):
         jid_to = jid.JID(stanza['to'])
         jid_from = jid.JID(stanza['from'])
 
-        # servers are allowed to subscribe to user presence
+        try:
+            # servers are allowed to subscribe to user presence
+            allowed = not jid_from.user or self.parent.keyring.user_allowed(jid_from.user, jid_to.user)
+        except keyring.KeyNotFoundException:
+            allowed = self.parent.config['allow_no_key']
 
-        if not jid_from.user or self.parent.keyring.user_allowed(jid_from.user, jid_to.user):
+        if allowed:
             self.parent.subscribe(jid_to, jid_from)
         else:
             log.debug("not authorized to subscribe to user's presence, sending request")

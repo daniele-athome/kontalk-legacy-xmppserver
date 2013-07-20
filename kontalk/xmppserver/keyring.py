@@ -162,11 +162,16 @@ class Keyring:
         Checks if sender is allowed to send messages or subscribe to
         recipient's presence.
         @return key fingerprint on success, None otherwise
+        @raise KeyNotFoundException: if sender key is not registered
         """
         # retrieve the requested key
         uid = str('%s@%s' % (sender, self.network))
         try:
             key = self.ctx.get_key(self._fingerprints[sender])
+        except:
+            raise KeyNotFoundException(sender)
+
+        try:
             if key:
                 # check for a signature
                 signed = False
@@ -435,3 +440,10 @@ class Keyring:
         self.ctx.sign(plain, cipher, gpgme.SIG_MODE_NORMAL)
         token = cipher.getvalue()
         return base64.b64encode(token)
+
+
+class KeyNotFoundException(Exception):
+
+    def __init__(self, uid):
+        Exception.__init__(self)
+        self.uid = uid
