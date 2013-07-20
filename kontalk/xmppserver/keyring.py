@@ -171,41 +171,42 @@ class Keyring:
         except:
             raise KeyNotFoundException(sender)
 
-        try:
-            if key:
-                # check for a signature
-                signed = False
-                try:
-                    signer_fpr = self._fingerprints[recipient]
-                    signer_key = self.ctx.get_key(signer_fpr)
-                except:
-                    raise KeyNotFoundException(recipient)
+        if key:
+            # check for a signature
+            signed = False
+            try:
+                signer_fpr = self._fingerprints[recipient]
+                signer_key = self.ctx.get_key(signer_fpr)
+            except:
+                raise KeyNotFoundException(recipient)
 
-                if signer_key:
-                    log.debug("looking for %s" % (uid, ))
-                    for _uid in key.uids:
-                        log.debug("found signer uid %s" % (_uid.email, ))
-                        # uid found, check signatures
-                        if _uid.email == uid:
-                            for sig in _uid.signatures:
-                                log.debug("found signature by %s" % (sig.keyid, ))
-                                try:
-                                    mkey = self.ctx.get_key(sig.keyid, False)
-                                    if mkey:
-                                        fpr = mkey.subkeys[0].fpr.upper()
-                                        log.debug("signature fpr = %s, check = %s" % (fpr, signer_fpr))
+            try:
 
-                                        if fpr == signer_fpr:
-                                            signed = True
-                                            break;
-                                except:
-                                    pass
+                    if signer_key:
+                        log.debug("looking for %s" % (uid, ))
+                        for _uid in key.uids:
+                            log.debug("found signer uid %s" % (_uid.email, ))
+                            # uid found, check signatures
+                            if _uid.email == uid:
+                                for sig in _uid.signatures:
+                                    log.debug("found signature by %s" % (sig.keyid, ))
+                                    try:
+                                        mkey = self.ctx.get_key(sig.keyid, False)
+                                        if mkey:
+                                            fpr = mkey.subkeys[0].fpr.upper()
+                                            log.debug("signature fpr = %s, check = %s" % (fpr, signer_fpr))
 
-                if signed:
-                    return key.subkeys[0].fpr
-        except:
-            import traceback
-            traceback.print_exc()
+                                            if fpr == signer_fpr:
+                                                signed = True
+                                                break;
+                                    except:
+                                        pass
+
+                    if signed:
+                        return key.subkeys[0].fpr
+            except:
+                import traceback
+                traceback.print_exc()
 
         return None
 
