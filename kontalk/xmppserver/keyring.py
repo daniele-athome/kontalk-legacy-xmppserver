@@ -173,14 +173,18 @@ class Keyring:
                 signer_fpr = self._fingerprints[recipient]
                 signer_key = self.ctx.get_key(signer_fpr)
                 if signer_key:
+                    log.debug("looking for %s" % (uid, ))
                     for _uid in key.uids:
+                        log.debug("found signer uid %s" % (_uid.email, ))
                         # uid found, check signatures
                         if _uid.email == uid:
                             for sig in _uid.signatures:
+                                log.debug("found signature by %s" % (sig.keyid, ))
                                 try:
                                     mkey = self.ctx.get_key(sig.keyid, False)
                                     if mkey:
                                         fpr = mkey.subkeys[0].fpr.upper()
+                                        log.debug("signature fpr = %s, check = %s" % (fpr, signer_fpr))
 
                                         if fpr == signer_fpr:
                                             signed = True
