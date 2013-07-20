@@ -139,7 +139,14 @@ class PresenceHandler(XMPPHandler):
             fp = self.parent.keyring.check_user_key(keydata, jid_to.user)
             if fp:
                 jid_from = jid.JID(stanza['from'])
-                if self.parent.keyring.user_allowed(jid_to.user, jid_from.user):
+
+                try:
+                    # servers are allowed to subscribe to user presence
+                    allowed = self.parent.keyring.user_allowed(jid_to.user, jid_from.user)
+                except keyring.KeyNotFoundException:
+                    allowed = self.parent.config['allow_no_key']
+
+                if allowed:
                     # subscribe presence now if requester is available
                     if self.parent.cache.jid_available(jid_from):
                         self.parent.subscribe(jid_from, jid_to)
@@ -640,8 +647,14 @@ class JIDCache(XMPPHandler):
         to = jid.JID(stanza['to'])
         sender = jid.JID(stanza['from'])
 
+        try:
+            # servers are allowed to subscribe to user presence
+            allowed = not sender.user or self.parent.keyring.user_allowed(sender.user, to.user)
+        except keyring.KeyNotFoundException:
+            allowed = self.parent.config['allow_no_key']
+
         # servers are allowed to probe presence
-        if not sender.user or self.parent.keyring.user_allowed(sender.user, to.user):
+        if allowed:
             gid = stanza.getAttribute('id')
             stub = self.lookup(to)
             log.debug("onProbe(%s): found %r" % (gid, stub, ))
