@@ -789,9 +789,9 @@ class JIDCache(XMPPHandler):
         return defer.gatherResults(deferList, True)
 
     def jid_available(self, _jid):
-        """Return true if full L{JID} is an available resource."""
+        """Return true if L{JID} has an available resource."""
         try:
-            return self.presence_cache[_jid].available()
+            return self.presence_cache[_jid.user].available()
         except:
             pass
 
