@@ -86,7 +86,7 @@ class PresenceHandler(XMPPHandler):
             allowed = self.parent.config['allow_no_key']
 
         if allowed:
-            self.parent.subscribe(jid_to, jid_from)
+            self.parent.subscribe(jid_to, jid_from, stanza.getAttribute('id'))
         else:
             log.debug("not authorized to subscribe to user's presence, sending request")
             try:
@@ -158,17 +158,11 @@ class PresenceHandler(XMPPHandler):
                     allowed = self.parent.config['allow_no_key']
 
                 if allowed:
+                    log.debug("SUBSCRIPTION SUCCESSFUL")
                     # subscribe presence now if requester is available
                     if self.parent.cache.jid_available(jid_from):
-                        self.parent.subscribe(jid_from, jid_to)
+                        self.parent.subscribe(jid_from, jid_to, stanza.getAttribute('id'))
 
-                        # send subcribed
-                        log.debug("SUBSCRIPTION SUCCESSFUL")
-                        r = domish.Element((None, 'presence'))
-                        r['type'] = 'subscribed'
-                        r['to'] = stanza['to']
-                        r['from'] = stanza['from']
-                        self.send(r)
                 else:
                     # TODO not allowed
                     log.debug("SUBSCRIPTION NOT ALLOWED")
@@ -647,6 +641,29 @@ class JIDCache(XMPPHandler):
                     else:
                         log.warn("invalid key")
 
+    def send_user_presence(self, gid, sender, recipient):
+        stub = self.lookup(recipient)
+        log.debug("onProbe(%s): found %r" % (gid, stub, ))
+        if stub:
+            data = stub.presence()
+            i = len(data)
+            for x in data:
+                from copy import copy
+                presence = copy(x)
+                presence['to'] = sender.full()
+                if gid:
+                    # FIXME this will duplicate group elements - actually in storage there should be no group element!!!
+                    group = presence.addElement((xmlstream2.NS_XMPP_STANZA_GROUP, 'group'))
+                    group['id'] = gid
+                    group['count'] = str(i)
+                    i -= 1
+
+                self.send(presence)
+                return True
+
+        # no such user
+        return False
+
     def onProbe(self, stanza):
         """Handle presence probes."""
 
@@ -667,24 +684,7 @@ class JIDCache(XMPPHandler):
         # servers are allowed to probe presence
         if allowed:
             gid = stanza.getAttribute('id')
-            stub = self.lookup(to)
-            log.debug("onProbe(%s): found %r" % (gid, stub, ))
-            if stub:
-                data = stub.presence()
-                i = len(data)
-                for x in data:
-                    from copy import copy
-                    presence = copy(x)
-                    presence['to'] = stanza['from']
-                    if gid:
-                        # FIXME this will duplicate group elements - actually in storage there should be no group element!!!
-                        group = presence.addElement((xmlstream2.NS_XMPP_STANZA_GROUP, 'group'))
-                        group['id'] = gid
-                        group['count'] = str(i)
-                        i -= 1
-
-                    self.send(presence)
-            else:
+            if not self.send_user_presence(gid, sender, to):
                 response = xmlstream2.toResponse(stanza, 'error')
                 # TODO include error cause?
                 self.send(response)
@@ -1014,7 +1014,7 @@ class Resolver(xmlstream2.SocketComponent):
                 if sub == user:
                     rlist.remove(sub)
 
-    def subscribe(self, to, subscriber):
+    def subscribe(self, to, subscriber, gid=None):
         """Subscribe a given user to events from another one."""
         try:
             if subscriber not in self.subscriptions[to]:
@@ -1026,10 +1026,17 @@ class Resolver(xmlstream2.SocketComponent):
 
         # send subscription accepted immediately
         pres = domish.Element((None, "presence"))
+        if gid:
+            pres['id'] = gid
         pres['to'] = subscriber.full()
         pres['from'] = to.userhost()
         pres['type'] = 'subscribed'
         self.send(pres)
+
+        # simulate a presence probe response
+        if not gid:
+            gid = util.rand_str(8)
+        self.cache.send_user_presence(gid, subscriber, to)
 
         """
         # send a fake roster entry
