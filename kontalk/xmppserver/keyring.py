@@ -214,7 +214,7 @@ class Keyring:
         """
         Retrieves a user's key from the cache keyring.
         @param signed_by: key is returned only if it's signed by this user
-        @return (fingerprint, keydata) on success, (None, None) otherwise
+        @return (fingerprint, keydata, uid) on success, None otherwise
         """
         # TODO we should call user_allowed to check for signatures
         # retrieve the requested key
@@ -232,6 +232,9 @@ class Keyring:
                         for _uid in key.uids:
                             # uid found, check signatures
                             if _uid.email == uid:
+                                # this is for later
+                                uid = _uid.uid
+
                                 for sig in _uid.signatures:
                                     try:
                                         mkey = self.ctx.get_key(sig.keyid, False)
@@ -247,12 +250,10 @@ class Keyring:
                 if signed:
                     keydata = BytesIO()
                     self.ctx.export(key.subkeys[0].fpr, keydata, gpgme.EXPORT_MODE_MINIMAL)
-                    return key.subkeys[0].fpr, keydata.getvalue()
+                    return key.subkeys[0].fpr, keydata.getvalue(), uid
         except:
             import traceback
             traceback.print_exc()
-
-        return None, None
 
     def check_user_key(self, keydata, userid):
         """

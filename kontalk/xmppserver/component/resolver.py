@@ -89,14 +89,25 @@ class PresenceHandler(XMPPHandler):
             self.parent.subscribe(jid_to, jid_from)
         else:
             log.debug("not authorized to subscribe to user's presence, sending request")
-            fp, keydata = self.parent.keyring.get_user_key(jid_from.user, jid_from.user)
-            if fp and keydata:
+            try:
+                fp, keydata, uid = self.parent.keyring.get_user_key(jid_from.user, jid_from.user)
                 pubkey = stanza.addElement(('urn:xmpp:pubkey:2', 'pubkey'))
+
+                # key data
                 key = pubkey.addElement((None, 'key'))
                 key.addContent(base64.b64encode(keydata))
+
+                # fingerprint
                 fprint = pubkey.addElement((None, 'print'))
                 fprint.addContent(fp)
+
+                # uid
+                uid_node = pubkey.addElement((None, 'uid'))
+                uid_node.addContent(uid)
+
                 self.send(stanza)
+            except:
+                pass
 
         # simulate a presence probe
         """
@@ -594,8 +605,8 @@ class JIDCache(XMPPHandler):
         log.debug("%s requested vCard for %s" % (stanza['from'], stanza['to']))
         sender = util.jid_user(stanza['from'])
         user = util.jid_user(stanza['to'])
-        fp, keydata = self.parent.keyring.get_user_key(user, sender)
-        if fp and keydata:
+        try:
+            unused1, keydata, unused2 = self.parent.keyring.get_user_key(user, sender)
             iq = xmlstream2.toResponse(stanza, 'result')
             # add vcard
             vcard = iq.addElement((xmlstream2.NS_XMPP_VCARD4, 'vcard'))
@@ -603,7 +614,7 @@ class JIDCache(XMPPHandler):
             vcard_data = vcard_key.addElement((None, 'uri'))
             vcard_data.addContent(xmlstream2.DATA_PGP_PREFIX + base64.b64encode(keydata))
             self.send(iq)
-        else:
+        except:
             self.parent.error(stanza)
 
     def onVCardSet(self, stanza):
