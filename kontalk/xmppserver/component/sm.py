@@ -426,7 +426,7 @@ class MessageHandler(XMPPHandler):
                 to = jid.JID(stanza['to'])
                 sender = self.xmlstream.otherEntity
                 if to.host == self.parent.network and sender.host == self.parent.network:
-                    self.parent.router.message_offline_delete(msgId, to.user, sender.user)
+                    self.parent.router.message_offline_delete(msgId, stanza.name, to.user, sender.user)
             except:
                 pass
 
