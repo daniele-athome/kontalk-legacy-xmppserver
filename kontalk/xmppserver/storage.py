@@ -308,7 +308,7 @@ class MySQLStanzaStorage(StanzaStorage):
                 d = {
                      'id': stanzaId,
                      'timestamp': datetime.datetime.utcfromtimestamp(row[1] / 1e3),
-                     'expire': datetime.datetime.utcfromtimestamp(row[3])
+                     'expire': datetime.datetime.utcfromtimestamp(row[3]) if row[3] else None
                 }
                 d['stanza'] = generic.parseXml(row[2].decode('utf-8').encode('utf-8'))
 
