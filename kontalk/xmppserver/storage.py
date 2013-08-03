@@ -147,6 +147,7 @@ class FileStorage:
 class MySQLStanzaStorage(StanzaStorage):
 
     OFFLINE_STORE_DELAY = 10
+    tables = ('presence', 'message', 'iq')
 
     def __init__(self):
         """
@@ -255,7 +256,6 @@ class MySQLStanzaStorage(StanzaStorage):
             msgId = stanza['id']
         args = (
             msgId,
-            stanza.name,
             util.jid_to_userid(jid.JID(stanza['from'])),
             util.jid_to_userid(jid.JID(stanza['to'])),
             stanza.getAttribute('type'),
@@ -263,7 +263,8 @@ class MySQLStanzaStorage(StanzaStorage):
             int(time.time()*1e3),
             expire
         )
-        return dbpool.runOperation('INSERT INTO stanzas (id, name, sender, recipient, type, content, timestamp, expire_timestamp) VALUES(?, ?, ?, ?, ?, ?, ?, ?)', args)
+        return dbpool.runOperation('INSERT INTO stanzas_%s (id, sender, recipient, type, content, timestamp, expire_timestamp) VALUES(?, ?, ?, ?, ?, ?, ?)'
+                                   % (stanza.name, ), args)
 
     def _cancel_pending(self, stanzaId):
         if stanzaId in self._pending_offline:
@@ -277,6 +278,7 @@ class MySQLStanzaStorage(StanzaStorage):
         global dbpool
         def _translate(tx, stanzaId):
             # TODO translation to dict
+            # TODO stanzas doesn't exist any more
             tx.execute('SELECT content, timestamp FROM stanzas WHERE id = ?', (stanzaId, ))
             return tx.fetchone()
         return dbpool.runInteraction(_translate, stanzaId)
@@ -290,7 +292,11 @@ class MySQLStanzaStorage(StanzaStorage):
     def get_by_recipient(self, recipient):
         global dbpool
         def _translate(tx, recipient, out):
-            tx.execute('SELECT id, timestamp, content, expire_timestamp FROM stanzas WHERE recipient = ? ORDER BY timestamp', (recipient.user, ))
+            qlist = ['SELECT `id`, `timestamp`, `content`, `expire_timestamp` FROM stanzas_%s WHERE `recipient` = ?' % (t, )
+                     for t in self.tables]
+            qargs = [recipient.user for t in self.tables]
+
+            tx.execute(' UNION '.join(qlist) + ' ORDER BY `timestamp`', qargs)
             data = tx.fetchall()
             for row in data:
                 stanzaId = str(row[0])
@@ -323,18 +329,18 @@ class MySQLStanzaStorage(StanzaStorage):
 
         return dbpool.runInteraction(_translate, recipient, out)
 
-    def delete(self, stanzaId, sender=None, recipient=None):
+    def delete(self, stanzaId, stanzaName, sender=None, recipient=None):
         # check if message is pending to offline
         if self._cancel_pending(stanzaId):
             return True
 
-        return self._delete(stanzaId, sender, recipient)
+        return self._delete(stanzaId, stanzaName, sender, recipient)
 
-    def _delete(self, stanzaId, sender=None, recipient=None):
+    def _delete(self, stanzaId, stanzaName, sender=None, recipient=None):
         global dbpool
         #import traceback
         #log.debug("deleting stanza %s -- traceback:\n%s" % (stanzaId, ''.join(traceback.format_stack())))
-        q = 'DELETE FROM stanzas WHERE id = ?'
+        q = 'DELETE FROM stanzas_%s WHERE id = ?' % (stanzaName, )
         args = [stanzaId]
         if sender:
             q += ' AND sender LIKE ?'

@@ -3,7 +3,7 @@
 -- http://www.phpmyadmin.net
 --
 -- Host: localhost
--- Generation Time: Aug 03, 2013 at 03:06 PM
+-- Generation Time: Aug 03, 2013 at 03:25 PM
 -- Server version: 5.5.31-1
 -- PHP Version: 5.5.1-1
 
@@ -48,12 +48,29 @@ CREATE TABLE `servers` (
 -- --------------------------------------------------------
 
 --
--- Table structure for table `stanzas`
+-- Table structure for table `stanzas_iq`
 --
 
-CREATE TABLE `stanzas` (
+CREATE TABLE `stanzas_iq` (
   `id` varchar(30) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT 'Stanza ID',
-  `name` enum('presence','message','iq') CHARACTER SET ascii DEFAULT NULL COMMENT 'Stanza name',
+  `sender` varchar(48) CHARACTER SET ascii NOT NULL COMMENT 'From',
+  `recipient` varchar(48) CHARACTER SET ascii NOT NULL COMMENT 'To',
+  `type` varchar(15) CHARACTER SET ascii DEFAULT NULL COMMENT 'Stanza type',
+  `content` mediumblob NOT NULL COMMENT 'Stanza content',
+  `timestamp` bigint(20) unsigned NOT NULL COMMENT 'Stanza timestamp',
+  `expire_timestamp` datetime DEFAULT NULL COMMENT 'Stanza expiration timestamp',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `key` (`sender`,`recipient`,`type`)
+) ENGINE=MyISAM DEFAULT CHARSET=utf8 COLLATE=utf8_bin COMMENT='Pending stanzas (iq)';
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `stanzas_message`
+--
+
+CREATE TABLE `stanzas_message` (
+  `id` varchar(30) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT 'Stanza ID',
   `sender` varchar(48) CHARACTER SET ascii NOT NULL COMMENT 'From',
   `recipient` varchar(48) CHARACTER SET ascii NOT NULL COMMENT 'To',
   `type` varchar(15) CHARACTER SET ascii DEFAULT NULL COMMENT 'Stanza type',
@@ -61,7 +78,25 @@ CREATE TABLE `stanzas` (
   `timestamp` bigint(20) unsigned NOT NULL COMMENT 'Stanza timestamp',
   `expire_timestamp` datetime DEFAULT NULL COMMENT 'Stanza expiration timestamp',
   PRIMARY KEY (`id`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8 COLLATE=utf8_bin COMMENT='Pending stanzas';
+) ENGINE=MyISAM DEFAULT CHARSET=utf8 COLLATE=utf8_bin COMMENT='Pending stanzas (message)';
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `stanzas_presence`
+--
+
+CREATE TABLE `stanzas_presence` (
+  `id` varchar(30) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT 'Stanza ID',
+  `sender` varchar(48) CHARACTER SET ascii NOT NULL COMMENT 'From',
+  `recipient` varchar(48) CHARACTER SET ascii NOT NULL COMMENT 'To',
+  `type` varchar(15) CHARACTER SET ascii DEFAULT NULL COMMENT 'Stanza type',
+  `content` mediumblob NOT NULL COMMENT 'Stanza content',
+  `timestamp` bigint(20) unsigned NOT NULL COMMENT 'Stanza timestamp',
+  `expire_timestamp` datetime DEFAULT NULL COMMENT 'Stanza expiration timestamp',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `key` (`sender`,`recipient`,`type`)
+) ENGINE=MyISAM DEFAULT CHARSET=utf8 COLLATE=utf8_bin COMMENT='Pending stanzas (presence)';
 
 -- --------------------------------------------------------
 

@@ -642,7 +642,7 @@ class MessageHandler(XMPPHandler):
         if msgId:
             try:
                 if stanza['to'] == self.parent.servername:
-                    self.parent.message_offline_delete(msgId)
+                    self.parent.message_offline_delete(msgId, stanza.name)
             except:
                 traceback.print_exc()
 
@@ -714,7 +714,7 @@ class MessageHandler(XMPPHandler):
                         if chat_msg and received:
                             # delete the received message
                             # TODO safe delete with sender/recipient
-                            self.parent.message_offline_delete(received['id'])
+                            self.parent.message_offline_delete(received['id'], stanza.name)
 
                         stamp = time.time()
 
@@ -779,7 +779,7 @@ class MessageHandler(XMPPHandler):
                         if sender_host != self.parent.servername:
                             log.debug("remote server now has responsibility for message %s - deleting" % (r_sent['id'], ))
                             # TODO safe delete with sender/recipient
-                            self.parent.message_offline_delete(r_sent['id'])
+                            self.parent.message_offline_delete(r_sent['id'], stanza.name)
 
                 else:
                     log.debug("stanza is not our concern or is an error")
@@ -1036,7 +1036,7 @@ class C2SComponent(xmlstream2.SocketComponent):
                     Otherwise just delete the message immediately.
                     """
                     if not xmlstream2.extract_receipt(msg['stanza'], 'request'):
-                        self.message_offline_delete(msg['id'])
+                        self.message_offline_delete(msg['id'], msg['stanza'].name)
                 except:
                     log.debug("offline message delivery failed (%s)" % (msg['id'], ))
                     traceback.print_exc()
@@ -1161,11 +1161,11 @@ class C2SComponent(xmlstream2.SocketComponent):
             _jid.host = self.servername
             return _jid
 
-    def message_offline_delete(self, stanzaId, sender=None, recipient=None):
+    def message_offline_delete(self, stanzaId, stanzaName, sender=None, recipient=None):
         """
         Deletes a message from offline storage.
         """
-        return self.stanzadb.delete(stanzaId, sender, recipient)
+        return self.stanzadb.delete(stanzaId, stanzaName, sender, recipient)
 
     def message_offline_store(self, stanza, delayed=False, reuseId=None):
         """
