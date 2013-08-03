@@ -170,7 +170,7 @@ class MySQLStanzaStorage(StanzaStorage):
                 dlist.append(d)
         return defer.gatherResults(dlist)
 
-    def store(self, stanza, network, delayed=False, reuseId=None):
+    def store(self, stanza, network, delayed=False, reuseId=None, expire=None):
         receipt = xmlstream2.extract_receipt(stanza, 'request')
         if not receipt:
             if reuseId is not None:
@@ -185,12 +185,14 @@ class MySQLStanzaStorage(StanzaStorage):
 
         if delayed:
             # delay our call
-            self._pending_offline[_id] = (reactor.callLater(self.OFFLINE_STORE_DELAY, self._store, stanza=stanza, network=network, _id=_id), stanza, (network, _id))
+            self._pending_offline[_id] = (reactor.callLater(self.OFFLINE_STORE_DELAY, self._store,
+                stanza=stanza, network=network, _id=_id, expire=expire),
+                    stanza, (network, _id, expire))
             return _id
         else:
-            return self._store(stanza, network, _id)
+            return self._store(stanza, network, _id, expire)
 
-    def _store(self, stanza, network, _id):
+    def _store(self, stanza, network, _id, expire):
         # remove ourselves from pending
         if not self._exiting:
             try:
@@ -232,7 +234,7 @@ class MySQLStanzaStorage(StanzaStorage):
 
         log.debug("storing offline message for %s" % (stanza['to'], ))
         try:
-            d = self._do_store(stanza)
+            d = self._do_store(stanza, expire)
             if self._exiting:
                 return d
         except:
@@ -242,7 +244,7 @@ class MySQLStanzaStorage(StanzaStorage):
 
         return stanza['id']
 
-    def _do_store(self, stanza):
+    def _do_store(self, stanza, expire=None):
         global dbpool
         receipt = xmlstream2.extract_receipt(stanza, 'request')
         if receipt:
@@ -257,8 +259,9 @@ class MySQLStanzaStorage(StanzaStorage):
             util.jid_to_userid(jid.JID(stanza['to'])),
             stanza.toXml().encode('utf-8').decode('utf-8'),
             int(time.time()*1e3),
+            expire
         )
-        return dbpool.runOperation('INSERT INTO stanzas (id, sender, recipient, content, timestamp) VALUES(?, ?, ?, ?, ?)', args)
+        return dbpool.runOperation('INSERT INTO stanzas (id, sender, recipient, content, timestamp, expire) VALUES(?, ?, ?, ?, ?, ?)', args)
 
     def _cancel_pending(self, stanzaId):
         if stanzaId in self._pending_offline:
@@ -285,11 +288,15 @@ class MySQLStanzaStorage(StanzaStorage):
     def get_by_recipient(self, recipient):
         global dbpool
         def _translate(tx, recipient, out):
-            tx.execute('SELECT id, timestamp, content FROM stanzas WHERE recipient = ? ORDER BY timestamp', (recipient.user, ))
+            tx.execute('SELECT id, timestamp, content, expire FROM stanzas WHERE recipient = ? ORDER BY timestamp', (recipient.user, ))
             data = tx.fetchall()
             for row in data:
                 stanzaId = str(row[0])
-                d = { 'id': stanzaId, 'timestamp': datetime.datetime.utcfromtimestamp(row[1] / 1e3) }
+                d = {
+                     'id': stanzaId,
+                     'timestamp': datetime.datetime.utcfromtimestamp(row[1] / 1e3),
+                     'expire': datetime.datetime.utcfromtimestamp(row[3])
+                }
                 d['stanza'] = generic.parseXml(row[2].decode('utf-8').encode('utf-8'))
 
                 """

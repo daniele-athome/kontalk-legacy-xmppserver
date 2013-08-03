@@ -1,11 +1,11 @@
 -- phpMyAdmin SQL Dump
--- version 4.0.3deb1
+-- version 4.0.4.2deb1
 -- http://www.phpmyadmin.net
 --
 -- Host: localhost
--- Generation Time: Jun 23, 2013 at 03:31 PM
+-- Generation Time: Aug 03, 2013 at 02:22 PM
 -- Server version: 5.5.31-1
--- PHP Version: 5.4.4-15
+-- PHP Version: 5.5.1-1
 
 SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
 SET time_zone = "+00:00";
@@ -57,6 +57,7 @@ CREATE TABLE `stanzas` (
   `recipient` varchar(48) CHARACTER SET ascii NOT NULL COMMENT 'To',
   `content` mediumblob NOT NULL COMMENT 'Stanza content',
   `timestamp` bigint(20) unsigned NOT NULL COMMENT 'Stanza timestamp',
+  `expire_timestamp` datetime DEFAULT NULL COMMENT 'Stanza expiration timestamp',
   PRIMARY KEY (`id`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8 COLLATE=utf8_bin COMMENT='Pending stanzas';
 
