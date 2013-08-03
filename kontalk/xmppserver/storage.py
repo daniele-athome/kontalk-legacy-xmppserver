@@ -263,8 +263,13 @@ class MySQLStanzaStorage(StanzaStorage):
             int(time.time()*1e3),
             expire
         )
-        return dbpool.runOperation('INSERT INTO stanzas_%s (id, sender, recipient, type, content, timestamp, expire_timestamp) VALUES(?, ?, ?, ?, ?, ?, ?)'
-                                   % (stanza.name, ), args)
+        # for presence we want to overwrite old requests
+        if stanza.name == 'presence':
+            op = 'REPLACE'
+        else:
+            op = 'INSERT'
+        return dbpool.runOperation('%s INTO stanzas_%s (id, sender, recipient, type, content, timestamp, expire_timestamp) VALUES(?, ?, ?, ?, ?, ?, ?)'
+                                   % (op, stanza.name, ), args)
 
     def _cancel_pending(self, stanzaId):
         if stanzaId in self._pending_offline:
