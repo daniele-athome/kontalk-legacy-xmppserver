@@ -255,13 +255,15 @@ class MySQLStanzaStorage(StanzaStorage):
             msgId = stanza['id']
         args = (
             msgId,
+            stanza.name,
             util.jid_to_userid(jid.JID(stanza['from'])),
             util.jid_to_userid(jid.JID(stanza['to'])),
+            stanza.getAttribute('type'),
             stanza.toXml().encode('utf-8').decode('utf-8'),
             int(time.time()*1e3),
             expire
         )
-        return dbpool.runOperation('INSERT INTO stanzas (id, sender, recipient, content, timestamp, expire) VALUES(?, ?, ?, ?, ?, ?)', args)
+        return dbpool.runOperation('INSERT INTO stanzas (id, name, sender, recipient, type, content, timestamp, expire_timestamp) VALUES(?, ?, ?, ?, ?, ?, ?, ?)', args)
 
     def _cancel_pending(self, stanzaId):
         if stanzaId in self._pending_offline:
@@ -288,7 +290,7 @@ class MySQLStanzaStorage(StanzaStorage):
     def get_by_recipient(self, recipient):
         global dbpool
         def _translate(tx, recipient, out):
-            tx.execute('SELECT id, timestamp, content, expire FROM stanzas WHERE recipient = ? ORDER BY timestamp', (recipient.user, ))
+            tx.execute('SELECT id, timestamp, content, expire_timestamp FROM stanzas WHERE recipient = ? ORDER BY timestamp', (recipient.user, ))
             data = tx.fetchall()
             for row in data:
                 stanzaId = str(row[0])

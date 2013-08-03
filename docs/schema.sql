@@ -3,7 +3,7 @@
 -- http://www.phpmyadmin.net
 --
 -- Host: localhost
--- Generation Time: Aug 03, 2013 at 02:22 PM
+-- Generation Time: Aug 03, 2013 at 03:06 PM
 -- Server version: 5.5.31-1
 -- PHP Version: 5.5.1-1
 
@@ -53,8 +53,10 @@ CREATE TABLE `servers` (
 
 CREATE TABLE `stanzas` (
   `id` varchar(30) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT 'Stanza ID',
+  `name` enum('presence','message','iq') CHARACTER SET ascii DEFAULT NULL COMMENT 'Stanza name',
   `sender` varchar(48) CHARACTER SET ascii NOT NULL COMMENT 'From',
   `recipient` varchar(48) CHARACTER SET ascii NOT NULL COMMENT 'To',
+  `type` varchar(15) CHARACTER SET ascii DEFAULT NULL COMMENT 'Stanza type',
   `content` mediumblob NOT NULL COMMENT 'Stanza content',
   `timestamp` bigint(20) unsigned NOT NULL COMMENT 'Stanza timestamp',
   `expire_timestamp` datetime DEFAULT NULL COMMENT 'Stanza expiration timestamp',
