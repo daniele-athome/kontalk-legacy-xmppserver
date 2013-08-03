@@ -326,12 +326,36 @@ class MessageHandler(XMPPHandler):
 
     def message(self, stanza):
         if not stanza.consumed:
+            sender_user = util.jid_user(stanza['from'])
+
             # no destination - use sender bare JID
             if not stanza.hasAttribute('to'):
-                stanza['to'] = jid.JID(stanza['from']).userhost()
+                to = jid.JID(stanza['from']);
+                to_user = to.user
+                stanza['to'] = to.userhost()
+            else:
+                to_user = util.jid_user(stanza['to'])
 
-            # send to router (without implicitly consuming)
-            self.parent.send(stanza, force_delivery=True)
+            try:
+                # servers are allowed to subscribe to send messages
+                allowed = not sender_user or self.parent.keyring.user_allowed(sender_user, to_user)
+            except keyring.KeyNotFoundException:
+                allowed = self.parent.config['allow_no_key']
+
+            if allowed:
+                # send to router (without implicitly consuming)
+                self.parent.send(stanza, force_delivery=True)
+            else:
+                log.debug("not allowed to send messages, sending fake response to %s" % (stanza['to'], ))
+                if stanza.getAttribute('type') == 'chat' and xmlstream2.extract_receipt(stanza, 'request'):
+                    self.send_fake_receipt(stanza)
+
+    def send_fake_receipt(self, stanza):
+        """Sends back a fake sent receipt, while silently discard the message."""
+        msg = xmlstream2.toResponse(stanza, stanza['type'])
+        r = msg.addElement((xmlstream2.NS_XMPP_SERVER_RECEIPTS, 'sent'))
+        r['id'] = util.rand_str(30, util.CHARSBOX_AZN_LOWERCASE)
+        self.parent.send(msg)
 
 
 class PresenceStub(object):
