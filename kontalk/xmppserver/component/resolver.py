@@ -197,7 +197,13 @@ class IQHandler(XMPPHandler):
             probes =  []
             for item in _items:
                 itemJid = jid.internJID(item['jid'])
-                if self.parent.keyring.user_allowed(requester, itemJid.user):
+
+                try:
+                    allowed = self.parent.keyring.user_allowed(requester, itemJid.user)
+                except keyring.KeyNotFoundException:
+                    allowed = self.parent.config['allow_no_key']
+
+                if allowed:
                     entry = self.parent.cache.lookup(itemJid)
                     if entry:
                         item = roster.addElement((None, 'item'))
