@@ -164,6 +164,7 @@ class Keyring:
         @return key fingerprint on success, None otherwise
         @raise KeyNotFoundException: if sender or recipient key is not registered
         """
+
         # retrieve the requested key
         uid = str('%s@%s' % (sender, self.network))
         try:
@@ -172,6 +173,10 @@ class Keyring:
             raise KeyNotFoundException(sender)
 
         if key:
+            # we are looking to ourselves!
+            if sender == recipient:
+                return key.subkeys[0].fpr
+
             # check for a signature
             signed = False
             try:
