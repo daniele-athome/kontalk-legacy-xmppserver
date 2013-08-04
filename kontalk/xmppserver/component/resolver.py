@@ -1120,6 +1120,6 @@ class Resolver(xmlstream2.SocketComponent):
         (user@kontalk.net).
         """
         # TODO ehm :D
-        if _jid.host == self.servername:
+        if _jid.host == self.servername or _jid.host in self.keyring.hostlist():
             return jid.JID(tuple=(_jid.user, self.network, _jid.resource))
         return _jid
