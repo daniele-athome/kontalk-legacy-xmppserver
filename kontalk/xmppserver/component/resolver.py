@@ -192,15 +192,18 @@ class IQHandler(XMPPHandler):
             stanza.consumed = True
             response = xmlstream2.toResponse(stanza, 'result')
             roster = response.addElement((xmlstream2.NS_IQ_ROSTER, 'query'))
+            requester = util.jid_user(stanza['from'])
 
             probes =  []
             for item in _items:
-                entry = self.parent.cache.lookup(jid.internJID(item['jid']))
-                if entry:
-                    item = roster.addElement((None, 'item'))
-                    item['jid'] = self.parent.translateJID(entry.jid).userhost()
+                itemJid = jid.internJID(item['jid'])
+                if self.parent.keyring.user_allowed(requester, itemJid.user):
+                    entry = self.parent.cache.lookup(itemJid)
+                    if entry:
+                        item = roster.addElement((None, 'item'))
+                        item['jid'] = self.parent.translateJID(entry.jid).userhost()
 
-                    probes.append(entry.presence())
+                        probes.append(entry.presence())
 
             self.send(response)
 
@@ -330,7 +333,7 @@ class MessageHandler(XMPPHandler):
 
             # no destination - use sender bare JID
             if not stanza.hasAttribute('to'):
-                to = jid.JID(stanza['from']);
+                to = jid.JID(stanza['from'])
                 to_user = to.user
                 stanza['to'] = to.userhost()
             else:
