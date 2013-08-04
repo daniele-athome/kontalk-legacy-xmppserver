@@ -628,7 +628,7 @@ class C2SManager(xmlstream2.StreamManager):
             if stanza.received:
                 # delete the received message
                 # TODO safe delete with sender/recipient
-                self.router.message_offline_delete(received['id'])
+                self.router.message_offline_delete(received['id'], stanza.name)
 
         self.handle(stanza)
 
