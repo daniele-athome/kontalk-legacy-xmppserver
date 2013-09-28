@@ -275,6 +275,7 @@ class XMPPListenAuthenticator(xmlstream.ListenAuthenticator):
 
         for init in remove:
             log.debug("removing initializer %r" % (init, ))
+            init.deinitialize()
             self.xmlstream.initializers.remove(init)
 
         log.debug("initializers=%r" % (self.xmlstream.initializers, ))

@@ -19,6 +19,8 @@
 """
 
 
+import base64
+
 from twisted.internet import reactor
 from twisted.words.protocols.jabber import error, jid, component
 from twisted.words.protocols.jabber.xmlstream import XMPPHandler
@@ -321,7 +323,7 @@ class IQHandler(XMPPHandler):
             fn=self.parent.forward, componentfn=self.last_activity)
         self.xmlstream.addObserver("/iq/query[@xmlns='%s']" % (xmlstream2.NS_IQ_VERSION), self.forward_check, 100,
             fn=self.parent.forward, componentfn=self.version)
-        self.xmlstream.addObserver("/iq/query[@xmlns='%s']" % (xmlstream2.NS_IQ_REGISTER), self.register, 100)
+        self.xmlstream.addObserver("/iq[@type='set']/query[@xmlns='%s']" % (xmlstream2.NS_IQ_REGISTER), self.register, 100)
         self.xmlstream.addObserver("/iq[@type='result']", self.parent.forward, 100)
         self.xmlstream.addObserver("/iq[@type='set']/vcard[@xmlns='%s']" % (xmlstream2.NS_XMPP_VCARD4, ), self.vcard_set, 100)
         self.xmlstream.addObserver("/iq[@type='get']/vcard[@xmlns='%s']" % (xmlstream2.NS_XMPP_VCARD4, ), self.vcard_get, 100)
@@ -363,17 +365,45 @@ class IQHandler(XMPPHandler):
         response.addChild(query)
         self.send(response)
 
-    # TODO this should be an initializer
     def register(self, stanza):
+        """This is actually used for key regeneration."""
         if not self.parent.router.registration:
             return self.parent.error(stanza)
 
-        log.debug("client requested registration: %s" % (stanza.toXml(), ))
+        log.debug("client requested key regeneration: %s" % (stanza.toXml(), ))
         stanza.consumed = True
-        if stanza['type'] == 'get':
-            self.parent.router.registration.request(self.parent, stanza)
-        elif stanza['type'] == 'set':
-            self.parent.router.registration.register(self.parent, stanza)
+        fields = stanza.query.x.elements(uri='jabber:x:data', name='field')
+        var_pkey = None
+
+        for f in fields:
+            if f['var'] == 'publickey':
+                var_pkey = f
+
+        if var_pkey:
+            # verify and link key
+            pkey = base64.b64decode(var_pkey.value.__str__().encode('utf-8'))
+            signed_pkey = self.parent.link_public_key(pkey, self.parent.xmlstream.otherEntity.user)
+            if signed_pkey:
+                iq = xmlstream2.toResponse(stanza, 'result')
+                query = iq.addElement((xmlstream2.NS_IQ_REGISTER, 'query'))
+
+                form = query.addElement(('jabber:x:data', 'x'))
+                form['type'] = 'form'
+
+                hidden = form.addElement((None, 'field'))
+                hidden['type'] = 'hidden'
+                hidden['var'] = 'FORM_TYPE'
+                hidden.addElement((None, 'value'), content='http://kontalk.org/protocol/register#key')
+
+                signed = form.addElement((None, 'field'))
+                signed['type'] = 'text-single'
+                signed['label'] = 'Signed public key'
+                signed['var'] = 'publickey'
+                signed.addElement((None, 'value'), content=base64.b64encode(signed_pkey))
+
+                self.parent.send(iq, True)
+
+        # TODO handle errors
 
     def vcard_set(self, stanza):
         # let c2s handle this
