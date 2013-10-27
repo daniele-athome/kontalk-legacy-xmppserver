@@ -27,6 +27,9 @@ from twisted.python import failure
 from twisted.internet import defer
 from twisted.words.protocols.jabber import jid, sasl
 
+from gnutls.crypto import OpenPGPCertificate
+from OpenSSL.crypto import X509
+
 import xmlstream2, log, util, tls
 
 
@@ -55,8 +58,14 @@ class KontalkCertificate(object):
         self.cert = cert
 
     def check(self, fingerprint, keyring):
-        uid = self.cert.uid(0)
-        return jid.JID(uid.email)
+        log.debug("CERT: %s" % (self.cert, ))
+        if isinstance(self.cert, OpenPGPCertificate):
+            uid = self.cert.uid(0)
+            return jid.JID(uid.email)
+        elif isinstance(self.cert, X509):
+            print self.cert.get_subject()
+
+            return jid.JID(self.cert.get_subject().commonName)
 
 
 class IKontalkToken(credentials.ICredentials):

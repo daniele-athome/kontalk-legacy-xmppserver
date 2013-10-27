@@ -20,6 +20,14 @@ try:
 except ImportError:
     from StringIO import StringIO as BytesIO
 
+try:
+    from OpenSSL import crypto
+    from twisted.internet import ssl
+except ImportError:
+    ssl = None
+if ssl and not ssl.supported:
+    ssl = None
+
 import base64
 
 from kontalk.xmppserver import util, xmlstream2
@@ -47,6 +55,18 @@ def user_token(userid, fp):
     token = cipher.read()
     return base64.b64encode(token)
 
+
+class KontalkExternalMechanism(object):
+    """Implements the external SASL authentication mechanism."""
+    implements(sasl_mechanisms.ISASLMechanism)
+
+    name = 'EXTERNAL'
+
+    def __init__(self, data='='):
+        self.data = data
+
+    def getInitialResponse(self):
+        return self.data
 
 
 class KontalkTokenMechanism(object):
@@ -79,6 +99,8 @@ class KontalkSASLInitiatingInitializer(xmlstream.BaseFeatureInitiatingInitialize
         mechanisms = sasl.get_mechanisms(self.xmlstream)
         if token is not None and 'KONTALK-TOKEN' in mechanisms:
             self.mechanism = KontalkTokenMechanism(token)
+        elif 'EXTERNAL' in mechanisms:
+            self.mechanism = KontalkExternalMechanism()
 
         if not self.mechanism:
             raise sasl.SASLNoAcceptableMechanism()
@@ -136,15 +158,112 @@ class KontalkSASLInitiatingInitializer(xmlstream.BaseFeatureInitiatingInitialize
         self._deferred.errback(sasl.SASLAuthError(condition))
 
 
+class TLSInitiatingInitializer(xmlstream.BaseFeatureInitiatingInitializer):
+    """
+    TLS stream initializer for the initiating entity.
+
+    It is strongly required to include this initializer in the list of
+    initializers for an XMPP stream. By default it will try to negotiate TLS.
+    An XMPP server may indicate that TLS is required. If TLS is not desired,
+    set the C{wanted} attribute to False instead of removing it from the list
+    of initializers, so a proper exception L{TLSRequired} can be raised.
+
+    @cvar wanted: indicates if TLS negotiation is wanted.
+    @type wanted: C{bool}
+    """
+
+    feature = (xmlstream.NS_XMPP_TLS, 'starttls')
+    wanted = True
+    _deferred = None
+
+    def onProceed(self, obj):
+        """
+        Proceed with TLS negotiation and reset the XML stream.
+        """
+
+        self.xmlstream.removeObserver('/failure', self.onFailure)
+        cert = self.xmlstream.authenticator.certificate
+        key = self.xmlstream.authenticator.privkey
+        print "using certificate data: %s" % (cert.get_subject(), )
+        ctx = ssl.CertificateOptions(privateKey=key, certificate=cert)
+        self.xmlstream.transport.startTLS(ctx)
+        self.xmlstream.reset()
+        self.xmlstream.sendHeader()
+        self._deferred.callback(xmlstream.Reset)
+
+
+    def onFailure(self, obj):
+        self.xmlstream.removeObserver('/proceed', self.onProceed)
+        self._deferred.errback(xmlstream.TLSFailed())
+
+
+    def start(self):
+        """
+        Start TLS negotiation.
+
+        This checks if the receiving entity requires TLS, the SSL library is
+        available and uses the C{required} and C{wanted} instance variables to
+        determine what to do in the various different cases.
+
+        For example, if the SSL library is not available, and wanted and
+        required by the user, it raises an exception. However if it is not
+        required by both parties, initialization silently succeeds, moving
+        on to the next step.
+        """
+        if self.wanted:
+            if ssl is None:
+                if self.required:
+                    return defer.fail(xmlstream.TLSNotSupported())
+                else:
+                    return defer.succeed(None)
+            else:
+                pass
+        elif self.xmlstream.features[self.feature].required:
+            return defer.fail(xmlstream.TLSRequired())
+        else:
+            return defer.succeed(None)
+
+        self._deferred = defer.Deferred()
+        self.xmlstream.addOnetimeObserver("/proceed", self.onProceed)
+        self.xmlstream.addOnetimeObserver("/failure", self.onFailure)
+        self.xmlstream.send(domish.Element((xmlstream.NS_XMPP_TLS, "starttls")))
+        return self._deferred
+
+
 class KontalkXMPPAuthenticator(xmlstream.ConnectAuthenticator):
     namespace = 'jabber:client'
 
-    def __init__(self, network, token, fingerprint):
+    def __init__(self, network, token, fingerprint, sasl_external=False, certfile=None, keyfile=None):
         xmlstream.ConnectAuthenticator.__init__(self, network)
         if fingerprint:
             self.fingerprint = fingerprint
         else:
             self.token = token
+
+        self.sasl_external = sasl_external
+
+        if certfile:
+            cert = open(certfile, 'rb')
+            cert_buf = cert.read()
+            cert.close()
+        else:
+            cert_buf = None
+
+        if keyfile:
+            cert = open(keyfile, 'rb')
+            key_buf = cert.read()
+            cert.close()
+        else:
+            key_buf = None
+
+        if key_buf and cert_buf:
+            pkey = crypto.load_privatekey(crypto.FILETYPE_PEM, key_buf)
+            cert = crypto.load_certificate(crypto.FILETYPE_PEM, cert_buf)
+        else:
+            pkey = cert = None
+
+        self.certificate = cert
+        self.privkey = pkey
         # this is for making twisted bits not complaining
         self.jid = jid.JID('anon@example.com')
 
@@ -161,9 +280,9 @@ class KontalkXMPPAuthenticator(xmlstream.ConnectAuthenticator):
         xmlstream.ConnectAuthenticator.associateWithStream(self, xs)
 
         xs.initializers = [CheckVersionInitializer(xs)]
-        if self.token:
+        if self.token or self.sasl_external:
             inits = [
-                (xmlstream.TLSInitiatingInitializer, False),
+                (TLSInitiatingInitializer, False),
                 (KontalkSASLInitiatingInitializer, True),
                 (BindInitializer, True),
                 (SessionInitializer, True),
@@ -183,7 +302,7 @@ class Client(object):
 
     def __init__(self, config, handler):
         self.config = config
-        if config['identity']:
+        if config['identity'] and not config['sasl_external']:
             self.token = user_token(config['identity'], config['fingerprint'])
         else:
             self.token = None
@@ -197,7 +316,8 @@ class Client(object):
         self.handler = handler
         self.handler.client = self
 
-        a = KontalkXMPPAuthenticator(config['network'], self.token, self.fingerprint)
+        a = KontalkXMPPAuthenticator(config['network'], self.token, self.fingerprint,
+            config['sasl_external'], config['ssl_cert'], config['ssl_key'])
         f = xmlstream.XmlStreamFactory(a)
         f.addBootstrap(xmlstream.STREAM_CONNECTED_EVENT, self.connected)
         f.addBootstrap(xmlstream.STREAM_END_EVENT, self.disconnected)

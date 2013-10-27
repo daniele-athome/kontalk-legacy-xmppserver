@@ -29,6 +29,8 @@ from twisted.words.xish import domish
 
 from wokkel import component
 
+from OpenSSL import SSL
+
 from zope.interface.declarations import implements
 from zope.interface.interface import Attribute, Interface
 
@@ -136,6 +138,47 @@ class IReceivingInitializer(ijabber.IInitializer):
         """
         Clean up initialize if this initializer is skipped
         """
+
+class MyOpenSSLCertificateOptions(object):
+
+    _context = None
+    # Older versions of PyOpenSSL didn't provide OP_ALL.  Fudge it here, just in case.
+    _OP_ALL = getattr(SSL, 'OP_ALL', 0x0000FFFF)
+    method = SSL.TLSv1_METHOD
+
+    def __init__(self, privateKey=None, certificate=None, verifyCallback=None, enableSingleUseKeys=True):
+        self.privateKey = privateKey
+        self.certificate = certificate
+        self._verifyCallback = verifyCallback
+        self.enableSingleUseKeys = enableSingleUseKeys
+
+    def getContext(self):
+        """Return a SSL.Context object.
+        """
+        if self._context is None:
+            self._context = self._makeContext()
+        return self._context
+
+
+    def _makeContext(self):
+        ctx = SSL.Context(self.method)
+
+        if self.certificate is not None and self.privateKey is not None:
+            ctx.use_certificate(self.certificate)
+            ctx.use_privatekey(self.privateKey)
+            # Sanity check
+            ctx.check_privatekey()
+
+        verifyFlags = SSL.VERIFY_NONE
+        if self._verifyCallback:
+            verifyFlags = SSL.VERIFY_PEER
+
+            ctx.set_verify(verifyFlags, self._verifyCallback)
+
+        if self.enableSingleUseKeys:
+            ctx.set_options(SSL.OP_SINGLE_DH_USE)
+
+        return ctx
 
 
 class BaseFeatureReceivingInitializer(object):
@@ -438,7 +481,7 @@ class SASLReceivingInitializer(BaseFeatureReceivingInitializer):
     external = False
 
     def feature(self):
-        self.external = tls.isTLS(self.xmlstream)
+        self.external = hasattr(self.xmlstream.transport, 'getPeerCertificate') or tls.isTLS(self.xmlstream)
 
         feature = domish.Element((sasl.NS_XMPP_SASL, 'mechanisms'), defaultUri=sasl.NS_XMPP_SASL)
         if self.external:
@@ -487,6 +530,10 @@ class SASLReceivingInitializer(BaseFeatureReceivingInitializer):
                 return
 
         response = str(element)
+
+        # HACK this a workaround for naughty clients
+        if mechanism == 'EXTERNAL' and not response:
+            response = '='
 
         if response:
             # TODO base64 might fail - UNHANDLED ERROR

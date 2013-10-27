@@ -80,7 +80,11 @@ class XMPPServerFactory(xish_xmlstream.XmlStreamFactoryMixin, ServerFactory):
 
         pkey = crypto.load_privatekey(crypto.FILETYPE_PEM, key_buf)
         cert = crypto.load_certificate(crypto.FILETYPE_PEM, cert_buf)
-        self.tls_ctx = ssl.CertificateOptions(privateKey=pkey, certificate=cert)
+        self.tls_ctx = xmlstream2.MyOpenSSLCertificateOptions(pkey, cert, self._sslVerify)
+
+    def _sslVerify(self, conn, cert, errno, depth, preverify_ok):
+        log.debug("VERIFICATION %s %s" % (preverify_ok, cert.get_subject()))
+        return True
 
     def buildProtocol(self, addr):
         xs = self.protocol(XMPPListenAuthenticator(self.network))
