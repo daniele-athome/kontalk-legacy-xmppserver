@@ -851,6 +851,13 @@ class C2SComponent(xmlstream2.SocketComponent):
         if 'ssl_key' in self.config and 'ssl_cert' in self.config:
             self.sfactory.loadPEM(self.config['ssl_cert'], self.config['ssl_key'])
 
+        services = []
+
+        if 'plain' in self.config['bind']:
+            plain_svc = strports.service('tcp:' + str(self.config['bind']['plain'][1]) +
+                ':interface=' + str(self.config['bind']['plain'][0]), self.sfactory)
+            services.append(plain_svc)
+
         if 'tls' in self.config['bind']:
             cert = OpenPGPCertificate(open(self.config['pgp_cert']).read())
             key = OpenPGPPrivateKey(open(self.config['pgp_key']).read())
@@ -865,10 +872,9 @@ class C2SComponent(xmlstream2.SocketComponent):
                 self.sfactory)
             tls_svc._raiseSynchronously = True
 
-        plain_svc = strports.service('tcp:' + str(self.config['bind']['plain'][1]) +
-            ':interface=' + str(self.config['bind']['plain'][0]), self.sfactory)
+            services.append(tls_svc)
 
-        return [plain_svc, tls_svc]
+        return services
 
     def startService(self):
         component.Component.startService(self)
