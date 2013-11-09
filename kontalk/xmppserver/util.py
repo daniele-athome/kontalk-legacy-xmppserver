@@ -152,3 +152,11 @@ class SimpleReceiver(protocol.Protocol):
             self.d.callback((self.code, self.buf))
         else:
             self.d.errback(reason)
+
+def bitlist_to_chars(bl):
+    """See http://stackoverflow.com/a/10238101/1045199"""
+    bi = iter(bl)
+    _bytes = zip(*(bi,) * 8)
+    shifts = (7, 6, 5, 4, 3, 2, 1, 0)
+    for byte in _bytes:
+        yield chr(sum(bit << s for bit, s in zip(byte, shifts)))

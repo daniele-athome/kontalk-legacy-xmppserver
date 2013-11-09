@@ -23,12 +23,56 @@ import gpgme, gpgme.editutil
 
 from twisted.words.protocols.jabber import jid
 
+from OpenSSL import crypto
+from subprocess import Popen, PIPE
+from pyasn1.codec.der import decoder
+
 try:
     from io import BytesIO
 except ImportError:
     from StringIO import StringIO as BytesIO
 
 import util, log
+
+
+def dump_publickey(cert):
+    """Ugly hack to extract the public key from a certificate."""
+    dump = crypto.dump_certificate(crypto.FILETYPE_PEM, cert)
+    p = Popen(['openssl', 'x509', '-pubkey', '-noout'], stdout=PIPE, stdin=PIPE)
+    (stdout, unused) = p.communicate(dump)
+    return stdout
+
+def convert_publickey(keydata, keyid=None):
+    """Another ugly hack to convert a PGP public key into PEM."""
+    cmd = ['openpgp2spki']
+    if keyid:
+        cmd.append(keyid)
+
+    p = Popen(cmd, stdout=PIPE, stdin=PIPE)
+    (stdout, unused) = p.communicate(keydata)
+    return stdout
+
+def verify_certificate(cert):
+    # dump public key from certificate
+    pubkey = dump_publickey(cert)
+
+    # dump custom extension from certificate
+    pubkey_ext = None
+    c = cert.get_extension_count()
+    for i in range(c):
+        ext = cert.get_extension(i)
+        if ext.get_short_name() == 'UNDEF':
+            data = ext.get_data()
+            b = decoder.decode(data)
+            pubkey_ext = ''.join(util.bitlist_to_chars(b[0]))
+
+    if pubkey and pubkey_ext:
+        # TODO keyid
+        pubkey2 = convert_publickey(pubkey_ext)
+
+        # compare public keys
+        return pubkey == pubkey2
+
 
 
 class Keyring:
@@ -410,6 +454,8 @@ class Keyring:
         try:
             # import key
             result = self.ctx.import_(BytesIO(keydata))
+            for d in dir(result):
+                print d, getattr(result, d)
             fp = str(result.imports[0][0])
             keyfp = self.ctx.get_key(fp)
 
