@@ -52,19 +52,28 @@ def convert_publickey(keydata, keyid=None):
     (stdout, unused) = p.communicate(keydata)
     return stdout
 
+def get_pgp_publickey_extension(cert):
+    """Retrieves the custom extension containing the PGP public key block."""
+    c = cert.get_extension_count()
+    for i in range(c):
+        ext = cert.get_extension(i)
+        # my god this is really s**t
+        if ext.get_short_name() == 'UNDEF':
+            data = ext.get_data()
+            b = decoder.decode(data)
+            return ''.join(util.bitlist_to_chars(b[0]))
+
 def verify_certificate(cert):
+    """
+    Verify that a certificate is signed by the same key owning the PGP public
+    key block contained in the custom X.509 extension.
+    """
+
     # dump public key from certificate
     pubkey = dump_publickey(cert)
 
     # dump custom extension from certificate
-    pubkey_ext = None
-    c = cert.get_extension_count()
-    for i in range(c):
-        ext = cert.get_extension(i)
-        if ext.get_short_name() == 'UNDEF':
-            data = ext.get_data()
-            b = decoder.decode(data)
-            pubkey_ext = ''.join(util.bitlist_to_chars(b[0]))
+    pubkey_ext = get_pgp_publickey_extension(cert)
 
     if pubkey and pubkey_ext:
         # TODO keyid
@@ -73,6 +82,7 @@ def verify_certificate(cert):
         # compare public keys
         return pubkey == pubkey2
 
+    return False
 
 
 class Keyring:

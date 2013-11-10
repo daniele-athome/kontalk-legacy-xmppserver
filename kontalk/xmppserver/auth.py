@@ -30,14 +30,14 @@ from twisted.words.protocols.jabber import jid, sasl
 from gnutls.crypto import OpenPGPCertificate
 from OpenSSL.crypto import X509
 
-import xmlstream2, log, util, tls
+import xmlstream2, log, util, tls, keyring
 
 
 class OpenPGPKontalkCredentials(tls.OpenPGPCredentials):
     """Kontalk-enhanced OpenPGP credentials."""
 
-    def __init__(self, cert, key, keyring):
-        tls.OpenPGPCredentials.__init__(self, cert, key, keyring)
+    def __init__(self, cert, key, kr):
+        tls.OpenPGPCredentials.__init__(self, cert, key, kr)
 
     def verify_callback(self, peer_cert, preverify_status=None):
         print peer_cert, preverify_status
@@ -47,7 +47,7 @@ class OpenPGPKontalkCredentials(tls.OpenPGPCredentials):
 
 class IKontalkCertificate(credentials.ICredentials):
 
-    def check(fingerprint, keyring):
+    def check(fingerprint, kr):
         pass
 
 
@@ -57,20 +57,25 @@ class KontalkCertificate(object):
     def __init__(self, cert):
         self.cert = cert
 
-    def check(self, fingerprint, keyring):
-        log.debug("CERT: %s" % (self.cert, ))
+    def check(self, fingerprint, kr):
         if isinstance(self.cert, OpenPGPCertificate):
             uid = self.cert.uid(0)
             return jid.JID(uid.email)
         elif isinstance(self.cert, X509):
-            print self.cert.get_subject()
+            keydata = keyring.get_pgp_publickey_extension(self.cert)
+            if keydata:
+                pkey = OpenPGPCertificate(keydata)
+                if pkey:
+                    uid = pkey.uid(0)
+                    if uid:
+                        return jid.JID(uid.email)
 
-            return jid.JID(self.cert.get_subject().commonName)
+            return None
 
 
 class IKontalkToken(credentials.ICredentials):
 
-    def check(fingerprint, keyring):
+    def check(fingerprint, kr):
         pass
 
 
@@ -81,14 +86,14 @@ class KontalkToken(object):
         self.token = token
         self.decode_b64 = decode_b64
 
-    def check(self, fingerprint, keyring):
+    def check(self, fingerprint, kr):
         try:
             if self.decode_b64:
                 data = sasl.fromBase64(self.token)
             else:
                 data = self.token
 
-            return keyring.check_token(data)
+            return kr.check_token(data)
         except:
             # TODO logging or throw exception back
             import traceback
@@ -101,9 +106,9 @@ class AuthKontalkChecker(object):
 
     credentialInterfaces = IKontalkToken, IKontalkCertificate
 
-    def __init__(self, fingerprint, keyring):
+    def __init__(self, fingerprint, kr):
         self.fingerprint = str(fingerprint)
-        self.keyring = keyring
+        self.keyring = kr
 
     def _cbTokenValid(self, userid):
         if userid:
@@ -122,9 +127,9 @@ class AuthKontalkTokenFactory(object):
 
     scheme = 'kontalktoken'
 
-    def __init__(self, fingerprint, keyring):
+    def __init__(self, fingerprint, kr):
         self.fingerprint = fingerprint
-        self.keyring = keyring
+        self.keyring = kr
 
     def getChallenge(self, request):
         return {}
