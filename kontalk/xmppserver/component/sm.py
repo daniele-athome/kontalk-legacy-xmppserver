@@ -28,7 +28,9 @@ from twisted.words.xish import domish
 
 from wokkel import xmppim
 
-from kontalk.xmppserver import log, xmlstream2, version, util, push, upload
+from gnutls.constants import OPENPGP_FMT_RAW
+
+from kontalk.xmppserver import log, xmlstream2, version, util, push, upload, keyring
 
 
 class PresenceHandler(XMPPHandler):
@@ -64,6 +66,9 @@ class PresenceHandler(XMPPHandler):
     def presence(self, stanza):
         # store presence stanza in the stream manager
         self.parent._presence = stanza
+
+        # broadcast vcard update for public key
+        self.parent.broadcast_public_key(self.xmlstream.otherEntity.user, self.xmlstream.transport.getPeerCertificate())
 
     def initialPresence(self, stanza):
         """
@@ -798,3 +803,22 @@ class C2SManager(xmlstream2.StreamManager):
 
             # return signed public key
             return keydata
+
+    def broadcast_public_key(self, userid, cert):
+        """
+        Calls C2SComponent.broadcast_public_key from the data found in the
+        provided client certificate. It also saves the public key in the local
+        presence cache.
+        """
+
+        pkey = keyring.extract_public_key(cert)
+
+        if pkey:
+            # export raw key data
+            keydata = pkey.export(OPENPGP_FMT_RAW)
+
+            # store in local presence cache
+            self.router.presencedb.public_key(userid, keydata, pkey.fingerprint)
+
+            # broadcast the key
+            self.router.broadcast_public_key(userid, keydata)

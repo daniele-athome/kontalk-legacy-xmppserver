@@ -23,7 +23,12 @@ import gpgme, gpgme.editutil
 
 from twisted.words.protocols.jabber import jid
 
+from gnutls.crypto import OpenPGPCertificate
+from gnutls.constants import OPENPGP_FMT_RAW
+
 from OpenSSL import crypto
+from OpenSSL.crypto import X509
+
 from subprocess import Popen, PIPE
 from pyasn1.codec.der import decoder
 
@@ -62,6 +67,13 @@ def get_pgp_publickey_extension(cert):
             data = ext.get_data()
             b = decoder.decode(data)
             return ''.join(util.bitlist_to_chars(b[0]))
+
+def extract_public_key(cert):
+    if isinstance(cert, OpenPGPCertificate):
+        return cert
+    elif isinstance(cert, X509):
+        return OpenPGPCertificate(get_pgp_publickey_extension(cert), OPENPGP_FMT_RAW)
+
 
 def verify_certificate(cert):
     """
@@ -327,6 +339,8 @@ class Keyring:
 
             # import key
             result = self.ctx.import_(BytesIO(keydata))
+            for d in dir(result):
+                print d, getattr(result, d)
             fp = str(result.imports[0][0]).upper()
             key = self.ctx.get_key(fp)
 
