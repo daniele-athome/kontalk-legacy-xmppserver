@@ -74,6 +74,12 @@ def extract_public_key(cert):
     elif isinstance(cert, X509):
         return OpenPGPCertificate(get_pgp_publickey_extension(cert), OPENPGP_FMT_RAW)
 
+def convert_openpgp_from_base64(keydata):
+    if keydata.startswith('-----BEGIN PGP PUBLIC KEY BLOCK-----'):
+        start = keydata.find('\n\n')
+        end = start + 2 + keydata.find('-----END PGP PUBLIC KEY BLOCK-----')
+        if start >= 0 and end > 0:
+            return base64.b64decode(keydata[start+2:end])
 
 def verify_certificate(cert):
     """

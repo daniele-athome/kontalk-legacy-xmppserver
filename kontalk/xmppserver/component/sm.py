@@ -28,7 +28,7 @@ from twisted.words.xish import domish
 
 from wokkel import xmppim
 
-from gnutls.constants import OPENPGP_FMT_RAW
+from gnutls.constants import OPENPGP_FMT_RAW, OPENPGP_FMT_BASE64
 
 from kontalk.xmppserver import log, xmlstream2, version, util, push, upload, keyring
 
@@ -816,6 +816,11 @@ class C2SManager(xmlstream2.StreamManager):
         if pkey:
             # export raw key data
             keydata = pkey.export(OPENPGP_FMT_RAW)
+
+            # TODO workaround for GnuTLS bug (?)
+            # public key block less than 50 bytes? Impossible.
+            if len(keydata) < 50:
+                keydata = keyring.convert_openpgp_from_base64(pkey.export(OPENPGP_FMT_BASE64))
 
             # store in local presence cache
             self.router.presencedb.public_key(userid, keydata, pkey.fingerprint)
