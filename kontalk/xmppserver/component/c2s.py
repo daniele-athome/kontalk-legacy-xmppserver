@@ -694,16 +694,17 @@ class MessageHandler(XMPPHandler):
                             receipt because they are assumed to be volatile.
                             """
                             if chat_msg and not xmlstream2.has_element(stanza, xmlstream2.NS_XMPP_STORAGE, 'storage') and (receipt or received):
-                                # send message to offline storage just to be safe (delayed)
-                                keepId = self.parent.message_offline_store(stanza, delayed=True)
-
                                 """
                                 Apply generated id if we are getting a received receipt.
                                 This way stanza is received by the client with the
                                 correct id to cancel preemptive storage.
                                 """
                                 if received:
-                                    stanza['id'] = keepId
+                                    keepId = stanza['id'] = util.rand_str(30, util.CHARSBOX_AZN_LOWERCASE)
+
+                                # send message to offline storage just to be safe (delayed)
+                                keepId = self.parent.message_offline_store(stanza, delayed=True, reuseId=keepId)
+
 
                             # send message to sm only to non-negative resources
                             log.debug("sending message %s" % (stanza['id'], ))
