@@ -486,9 +486,9 @@ class SASLReceivingInitializer(BaseFeatureReceivingInitializer):
         feature = domish.Element((sasl.NS_XMPP_SASL, 'mechanisms'), defaultUri=sasl.NS_XMPP_SASL)
         if self.external:
             feature.addElement('mechanism', content='EXTERNAL')
-        else:
-            feature.addElement('mechanism', content='KONTALK-TOKEN')
-            feature.addElement('mechanism', content='PLAIN')
+
+        feature.addElement('mechanism', content='KONTALK-TOKEN')
+        feature.addElement('mechanism', content='PLAIN')
         return feature
 
     def initialize(self):
@@ -514,20 +514,15 @@ class SASLReceivingInitializer(BaseFeatureReceivingInitializer):
             return
 
         mechanism = element.getAttribute('mechanism')
-        if self.external:
-            if mechanism == 'EXTERNAL':
-                self.mechanism = ExternalMechanism(self.xmlstream.portal, self.xmlstream.transport.getPeerCertificate())
-            else:
-                self._sendFailure('invalid-mechanism')
-                return
+        if self.external and mechanism == 'EXTERNAL':
+            self.mechanism = ExternalMechanism(self.xmlstream.portal, self.xmlstream.transport.getPeerCertificate())
+        elif mechanism == 'KONTALK-TOKEN':
+            self.mechanism = KontalkTokenMechanism(self.xmlstream.portal)
+        elif mechanism == 'PLAIN':
+            self.mechanism = PlainMechanism(self.xmlstream.portal)
         else:
-            if mechanism == 'KONTALK-TOKEN':
-                self.mechanism = KontalkTokenMechanism(self.xmlstream.portal)
-            elif mechanism == 'PLAIN':
-                self.mechanism = PlainMechanism(self.xmlstream.portal)
-            else:
-                self._sendFailure('invalid-mechanism')
-                return
+            self._sendFailure('invalid-mechanism')
+            return
 
         response = str(element)
 
