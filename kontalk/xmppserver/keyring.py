@@ -77,7 +77,7 @@ def extract_public_key(cert):
 def convert_openpgp_from_base64(keydata):
     if keydata.startswith('-----BEGIN PGP PUBLIC KEY BLOCK-----'):
         start = keydata.find('\n\n')
-        end = start + 2 + keydata.find('-----END PGP PUBLIC KEY BLOCK-----')
+        end = keydata.find('-----END PGP PUBLIC KEY BLOCK-----', start + 2)
         if start >= 0 and end > 0:
             return base64.b64decode(keydata[start+2:end])
 
