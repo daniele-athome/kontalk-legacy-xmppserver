@@ -131,6 +131,11 @@ class PingHandler(XMPPHandler):
         self.xmlstream.sendStreamError(error.StreamError('connection-timeout'))
         # refuse to process any more stanza
         self.xmlstream.setDispatchFn(None)
+        # broadcast unavailable presence
+        if self.xmlstream.otherEntity is not None:
+            stanza = xmppim.UnavailablePresence()
+            stanza['from'] = self.xmlstream.otherEntity.full()
+            self.parent.forward(stanza, True)
 
     def ping(self, stanza):
         if not stanza.hasAttribute('to') or stanza['to'] == self.parent.network:
