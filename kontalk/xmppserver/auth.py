@@ -67,7 +67,7 @@ class KontalkCertificate(object):
                 pkey = OpenPGPCertificate(keydata)
                 if pkey:
                     uid = pkey.uid(0)
-                    if uid:
+                    if uid and kr.check_user_key(keydata, uid.email):
                         return jid.JID(uid.email)
 
             return None
