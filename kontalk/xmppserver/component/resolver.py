@@ -198,17 +198,18 @@ class IQHandler(XMPPHandler):
             for item in _items:
                 itemJid = jid.internJID(item['jid'])
 
-                try:
-                    allowed = self.parent.keyring.user_allowed(requester, itemJid.user)
-                except keyring.KeyNotFoundException:
-                    allowed = self.parent.config['allow_no_key']
+                # include the entry in the roster reply anyway
+                entry = self.parent.cache.lookup(itemJid)
+                if entry:
+                    item = roster.addElement((None, 'item'))
+                    item['jid'] = self.parent.translateJID(entry.jid).userhost()
 
-                if allowed:
-                    entry = self.parent.cache.lookup(itemJid)
-                    if entry:
-                        item = roster.addElement((None, 'item'))
-                        item['jid'] = self.parent.translateJID(entry.jid).userhost()
+                    try:
+                        allowed = self.parent.keyring.user_allowed(requester, itemJid.user)
+                    except keyring.KeyNotFoundException:
+                        allowed = self.parent.config['allow_no_key']
 
+                    if allowed:
                         probes.append(entry.presence())
 
             self.send(response)
