@@ -302,7 +302,7 @@ class InitialPresenceHandler(XMPPHandler):
         """
 
         def _db(presence, to, destination=None):
-            from copy import copy
+            from copy import deepcopy
             log.debug("presence: %r" % (presence, ))
             if type(presence) == list and len(presence) > 0:
 
@@ -325,7 +325,7 @@ class InitialPresenceHandler(XMPPHandler):
                                 for child in ('status', 'show', 'priority'):
                                     e = getattr(presence, child)
                                     if e:
-                                        response.addChild(copy(e))
+                                        response.addChild(deepcopy(e))
 
                                 self.send(response)
 

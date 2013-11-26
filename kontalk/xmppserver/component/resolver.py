@@ -216,12 +216,12 @@ class IQHandler(XMPPHandler):
 
             if len(probes) > 0:
                 # simulate a presence probe
-                from copy import copy
+                from copy import deepcopy
                 for presence_list in probes:
                     gid = util.rand_str(8, util.CHARSBOX_AZN_LOWERCASE)
                     i = len(presence_list)
                     for presence in presence_list:
-                        presence = copy(presence)
+                        presence = deepcopy(presence)
                         presence['to'] = stanza['from']
                         group = presence.addElement((xmlstream2.NS_XMPP_STANZA_GROUP, 'group'))
                         group['id'] = gid
@@ -682,8 +682,8 @@ class JIDCache(XMPPHandler):
             data = stub.presence()
             i = len(data)
             for x in data:
-                from copy import copy
-                presence = copy(x)
+                from copy import deepcopy
+                presence = deepcopy(x)
                 presence['to'] = sender.full()
                 if gid:
                     # FIXME this will duplicate group elements - actually in storage there should be no group element!!!
