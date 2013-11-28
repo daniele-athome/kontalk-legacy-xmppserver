@@ -603,6 +603,7 @@ class NetComponent(xmlstream2.SocketComponent):
                 self.service.initiateOutgoingStream(host)
 
         self.xmlstream.addObserver("/bind", self.consume)
+        self.xmlstream.addObserver("/presence[@type='subscribed']", self.dispatch, 200)
         self.xmlstream.addObserver("/presence", self.presence, 100)
         self.xmlstream.addObserver("/presence", self.dispatch)
         self.xmlstream.addObserver("/iq", self.dispatch)
@@ -617,22 +618,24 @@ class NetComponent(xmlstream2.SocketComponent):
         Presence broadcast from local c2s (intended for remote c2s), deliver
         also to remote resolver.
         """
-        host = util.jid_host(stanza['from'])
-        if host == self.servername:
-            """
-            Original stanza will be sent to remote c2s, which will provider
-            offline storage delivery and network conflicts.
-            """
-            self.dispatch(stanza)
 
-            """
-            Intended destination is not remote resolver, so be sure to deliver.
-            """
-            if stanza.getAttribute('destination') != self.servername:
-                # be sure to unconsume for the next dispatch
-                stanza.consumed = False
-                stanza['destination'] = self.network
-                # dispatch will handle the stanza
+        if not stanza.consumed:
+            host = util.jid_host(stanza['from'])
+            if host == self.servername:
+                """
+                Original stanza will be sent to remote c2s, which will provider
+                offline storage delivery and network conflicts.
+                """
+                self.dispatch(stanza)
+
+                """
+                Intended destination is not remote resolver, so be sure to deliver.
+                """
+                if stanza.getAttribute('destination') != self.servername:
+                    # be sure to unconsume for the next dispatch
+                    stanza.consumed = False
+                    stanza['destination'] = self.network
+                    # dispatch will handle the stanza
 
     def dispatch(self, stanza):
         """Handle incoming stanza from router to the proper server stream."""

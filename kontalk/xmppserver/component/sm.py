@@ -828,7 +828,7 @@ class C2SManager(xmlstream2.StreamManager):
                 keydata = keyring.convert_openpgp_from_base64(pkey.export(OPENPGP_FMT_BASE64))
 
             # store in local presence cache
-            self.router.presencedb.public_key(userid, keydata, pkey.fingerprint)
+            self.router.presencedb.public_key(userid, pkey.fingerprint)
 
             # broadcast the key
             self.router.broadcast_public_key(userid, keydata)

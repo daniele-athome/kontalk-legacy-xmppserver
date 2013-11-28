@@ -401,11 +401,11 @@ class MySQLPresenceStorage(PresenceStorage):
                     'status': base64.b64decode(data[2]).decode('utf-8') if data[2] is not None else '',
                     'show': data[3],
                     'priority': data[4],
-                    'publickey': data[5],
+                    'fingerprint': data[5],
                 })
             return out
 
-        query = 'SELECT `userid`, `timestamp`, `status`, `show`, `priority`, `publickey` FROM presence WHERE `timestamp` IS NOT NULL'
+        query = 'SELECT `userid`, `timestamp`, `status`, `show`, `priority`, `fingerprint` FROM presence WHERE `timestamp` IS NOT NULL'
         return dbpool.runInteraction(_fetchall, query)
 
     def presence(self, stanza):
@@ -433,10 +433,9 @@ class MySQLPresenceStorage(PresenceStorage):
         global dbpool
         return dbpool.runOperation('UPDATE presence SET `timestamp` = UTC_TIMESTAMP() WHERE userid = ?', (userid, ))
 
-    def public_key(self, userid, keydata, fingerprint):
+    def public_key(self, userid, fingerprint):
         global dbpool
-        buf = buffer(keydata)
-        return dbpool.runOperation('INSERT INTO presence (userid, publickey, fingerprint) VALUES(?, ?, ?) ON DUPLICATE KEY UPDATE publickey = ?, fingerprint = ?', (userid, buf, fingerprint, buf, fingerprint))
+        return dbpool.runOperation('INSERT INTO presence (userid, fingerprint) VALUES(?, ?) ON DUPLICATE KEY UPDATE fingerprint = ?', (userid, fingerprint, fingerprint))
 
     def delete(self, userid):
         global dbpool

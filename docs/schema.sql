@@ -28,7 +28,6 @@ CREATE TABLE `presence` (
   `status` varchar(500) CHARACTER SET ascii COLLATE ascii_bin DEFAULT NULL COMMENT 'Status message',
   `show` varchar(30) CHARACTER SET ascii COLLATE ascii_bin DEFAULT NULL COMMENT 'Availability',
   `priority` smallint(5) NOT NULL DEFAULT '0' COMMENT 'Priority',
-  `publickey` mediumblob COMMENT 'Public key',
   `fingerprint` char(40) DEFAULT NULL COMMENT 'Public key fingerprint',
   PRIMARY KEY (`userid`)
 ) ENGINE=MyISAM DEFAULT CHARSET=ascii COMMENT='User presence cache';

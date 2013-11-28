@@ -368,10 +368,12 @@ class InitialPresenceHandler(XMPPHandler):
 
                     # add vcard
                     vcard = iq_vcard.addElement((xmlstream2.NS_XMPP_VCARD4, 'vcard'))
-                    if user['publickey']:
-                        vcard_key = vcard.addElement((None, 'key'))
-                        vcard_data = vcard_key.addElement((None, 'uri'))
-                        vcard_data.addContent("data:application/pgp-keys;base64," + base64.b64encode(user['publickey']))
+                    if user['fingerprint']:
+                        pub_key = self.parent.keyring.get_key(user['userid'], user['fingerprint'], full_key=True)
+                        if pub_key:
+                            vcard_key = vcard.addElement((None, 'key'))
+                            vcard_data = vcard_key.addElement((None, 'uri'))
+                            vcard_data.addContent("data:application/pgp-keys;base64," + base64.b64encode(pub_key[0]))
 
                     self.send(iq_vcard)
                     if self.parent.logTraffic:
@@ -1103,7 +1105,7 @@ class C2SComponent(xmlstream2.SocketComponent):
                             # generate response beforing tampering with the stanza
                             response = xmlstream.toResponse(stanza, 'result')
                             # update presencedb
-                            self.presencedb.public_key(user.user, keydata, fp)
+                            self.presencedb.public_key(user.user, fp)
                             # send vcard to local resolver
                             stanza['from'] = self.resolveJID(user).full()
                             stanza['to'] = self.network

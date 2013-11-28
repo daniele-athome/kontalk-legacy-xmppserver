@@ -217,6 +217,12 @@ class Keyring:
         """List of host servers."""
         return self._list.values()
 
+    def get_fingerprint(self, userid):
+        try:
+            return self._fingerprints[userid]
+        except KeyError:
+            raise KeyNotFoundException(userid)
+
     def import_key(self, keydata):
         """Imports a key without checking."""
         try:
@@ -287,17 +293,18 @@ class Keyring:
 
         return None
 
-    def get_user_key(self, userid, signed_by=None):
+    def get_key(self, userid, fingerprint, signed_by=None, full_key=False):
         """
         Retrieves a user's key from the cache keyring.
         @param signed_by: key is returned only if it's signed by this user
-        @return (fingerprint, keydata, uid) on success, None otherwise
+        @param full_key: if True, key will have all the signatures
+        @return (keydata, uid) on success, None otherwise
         """
         # TODO we should call user_allowed to check for signatures
         # retrieve the requested key
         uid = str('%s@%s' % (userid, self.network))
         try:
-            key = self.ctx.get_key(self._fingerprints[userid])
+            key = self.ctx.get_key(fingerprint)
             if key:
                 signed = True
 
@@ -326,8 +333,12 @@ class Keyring:
 
                 if signed:
                     keydata = BytesIO()
-                    self.ctx.export(key.subkeys[0].fpr, keydata, gpgme.EXPORT_MODE_MINIMAL)
-                    return key.subkeys[0].fpr, keydata.getvalue(), uid
+                    if full_key:
+                        mode = 0
+                    else:
+                        mode = gpgme.EXPORT_MODE_MINIMAL
+                    self.ctx.export(key.subkeys[0].fpr, keydata, mode)
+                    return keydata.getvalue(), uid
         except:
             import traceback
             traceback.print_exc()
@@ -357,10 +368,12 @@ class Keyring:
                 if uid.email == check_email:
                     for sig in uid.signatures:
                         try:
+                            log.debug("found signature by [KEYID-%s]" % (sig.keyid, ))
                             mkey = self.ctx.get_key(sig.keyid, False)
                             if mkey:
                                 fpr = mkey.subkeys[0].fpr.upper()
 
+                                log.debug("found signature by %s" % (fpr, ))
                                 if fpr == self.fingerprint.upper():
                                     self._fingerprints[userid] = fp
                                     return fp

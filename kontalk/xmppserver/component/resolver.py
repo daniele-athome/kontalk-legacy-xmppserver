@@ -90,7 +90,8 @@ class PresenceHandler(XMPPHandler):
         else:
             log.debug("not authorized to subscribe to user's presence, sending request")
             try:
-                fp, keydata, uid = self.parent.keyring.get_user_key(jid_from.user, jid_from.user)
+                fp = self.parent.keyring.get_fingerprint(jid_from.user)
+                keydata, uid = self.parent.keyring.get_key(jid_from.user, fp, jid_from.user)
                 pubkey = stanza.addElement(('urn:xmpp:pubkey:2', 'pubkey'))
 
                 # key data
@@ -107,7 +108,8 @@ class PresenceHandler(XMPPHandler):
 
                 self.send(stanza)
             except:
-                pass
+                import traceback
+                traceback.print_exc()
 
         # simulate a presence probe
         """
@@ -159,6 +161,25 @@ class PresenceHandler(XMPPHandler):
 
                 if allowed:
                     log.debug("SUBSCRIPTION SUCCESSFUL")
+
+                    # broadcast public key to the network
+                    fpr = self.parent.keyring.get_fingerprint(jid_to.user)
+                    keydata, unused2 = self.parent.keyring.get_key(jid_to.user, fpr, full_key=True)
+                    iq = domish.Element((None, 'iq'))
+                    iq['type'] = 'set'
+                    iq['from'] = jid_to.full()
+                    # add vcard
+                    vcard = iq.addElement((xmlstream2.NS_XMPP_VCARD4, 'vcard'))
+                    vcard_key = vcard.addElement((None, 'key'))
+                    vcard_data = vcard_key.addElement((None, 'uri'))
+                    vcard_data.addContent(xmlstream2.DATA_PGP_PREFIX + base64.b64encode(keydata))
+
+                    for server in self.parent.keyring.hostlist():
+                        if server != self.parent.servername:
+                            iq['to'] = server
+                            iq['destination'] = self.parent.network
+                            self.send(iq)
+
                     # subscribe presence now if requester is available
                     if self.parent.cache.jid_available(jid_from):
                         self.parent.subscribe(jid_from, jid_to, stanza.getAttribute('id'))
@@ -634,7 +655,8 @@ class JIDCache(XMPPHandler):
         sender = util.jid_user(stanza['from'])
         user = util.jid_user(stanza['to'])
         try:
-            unused1, keydata, unused2 = self.parent.keyring.get_user_key(user, sender)
+            fpr = self.parent.keyring.get_fingerprint(user)
+            keydata, unused2 = self.parent.keyring.get_key(user, fpr, sender, full_key=(user==sender))
             iq = xmlstream2.toResponse(stanza, 'result')
             # add vcard
             vcard = iq.addElement((xmlstream2.NS_XMPP_VCARD4, 'vcard'))
