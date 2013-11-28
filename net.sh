@@ -1,2 +1,2 @@
 #!/bin/sh
-exec twistd --pidfile net.pid -n kontalk-net
+GNUGPHOME=$PWD/.gnupg exec twistd --pidfile net.pid -n kontalk-net
