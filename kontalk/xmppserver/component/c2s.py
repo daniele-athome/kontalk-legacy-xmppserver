@@ -693,7 +693,7 @@ class MessageHandler(XMPPHandler):
                         try:
                             """
                             We are deliberately ignoring messages with sent
-                            receipt because they are assumed to be volatile.
+                            receipt because they are supposed to be volatile.
                             """
                             if chat_msg and not xmlstream2.has_element(stanza, xmlstream2.NS_XMPP_STORAGE, 'storage') and (receipt or received):
                                 """
@@ -734,34 +734,42 @@ class MessageHandler(XMPPHandler):
                         stamp = time.time()
 
                         """
-                        Sent receipt will be sent only if message is not coming
-                        from storage or the message is from a remote server.
+                        Receipts will be sent only if message is not coming from
+                        storage or message is from a remote server.
+                        This is because if the message is coming from storage,
+                        it means that it's a user collecting its offline
+                        messages, so we don't need to send a <sent/> again.
+                        If a message is coming from a remote server, it means
+                        that is being delivered by a remote c2s by either:
+                         * sm request (direct message from client)
+                         * offline delivery (triggered by an initial presence from this server)
                         """
                         host = util.jid_host(stanza['from'])
-                        if chat_msg and (not xmlstream2.has_element(stanza, xmlstream2.NS_XMPP_STORAGE, 'storage') or
-                                host != self.parent.servername):
+                        from_storage = xmlstream2.has_element(stanza, xmlstream2.NS_XMPP_STORAGE, 'storage')
+                        if chat_msg and (not from_storage or host != self.parent.servername):
+
                             # send ack only for chat messages (if requested)
-                            if stanza.getAttribute('type') == 'chat' and xmlstream2.extract_receipt(stanza, 'request'):
+                            # do not send if coming from remote storage
+                            if chat_msg and receipt and not from_storage:
                                 self.send_ack(stanza, 'sent', stamp)
+
                             # send receipt to originating server, if requested
+                            receipt = None
+                            # receipt request: send <sent/>
                             if stanza.request:
-                                try:
-                                    origin = stanza.request['origin']
-                                    stanza['from'] = origin
-                                    try:
-                                        del stanza['origin']
-                                    except:
-                                        pass
-                                    try:
-                                        del stanza['destination']
-                                    except:
-                                        pass
-                                    self.send_ack(stanza, 'sent', stamp, 'request')
-                                except:
-                                    pass
+                                receipt = stanza.request
+                                request = 'request'
+                                delivery = 'sent'
+                            # received receipt: send <ack/>
                             elif stanza.received:
+                                receipt = stanza.received
+                                request = 'received'
+                                delivery = 'ack'
+
+                            # now send what we prepared
+                            if receipt:
                                 try:
-                                    origin = stanza.received['origin']
+                                    origin = receipt['origin']
                                     stanza['from'] = origin
                                     try:
                                         del stanza['origin']
@@ -771,7 +779,7 @@ class MessageHandler(XMPPHandler):
                                         del stanza['destination']
                                     except:
                                         pass
-                                    self.send_ack(stanza, 'ack', stamp, 'received')
+                                    self.send_ack(stanza, delivery, stamp, request)
                                 except:
                                     pass
 
