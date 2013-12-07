@@ -720,9 +720,9 @@ class MessageHandler(XMPPHandler):
                             was with delayed parameter, we need to store for
                             real now.
                             """
-                            if chat_msg and (stanza.body or received):
+                            if chat_msg and (stanza.body or stanza.e2e or received):
                                 self.parent.message_offline_store(stanza, delayed=False, reuseId=keepId)
-                            if self.parent.push_manager and chat_msg and stanza.body and (not receipt or receipt.name == 'request'):
+                            if self.parent.push_manager and chat_msg and (stanza.body or stanza.e2e) and (not receipt or receipt.name == 'request'):
                                 self.parent.push_manager.notify(to)
 
                         # if message is a received receipt, we can delete the original message
