@@ -801,7 +801,7 @@ class C2SManager(xmlstream2.StreamManager):
 
         if fp and keydata:
             # signed public key to presence table
-            self.router.presencedb.public_key(userid, keydata, fp)
+            self.router.presencedb.public_key(userid, fp)
 
             # broadcast public key
             self.router.broadcast_public_key(userid, keydata)
