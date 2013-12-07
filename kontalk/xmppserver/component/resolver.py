@@ -254,14 +254,6 @@ class IQHandler(XMPPHandler):
                     i = len(presence_list)
 
                     if i > 0:
-                        # send vcard for this user
-                        jid_from = jid.JID(presence_list[0]['from'])
-                        iq = domish.Element((None, 'iq'))
-                        iq['from'] = jid_from.userhost()
-                        iq['to'] = stanza['from']
-                        self.build_vcard(jid_from.user, iq)
-                        self.send(iq)
-
                         for presence in presence_list:
                             presence = deepcopy(presence)
                             presence['to'] = stanza['from']
@@ -270,6 +262,16 @@ class IQHandler(XMPPHandler):
                             group['count'] = str(i)
                             i -= 1
                             self.send(presence)
+
+                        # send vcard for this user
+                        jid_from = jid.JID(presence_list[0]['from'])
+                        iq = domish.Element((None, 'iq'))
+                        # FIXME is type=result right in this case?
+                        iq['type'] = 'result'
+                        iq['from'] = jid_from.userhost()
+                        iq['to'] = stanza['from']
+                        self.build_vcard(jid_from.user, iq)
+                        self.send(iq)
 
     def version(self, stanza):
         if not stanza.consumed:
