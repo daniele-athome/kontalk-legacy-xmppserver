@@ -89,7 +89,7 @@ class PresenceStorage:
         """Update last seen timestamp of a user."""
         pass
 
-    def public_key(self, userid, keydata):
+    def public_key(self, userid, fingerprint):
         """Update a user public key."""
         pass
 
@@ -383,9 +383,10 @@ class MySQLPresenceStorage(PresenceStorage):
                     'status': base64.b64decode(data[2]).decode('utf-8') if data[2] is not None else '',
                     'show': data[3],
                     'priority': data[4],
+                    'fingerprint': data[5]
                 }
 
-        query = 'SELECT `userid`, `timestamp`, `status`, `show`, `priority` FROM presence WHERE userid = ? AND `timestamp` IS NOT NULL'
+        query = 'SELECT `userid`, `timestamp`, `status`, `show`, `priority`, `fingerprint` FROM presence WHERE userid = ? AND `timestamp` IS NOT NULL'
         args = (userid[:util.USERID_LENGTH], )
         return dbpool.runInteraction(_fetchone, query, args)
 
