@@ -47,7 +47,7 @@ class OpenPGPKontalkCredentials(tls.OpenPGPCredentials):
 
 class IKontalkCertificate(credentials.ICredentials):
 
-    def check(fingerprint, kr):
+    def check(fingerprint, kr, presencedb=None):
         pass
 
 
@@ -57,22 +57,36 @@ class KontalkCertificate(object):
     def __init__(self, cert):
         self.cert = cert
 
-    def check(self, fingerprint, kr):
+    def check(self, fingerprint, kr, presencedb=None):
+
         if isinstance(self.cert, OpenPGPCertificate):
             uid = self.cert.uid(0)
-            return jid.JID(uid.email)
+            _jid = jid.JID(uid.email)
+            fpr = self.cert.fingerprint
+
         elif isinstance(self.cert, X509):
             keydata = keyring.get_pgp_publickey_extension(self.cert)
             if keydata:
                 pkey = OpenPGPCertificate(keydata)
                 if pkey:
+                    fpr = pkey.fingerprint
+
                     uid = pkey.uid(0)
                     if uid:
                         _jid = jid.JID(uid.email)
-                        if kr.check_user_key(keydata, _jid.user):
-                            return _jid
+                        if not kr.check_user_key(keydata, _jid.user):
+                            _jid = None
 
-            return None
+        if _jid:
+            def _continue(presence, _jid, fingerprint):
+                if not presence or presence['fingerprint'] == fingerprint:
+                    return _jid
+
+            db = presencedb.get(_jid.user)
+            db.addCallback(_continue, _jid, fpr)
+            return db
+
+        return None
 
 
 class IKontalkToken(credentials.ICredentials):
@@ -88,7 +102,7 @@ class KontalkToken(object):
         self.token = token
         self.decode_b64 = decode_b64
 
-    def check(self, fingerprint, kr):
+    def check(self, fingerprint, kr, presencedb=None):
         try:
             if self.decode_b64:
                 data = sasl.fromBase64(self.token)
@@ -108,9 +122,10 @@ class AuthKontalkChecker(object):
 
     credentialInterfaces = IKontalkToken, IKontalkCertificate
 
-    def __init__(self, fingerprint, kr):
+    def __init__(self, fingerprint, kr, presencedb):
         self.fingerprint = str(fingerprint)
         self.keyring = kr
+        self.presencedb = presencedb
 
     def _cbTokenValid(self, userid):
         if userid:
@@ -120,7 +135,7 @@ class AuthKontalkChecker(object):
 
     def requestAvatarId(self, credentials):
         return defer.maybeDeferred(
-            credentials.check, self.fingerprint, self.keyring).addCallback(
+            credentials.check, self.fingerprint, self.keyring, self.presencedb).addCallback(
             self._cbTokenValid)
 
 

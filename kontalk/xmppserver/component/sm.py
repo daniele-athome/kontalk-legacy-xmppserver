@@ -67,9 +67,6 @@ class PresenceHandler(XMPPHandler):
         # store presence stanza in the stream manager
         self.parent._presence = stanza
 
-        # broadcast vcard update for public key
-        self.parent.broadcast_public_key(self.xmlstream.otherEntity.user, self.xmlstream.transport.getPeerCertificate())
-
     def initialPresence(self, stanza):
         """
         This initial presence is from the client connection. We just notify c2s
@@ -77,6 +74,9 @@ class PresenceHandler(XMPPHandler):
         """
         if not stanza.hasAttribute('to'):
             self.parent.router.local_presence(self.xmlstream.otherEntity, stanza)
+
+            # this will do the necessary checks with public key
+            self.parent.public_key_presence(self.xmlstream)
 
 
 class PingHandler(XMPPHandler):
@@ -129,7 +129,7 @@ class PingHandler(XMPPHandler):
         self.ping_timeout = None
         # send stream error
         self.xmlstream.sendStreamError(error.StreamError('connection-timeout'))
-        # refuse to process any more stanza
+        # refuse to process any more stanzas
         self.xmlstream.setDispatchFn(None)
         # broadcast unavailable presence
         if self.xmlstream.otherEntity is not None:
@@ -594,14 +594,14 @@ class C2SManager(xmlstream2.StreamManager):
     def conflict(self):
         if self.xmlstream:
             self.xmlstream.sendStreamError(error.StreamError('conflict'))
-            # refuse to process any more stanza
+            # refuse to process any more stanzas
             self.xmlstream.setDispatchFn(None)
 
     def _unauthorized(self, stanza):
         if not stanza.consumed and (not stanza.hasAttribute('to') or stanza['to'] != self.network):
             stanza.consumed = True
             self.xmlstream.sendStreamError(error.StreamError('not-authorized'))
-            # refuse to process any more stanza
+            # refuse to process any more stanzas
             self.xmlstream.setDispatchFn(None)
 
     def _authd(self, xs):
@@ -809,13 +809,17 @@ class C2SManager(xmlstream2.StreamManager):
             # return signed public key
             return keydata
 
-    def broadcast_public_key(self, userid, cert):
+    def public_key_presence(self, xs):
         """
         Calls C2SComponent.broadcast_public_key from the data found in the
         provided client certificate. It also saves the public key in the local
         presence cache.
+        This also checks if the key fingerprint matches the one found in our
+        local presence cache.
         """
 
+        userid = xs.otherEntity.user
+        cert = xs.transport.getPeerCertificate()
         pkey = keyring.extract_public_key(cert)
 
         if pkey:

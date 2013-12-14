@@ -866,7 +866,7 @@ class C2SComponent(xmlstream2.SocketComponent):
 
         self.keyring = keyring.Keyring(storage.MySQLNetworkStorage(), self.config['fingerprint'], self.network, self.servername)
         authrealm = auth.SASLRealm("Kontalk")
-        authportal = portal.Portal(authrealm, [auth.AuthKontalkChecker(self.config['fingerprint'], self.keyring)])
+        authportal = portal.Portal(authrealm, [auth.AuthKontalkChecker(self.config['fingerprint'], self.keyring, self.presencedb)])
 
         self.sfactory = XMPPServerFactory(authportal, self, self.network, self.servername)
         self.sfactory.logTraffic = self.config['debug']
