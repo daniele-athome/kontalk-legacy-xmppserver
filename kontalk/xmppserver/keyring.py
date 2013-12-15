@@ -81,6 +81,11 @@ def convert_openpgp_from_base64(keydata):
         if start >= 0 and end > 0:
             return base64.b64decode(keydata[start+2:end])
 
+def get_key_fingerprint(keydata):
+    cert = OpenPGPCertificate(keydata, OPENPGP_FMT_RAW)
+    if cert:
+        return cert.fingerprint
+
 def verify_certificate(cert):
     """
     Verify that a certificate is signed by the same key owning the PGP public
@@ -264,29 +269,28 @@ class Keyring:
                 raise KeyNotFoundException(recipient)
 
             try:
+                if signer_key:
+                    log.debug("looking for %s" % (uid, ))
+                    for _uid in key.uids:
+                        log.debug("found signer uid %s" % (_uid.email, ))
+                        # uid found, check signatures
+                        if _uid.email == uid:
+                            for sig in _uid.signatures:
+                                log.debug("found signature by %s" % (sig.keyid, ))
+                                try:
+                                    mkey = self.ctx.get_key(sig.keyid, False)
+                                    if mkey:
+                                        fpr = mkey.subkeys[0].fpr.upper()
+                                        log.debug("signature fpr = %s, check = %s" % (fpr, signer_fpr))
 
-                    if signer_key:
-                        log.debug("looking for %s" % (uid, ))
-                        for _uid in key.uids:
-                            log.debug("found signer uid %s" % (_uid.email, ))
-                            # uid found, check signatures
-                            if _uid.email == uid:
-                                for sig in _uid.signatures:
-                                    log.debug("found signature by %s" % (sig.keyid, ))
-                                    try:
-                                        mkey = self.ctx.get_key(sig.keyid, False)
-                                        if mkey:
-                                            fpr = mkey.subkeys[0].fpr.upper()
-                                            log.debug("signature fpr = %s, check = %s" % (fpr, signer_fpr))
+                                        if fpr == signer_fpr:
+                                            signed = True
+                                            break
+                                except:
+                                    pass
 
-                                            if fpr == signer_fpr:
-                                                signed = True
-                                                break;
-                                    except:
-                                        pass
-
-                    if signed:
-                        return key.subkeys[0].fpr
+                if signed:
+                    return key.subkeys[0].fpr
             except:
                 import traceback
                 traceback.print_exc()
