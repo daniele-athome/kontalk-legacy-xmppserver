@@ -378,7 +378,7 @@ class IQHandler(XMPPHandler):
     def register(self, stanza):
         """This is actually used for key regeneration."""
         if not self.parent.router.registration:
-            return self.parent.error(stanza)
+            return self.parent.error(stanza, text='Registration not available.')
 
         log.debug("client requested key regeneration: %s" % (stanza.toXml(), ))
         stanza.consumed = True
@@ -392,7 +392,7 @@ class IQHandler(XMPPHandler):
             elif f['var'] == 'revoked':
                 var_revoked = f
 
-        # TODO some stuff here should go to c2s
+        # FIXME maybe some stuff here should go to c2s?
 
         if var_pkey:
 
@@ -421,8 +421,8 @@ class IQHandler(XMPPHandler):
                     self.parent.send(iq, True)
 
                 else:
-                    # TODO key not signed or verified
-                    pass
+                    # key not signed or verified
+                    self.parent.error(stanza, 'forbidden', 'Invalid public key.')
 
             def _continue(presence, userid, var_pkey, var_revoked, stanza):
                 if presence and presence['fingerprint']:
@@ -435,19 +435,19 @@ class IQHandler(XMPPHandler):
                         rkey = self.parent.router.keyring.import_key(rkeydata)
 
                         if rkey and rkey.revoked:
-                            log.debug("key %s has been revoked, accepting new key" % (rkey, ))
+                            log.debug("old key has been revoked, accepting new key")
                             # old key has been revoked, ok to accept new one
                             _send_signed(userid, var_pkey)
 
                         else:
-                            # TODO key not valid or not revoked
-                            log.debug("key %s is not revoked, refusing to proceed" % (rkey, ))
-                            pass
+                            # key not valid or not revoked
+                            log.debug("old key is not revoked, refusing to proceed")
+                            self.parent.error(stanza, 'forbidden', 'Old key has not been revoked.')
 
                     else:
-                        # TODO old key fingerprint not matching
-                        log.debug("key %s does not match current fingerprint, refusing to proceed" % (rkey, ))
-                        pass
+                        # old key fingerprint not matching
+                        log.debug("old key does not match current fingerprint, refusing to proceed")
+                        self.parent.error(stanza, 'forbidden', 'Revoked key does not match.')
 
                 else:
                     # user has no key, accept it
@@ -461,8 +461,8 @@ class IQHandler(XMPPHandler):
             d.addCallback(_continue, userid, var_pkey, var_revoked, stanza)
 
         else:
-            # TODO bad request
-            pass
+            # bad request
+            self.parent.error(stanza, 'bad-request')
 
     def vcard_set(self, stanza):
         # let c2s handle this
@@ -725,12 +725,12 @@ class C2SManager(xmlstream2.StreamManager):
         self.factory.connectionLost(self.xmlstream, reason)
         xmlstream2.StreamManager._disconnected(self, reason)
 
-    def error(self, stanza, condition='service-unavailable'):
+    def error(self, stanza, condition='service-unavailable', errtype='cancel', text=None):
         if not stanza.consumed:
             log.debug("error %s" % (stanza.toXml(), ))
             stanza.consumed = True
             util.resetNamespace(stanza, self.namespace)
-            e = error.StanzaError(condition, 'cancel')
+            e = error.StanzaError(condition, errtype, text)
             self.send(e.toResponse(stanza), True)
 
     def bounce(self, stanza):
