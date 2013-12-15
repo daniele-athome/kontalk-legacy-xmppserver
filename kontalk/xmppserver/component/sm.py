@@ -384,36 +384,85 @@ class IQHandler(XMPPHandler):
         stanza.consumed = True
         fields = stanza.query.x.elements(uri='jabber:x:data', name='field')
         var_pkey = None
+        var_revoked = None
 
         for f in fields:
             if f['var'] == 'publickey':
                 var_pkey = f
+            elif f['var'] == 'revoked':
+                var_revoked = f
+
+        # TODO some stuff here should go to c2s
 
         if var_pkey:
-            # verify and link key
-            pkey = base64.b64decode(var_pkey.value.__str__().encode('utf-8'))
-            signed_pkey = self.parent.link_public_key(pkey, self.parent.xmlstream.otherEntity.user)
-            if signed_pkey:
-                iq = xmlstream2.toResponse(stanza, 'result')
-                query = iq.addElement((xmlstream2.NS_IQ_REGISTER, 'query'))
 
-                form = query.addElement(('jabber:x:data', 'x'))
-                form['type'] = 'form'
+            def _send_signed(userid, var_pkey):
+                # verify and link key
+                pkey = base64.b64decode(var_pkey.value.__str__().encode('utf-8'))
+                signed_pkey = self.parent.link_public_key(pkey, userid)
+                if signed_pkey:
+                    iq = xmlstream2.toResponse(stanza, 'result')
+                    query = iq.addElement((xmlstream2.NS_IQ_REGISTER, 'query'))
 
-                hidden = form.addElement((None, 'field'))
-                hidden['type'] = 'hidden'
-                hidden['var'] = 'FORM_TYPE'
-                hidden.addElement((None, 'value'), content='http://kontalk.org/protocol/register#key')
+                    form = query.addElement(('jabber:x:data', 'x'))
+                    form['type'] = 'form'
 
-                signed = form.addElement((None, 'field'))
-                signed['type'] = 'text-single'
-                signed['label'] = 'Signed public key'
-                signed['var'] = 'publickey'
-                signed.addElement((None, 'value'), content=base64.b64encode(signed_pkey))
+                    hidden = form.addElement((None, 'field'))
+                    hidden['type'] = 'hidden'
+                    hidden['var'] = 'FORM_TYPE'
+                    hidden.addElement((None, 'value'), content='http://kontalk.org/protocol/register#key')
 
-                self.parent.send(iq, True)
+                    signed = form.addElement((None, 'field'))
+                    signed['type'] = 'text-single'
+                    signed['label'] = 'Signed public key'
+                    signed['var'] = 'publickey'
+                    signed.addElement((None, 'value'), content=base64.b64encode(signed_pkey))
 
-        # TODO handle errors
+                    self.parent.send(iq, True)
+
+                else:
+                    # TODO key not signed or verified
+                    pass
+
+            def _continue(presence, userid, var_pkey, var_revoked, stanza):
+                if presence and presence['fingerprint']:
+                    # user already has a key, check if fingerprint matches and
+                    # check the revocation certificate
+                    rkeydata = base64.b64decode(var_revoked.value.__str__().encode('utf-8'))
+                    rkey_fpr = keyring.get_key_fingerprint(rkeydata)
+                    if rkey_fpr == presence['fingerprint']:
+                        # import key and verify revocation certificate
+                        rkey = self.parent.router.keyring.import_key(rkeydata)
+
+                        if rkey and rkey.revoked:
+                            log.debug("key %s has been revoked, accepting new key" % (rkey, ))
+                            # old key has been revoked, ok to accept new one
+                            _send_signed(userid, var_pkey)
+
+                        else:
+                            # TODO key not valid or not revoked
+                            log.debug("key %s is not revoked, refusing to proceed" % (rkey, ))
+                            pass
+
+                    else:
+                        # TODO old key fingerprint not matching
+                        log.debug("key %s does not match current fingerprint, refusing to proceed" % (rkey, ))
+                        pass
+
+                else:
+                    # user has no key, accept it
+                    _send_signed(userid, var_pkey)
+
+            userid = self.parent.xmlstream.otherEntity.user
+
+            # check if user has already a key
+            # this is used for users coming from version 2.x (no key back then)
+            d = self.parent.router.presencedb.get(userid)
+            d.addCallback(_continue, userid, var_pkey, var_revoked, stanza)
+
+        else:
+            # TODO bad request
+            pass
 
     def vcard_set(self, stanza):
         # let c2s handle this
