@@ -168,6 +168,7 @@ class Fileserver(resource.Resource, service.Service):
         # initialize storage
         # doing it here because it's needed by the server factory
         storage.init(self.config['database'])
+        self.presencedb = storage.MySQLPresenceStorage()
 
         # TODO from configuration
         stor_class = self.config['storage']['class']
@@ -177,7 +178,7 @@ class Fileserver(resource.Resource, service.Service):
         self.keyring = keyring.Keyring(storage.MySQLNetworkStorage(), self.config['fingerprint'], self.network, self.servername)
 
         credFactory = auth.AuthKontalkTokenFactory(str(self.config['fingerprint']), self.keyring)
-        token_auth = auth.AuthKontalkChecker(self.config['fingerprint'], self.keyring)
+        token_auth = auth.AuthKontalkChecker(self.config['fingerprint'], self.keyring, self.presencedb)
 
         # upload endpoint
         portal = Portal(FileUploadRealm(self), [token_auth])
