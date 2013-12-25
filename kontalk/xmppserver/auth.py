@@ -69,17 +69,16 @@ class KontalkCertificate(object):
             if keydata:
                 pkey = OpenPGPCertificate(keydata)
                 if pkey:
-                    fpr = pkey.fingerprint
-
                     uid = pkey.uid(0)
                     if uid:
                         _jid = jid.JID(uid.email)
-                        if not kr.check_user_key(keydata, _jid.user):
+                        fpr = kr.check_user_key(keydata, _jid.user)
+                        if not fpr:
                             _jid = None
 
         if _jid:
             def _continue(presence, _jid, fingerprint):
-                if not presence or presence['fingerprint'] == fingerprint:
+                if not presence or str(presence['fingerprint']) == fingerprint:
                     return _jid
 
             db = presencedb.get(_jid.user)
