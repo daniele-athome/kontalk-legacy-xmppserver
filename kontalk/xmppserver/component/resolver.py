@@ -91,7 +91,7 @@ class PresenceHandler(XMPPHandler):
             log.debug("not authorized to subscribe to user's presence, sending request")
             try:
                 fp = self.parent.keyring.get_fingerprint(jid_from.user)
-                keydata, uid = self.parent.keyring.get_key(jid_from.user, fp, jid_from.user)
+                keydata, unused = self.parent.keyring.get_key(jid_from.user, fp, jid_from.user)
                 pubkey = stanza.addElement(('urn:xmpp:pubkey:2', 'pubkey'))
 
                 # key data
@@ -101,10 +101,6 @@ class PresenceHandler(XMPPHandler):
                 # fingerprint
                 fprint = pubkey.addElement((None, 'print'))
                 fprint.addContent(fp)
-
-                # uid
-                uid_node = pubkey.addElement((None, 'uid'))
-                uid_node.addContent(uid)
 
                 self.send(stanza)
             except:
