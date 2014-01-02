@@ -170,13 +170,29 @@ class PresenceHandler(XMPPHandler):
                     vcard_data = vcard_key.addElement((None, 'uri'))
                     vcard_data.addContent(xmlstream2.DATA_PGP_PREFIX + base64.b64encode(keydata))
 
+                    # send to the requester first (updated public key)
+                    iq['to'] = iq['from']
+                    self.send(iq)
+
                     for server in self.parent.keyring.hostlist():
                         if server != self.parent.servername:
                             iq['to'] = server
                             iq['destination'] = self.parent.network
                             self.send(iq)
 
-                    # subscribe presence now if requester is available
+                    # subscribe to presence now if requester is available
+                    """
+                    FIXME wrong behaviour!!!
+                    This assumes the requester was awaiting for presence data,
+                    while in the meantime it could have been unsubscribed. This
+                    way it will be subscribed implicitly. THIS IS WRONG!
+                    Also, this does not take into account the possibility of a
+                    presence revocation mid-subscription.
+                    A possible fix could be checking for the right signature
+                    every time a presence must be broadcasted.
+                    And be careful not to enlarge the subscription data
+                    structures unnecessarily.
+                    """
                     if self.parent.cache.jid_available(jid_from):
                         self.parent.subscribe(jid_from, jid_to, stanza.getAttribute('id'))
 
