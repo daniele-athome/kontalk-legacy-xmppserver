@@ -1086,9 +1086,14 @@ class C2SComponent(xmlstream2.SocketComponent):
             log.debug("client sent vcard: %s" % (stanza['to'], ))
         stanza.consumed = True
 
-        entity = jid.JID(stanza['to'])
+        stanza_to = stanza.getAttribute('to')
+        if stanza_to:
+            entity = jid.JID(stanza_to)
+        else:
+            entity = None
+
         # setting our own vcard
-        if entity.userhost() == user.userhost():
+        if not entity or (entity.userhost() == user.userhost()):
             # TODO parse vcard for interesting sections
 
             if stanza.vcard.key is not None:
