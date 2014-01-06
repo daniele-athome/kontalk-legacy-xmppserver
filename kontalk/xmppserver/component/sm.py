@@ -429,10 +429,10 @@ class IQHandler(XMPPHandler):
                     # user already has a key, check if fingerprint matches and
                     # check the revocation certificate
                     rkeydata = base64.b64decode(var_revoked.value.__str__().encode('utf-8'))
-                    rkey_fpr = keyring.get_key_fingerprint(rkeydata)
+                    # import key and verify revocation certificate
+                    rkey_fpr, rkey = self.parent.router.keyring.import_key(rkeydata)
+
                     if rkey_fpr == presence['fingerprint']:
-                        # import key and verify revocation certificate
-                        rkey = self.parent.router.keyring.import_key(rkeydata)
 
                         if rkey and rkey.revoked:
                             log.debug("old key has been revoked, accepting new key")

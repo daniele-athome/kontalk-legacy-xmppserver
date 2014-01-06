@@ -234,7 +234,7 @@ class Keyring:
             # import key
             result = self.ctx.import_(BytesIO(keydata))
             fp = str(result.imports[0][0])
-            return self.ctx.get_key(fp)
+            return fp, self.ctx.get_key(fp)
         except:
             import traceback
             traceback.print_exc()
