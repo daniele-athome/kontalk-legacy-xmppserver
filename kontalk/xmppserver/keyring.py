@@ -240,6 +240,81 @@ class Keyring:
             traceback.print_exc()
             return False
 
+    def _get_privacy_list_attribute(self, keydata, list_type=1):
+        """Searches for the latest privacy list user attribute with a valid signature."""
+        import pgpdump
+        from pgpdump.packet import UserAttributePacket, SignaturePacket
+
+        def _parse(p):
+            offset = sub_offset = sub_len = 0
+            data = {}
+            while offset + sub_len < p.length:
+                # each subpacket is [variable length] [subtype] [data]
+                sub_offset, sub_len, sub_part = pgpdump.packet.new_tag_length(p.data, offset)
+                # sub_len includes the subtype single byte, knock that off
+                sub_len -= 1
+                # initial length bytes
+                offset += 1 + sub_offset
+
+                sub_type = p.data[offset]
+                offset += 1
+
+                # 43 :)
+                if sub_type == 43:
+                    # the only little-endian encoded value in OpenPGP
+                    hdr_size = p.data[offset]
+                    hdr_version = p.data[offset + 1]
+                    data['type'] = p.data[offset + 2]
+                    offset += hdr_size
+
+                    data['list_data'] = p.data[offset:]
+                    data['list'] = str(data['list_data']).split('\x00')
+                    for x in data['list']:
+                        if len(x) == 0:
+                            data['list'].remove(x)
+
+            return data
+
+        pgp_data = pgpdump.BinaryData(keydata)
+        packets = list(pgp_data.packets())
+
+        max_date = None
+        valid_data = None
+        maybe_valid = None
+
+        for i in range(len(packets)):
+            p = packets[i]
+
+            # possible privacy list user attribute
+            if isinstance(p, UserAttributePacket):
+                #log.debug("[%d] found user attribute %r" % (i, p, ))
+                custom_data = _parse(p)
+                if len(custom_data) > 0:
+                    #log.debug("[%d] found privacy list %r" % (i, custom_data, ))
+                    sig = packets[i + 1]
+
+                    # check for a valid signature
+                    # TODO verify signature
+                    if isinstance(sig, SignaturePacket):
+                        #log.debug("[%d+1] found signature %r (0x%x)" % (i, sig, sig.raw_sig_type))
+                        if sig.raw_sig_type == 0x13:
+                            maybe_valid = custom_data
+
+                            if len(packets) >= (i + 2):
+                                rev = packets[i + 2]
+                                #if isinstance(rev, SignaturePacket):
+                                #    log.debug("[%d+2] found possible revocation %r (0x%x)" % (i, rev, rev.raw_sig_type))
+                                if isinstance(rev, SignaturePacket) and rev.raw_sig_type == 0x30:
+                                    # attribute was revoked
+                                    maybe_valid = None
+
+                            # data seems valid, but check timestamp too
+                            if maybe_valid and ((not max_date) or (sig.creation_time > max_date)):
+                                max_date = sig.creation_time
+                                valid_data = maybe_valid
+
+        return valid_data
+
     def user_allowed(self, sender, recipient):
         """
         Checks if sender is allowed to send messages or subscribe to
@@ -261,36 +336,31 @@ class Keyring:
                 return key.subkeys[0].fpr
 
             # check for a signature
-            signed = False
             try:
                 signer_fpr = self._fingerprints[recipient]
-                signer_key = self.ctx.get_key(signer_fpr)
             except:
                 raise KeyNotFoundException(recipient)
 
             try:
-                if signer_key:
-                    log.debug("looking for %s" % (uid, ))
-                    for _uid in key.uids:
-                        log.debug("found signer uid %s" % (_uid.email, ))
-                        # uid found, check signatures
-                        if _uid.email == uid:
-                            for sig in _uid.signatures:
-                                log.debug("found signature by %s" % (sig.keyid, ))
-                                try:
-                                    mkey = self.ctx.get_key(sig.keyid, False)
-                                    if mkey:
-                                        fpr = mkey.subkeys[0].fpr.upper()
-                                        log.debug("signature fpr = %s, check = %s" % (fpr, signer_fpr))
+                keydata = BytesIO()
+                self.ctx.export(signer_fpr, keydata, 0)
+                whitelist = self._get_privacy_list_attribute(keydata.getvalue(), 1)
 
-                                        if fpr == signer_fpr:
-                                            signed = True
-                                            break
-                                except:
-                                    pass
+                if whitelist:
+                    log.debug("whitelist for user %s: %s" % (recipient, whitelist['list']))
 
-                if signed:
-                    return key.subkeys[0].fpr
+                    for u in whitelist['list']:
+                        if u.startswith(uid):
+                            try:
+                                check_uid, check_fpr = u.split('|')
+                            except ValueError:
+                                check_uid = u
+                                check_fpr = None
+
+                            if check_uid == uid:
+                                if (not check_fpr) or (check_fpr == self._fingerprints[sender]):
+                                    return True
+
             except:
                 import traceback
                 traceback.print_exc()

@@ -143,67 +143,35 @@ class PresenceHandler(XMPPHandler):
         stanza.consumed = True
         jid_to = jid.JID(stanza['to'])
 
-        if stanza.pubkey and stanza.pubkey.key:
-            keydata = base64.b64decode(str(stanza.pubkey.key))
-            fp = self.parent.keyring.check_user_key(keydata, jid_to.user)
-            if fp:
-                jid_from = jid.JID(stanza['from'])
+        jid_from = jid.JID(stanza['from'])
 
-                try:
-                    # servers are allowed to subscribe to user presence
-                    allowed = self.parent.keyring.user_allowed(jid_to.user, jid_from.user)
-                except keyring.KeyNotFoundException:
-                    allowed = self.parent.config['allow_no_key']
+        try:
+            # servers are allowed to subscribe to user presence
+            allowed = self.parent.keyring.user_allowed(jid_to.user, jid_from.user)
+        except keyring.KeyNotFoundException:
+            allowed = self.parent.config['allow_no_key']
 
-                if allowed:
-                    log.debug("SUBSCRIPTION SUCCESSFUL")
+        if allowed:
+            log.debug("SUBSCRIPTION SUCCESSFUL")
 
-                    # broadcast public key to the network
-                    fpr = self.parent.keyring.get_fingerprint(jid_to.user)
-                    keydata, unused2 = self.parent.keyring.get_key(jid_to.user, fpr, full_key=True)
-                    iq = domish.Element((None, 'iq'))
-                    iq['type'] = 'set'
-                    iq['from'] = jid_to.full()
-                    # add vcard
-                    vcard = iq.addElement((xmlstream2.NS_XMPP_VCARD4, 'vcard'))
-                    vcard_key = vcard.addElement((None, 'key'))
-                    vcard_data = vcard_key.addElement((None, 'uri'))
-                    vcard_data.addContent(xmlstream2.DATA_PGP_PREFIX + base64.b64encode(keydata))
+            # subscribe to presence now if requester is available
+            """
+            FIXME wrong behaviour!!!
+            This assumes the requester was awaiting for presence data,
+            while in the meantime it could have unsubscribed. This way it will
+            be subscribed implicitly. THIS IS WRONG!
+            Also, this does not take into account the possibility of a
+            presence revocation mid-subscription.
+            A possible fix could be checking for presence clearance every time
+            a presence must be broadcasted. And be careful not to enlarge the
+            subscription data structures unnecessarily.
+            """
+            if self.parent.cache.jid_available(jid_from):
+                self.parent.subscribe(jid_from, jid_to, stanza.getAttribute('id'))
 
-                    # send to the requester first (updated public key)
-                    iq['to'] = iq['from']
-                    self.send(iq)
-
-                    for server in self.parent.keyring.hostlist():
-                        if server != self.parent.servername:
-                            iq['to'] = server
-                            iq['destination'] = self.parent.network
-                            self.send(iq)
-
-                    # subscribe to presence now if requester is available
-                    """
-                    FIXME wrong behaviour!!!
-                    This assumes the requester was awaiting for presence data,
-                    while in the meantime it could have been unsubscribed. This
-                    way it will be subscribed implicitly. THIS IS WRONG!
-                    Also, this does not take into account the possibility of a
-                    presence revocation mid-subscription.
-                    A possible fix could be checking for the right signature
-                    every time a presence must be broadcasted.
-                    And be careful not to enlarge the subscription data
-                    structures unnecessarily.
-                    """
-                    if self.parent.cache.jid_available(jid_from):
-                        self.parent.subscribe(jid_from, jid_to, stanza.getAttribute('id'))
-
-                else:
-                    # TODO not allowed
-                    log.debug("SUBSCRIPTION NOT ALLOWED")
-            else:
-                # TODO invalid key
-                log.debug("INVALID KEY")
         else:
-            log.debug("SUBSCRIPTION NOT ALLOWED (KEY NOT FOUND)")
+            # TODO not allowed
+            log.debug("SUBSCRIPTION NOT ALLOWED")
 
 
 class IQHandler(XMPPHandler):
