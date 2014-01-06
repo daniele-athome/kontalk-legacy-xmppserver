@@ -359,60 +359,32 @@ class Keyring:
 
                             if check_uid == uid:
                                 if (not check_fpr) or (check_fpr == self._fingerprints[sender]):
-                                    return True
+                                    return key.subkeys[0].fpr
 
             except:
                 import traceback
                 traceback.print_exc()
 
-        return None
+        return False
 
-    def get_key(self, userid, fingerprint, signed_by=None, full_key=False):
+    def get_key(self, userid, fingerprint, full_key=False):
         """
         Retrieves a user's key from the cache keyring.
-        @param signed_by: key is returned only if it's signed by this user
         @param full_key: if True, key will have all the signatures
-        @return (keydata, uid) on success, None otherwise
+        @return keydata on success, None otherwise
         """
-        # TODO we should call user_allowed to check for signatures
         # retrieve the requested key
-        uid = str('%s@%s' % (userid, self.network))
         try:
             key = self.ctx.get_key(fingerprint)
             if key:
-                signed = True
 
-                # we need to check for a signature
-                if signed_by:
-                    signed = False
-                    signer_key = self.ctx.get_key(self._fingerprints[signed_by])
-                    if signer_key:
-                        for _uid in key.uids:
-                            # uid found, check signatures
-                            if _uid.email == uid:
-                                # this is for later
-                                uid = _uid.uid
-
-                                for sig in _uid.signatures:
-                                    try:
-                                        mkey = self.ctx.get_key(sig.keyid, False)
-                                        if mkey:
-                                            fpr = mkey.subkeys[0].fpr.upper()
-
-                                            if fpr == self._fingerprints[signed_by]:
-                                                signed = True
-                                                break;
-                                    except:
-                                        pass
-
-                if signed:
-                    keydata = BytesIO()
-                    if full_key:
-                        mode = 0
-                    else:
-                        mode = gpgme.EXPORT_MODE_MINIMAL
-                    self.ctx.export(key.subkeys[0].fpr, keydata, mode)
-                    return keydata.getvalue(), uid
+                keydata = BytesIO()
+                if full_key:
+                    mode = 0
+                else:
+                    mode = gpgme.EXPORT_MODE_MINIMAL
+                self.ctx.export(key.subkeys[0].fpr, keydata, mode)
+                return keydata.getvalue()
         except:
             import traceback
             traceback.print_exc()

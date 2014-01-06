@@ -81,7 +81,10 @@ class PresenceHandler(XMPPHandler):
 
         try:
             # servers are allowed to subscribe to user presence
-            allowed = not jid_from.user or self.parent.keyring.user_allowed(jid_from.user, jid_to.user)
+            allowed = not jid_from.user
+
+            fpr = self.parent.keyring.user_allowed(jid_from.user, jid_to.user)
+            allowed = allowed or fpr
         except keyring.KeyNotFoundException:
             allowed = self.parent.config['allow_no_key']
 
@@ -90,8 +93,7 @@ class PresenceHandler(XMPPHandler):
         else:
             log.debug("not authorized to subscribe to user's presence, sending request")
             try:
-                fp = self.parent.keyring.get_fingerprint(jid_from.user)
-                keydata, unused = self.parent.keyring.get_key(jid_from.user, fp, jid_from.user)
+                keydata = self.parent.keyring.get_key(jid_from.user, fpr)
                 pubkey = stanza.addElement(('urn:xmpp:pubkey:2', 'pubkey'))
 
                 # key data
@@ -100,7 +102,7 @@ class PresenceHandler(XMPPHandler):
 
                 # fingerprint
                 fprint = pubkey.addElement((None, 'print'))
-                fprint.addContent(fp)
+                fprint.addContent(fpr)
 
                 self.send(stanza)
             except:
@@ -190,7 +192,7 @@ class IQHandler(XMPPHandler):
     def build_vcard(self, userid, iq, full_key=False):
         """Adds a vCard to the given iq stanza."""
         fpr = self.parent.keyring.get_fingerprint(userid)
-        keydata, unused2 = self.parent.keyring.get_key(userid, fpr, None, full_key=full_key)
+        keydata = self.parent.keyring.get_key(userid, fpr, full_key=full_key)
         # add vcard
         vcard = iq.addElement((xmlstream2.NS_XMPP_VCARD4, 'vcard'))
         vcard_key = vcard.addElement((None, 'key'))
@@ -658,8 +660,12 @@ class JIDCache(XMPPHandler):
         sender = util.jid_user(stanza['from'])
         user = util.jid_user(stanza['to'])
         try:
-            fpr = self.parent.keyring.get_fingerprint(user)
-            keydata, unused2 = self.parent.keyring.get_key(user, fpr, sender, full_key=(user==sender))
+            fpr = self.parent.keyring.user_allowed(sender, user)
+            if not fpr:
+                raise Exception()
+
+            keydata = self.parent.keyring.get_key(user, fpr, full_key=(user==sender))
+
             iq = xmlstream2.toResponse(stanza, 'result')
             # add vcard
             vcard = iq.addElement((xmlstream2.NS_XMPP_VCARD4, 'vcard'))

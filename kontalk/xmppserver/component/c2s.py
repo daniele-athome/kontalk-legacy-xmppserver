@@ -373,7 +373,7 @@ class InitialPresenceHandler(XMPPHandler):
                         if pub_key:
                             vcard_key = vcard.addElement((None, 'key'))
                             vcard_data = vcard_key.addElement((None, 'uri'))
-                            vcard_data.addContent("data:application/pgp-keys;base64," + base64.b64encode(pub_key[0]))
+                            vcard_data.addContent("data:application/pgp-keys;base64," + base64.b64encode(pub_key))
 
                     self.send(iq_vcard)
                     if self.parent.logTraffic:
