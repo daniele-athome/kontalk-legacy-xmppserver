@@ -100,7 +100,7 @@ def verify_certificate(cert):
 
     if pubkey and pubkey_ext:
         # TODO keyid
-        pubkey2 = convert_publickey(pubkey_ext)
+        pubkey2 = convert_publickey(pubkey_ext, get_key_fingerprint(pubkey_ext))
 
         # compare public keys
         return pubkey == pubkey2
