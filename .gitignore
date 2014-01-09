@@ -4,6 +4,8 @@
 *.pid
 dropin.cache
 .gnupg*
+/server.key
+/server.crt
 /keyring.gpg
 /server-pgp.crt
 /server-pgp.key
