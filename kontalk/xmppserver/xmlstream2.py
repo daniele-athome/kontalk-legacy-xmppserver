@@ -55,8 +55,8 @@ NS_XMPP_STANZA_GROUP = 'urn:xmpp:stanza-group'
 NS_XMPP_SERVER_RECEIPTS = 'urn:xmpp:server-receipts'
 NS_XMPP_STORAGE = 'urn:xmpp:storage'
 
-NS_PRESENCE_PUSH = 'http://www.kontalk.org/extensions/presence#push'
-NS_MESSAGE_UPLOAD = 'http://www.kontalk.org/extensions/message#upload'
+NS_PRESENCE_PUSH = 'http://kontalk.org/extensions/presence#push'
+NS_MESSAGE_UPLOAD = 'http://kontalk.org/extensions/message#upload'
 
 XMPP_STAMP_FORMAT = '%Y-%m-%dT%H:%M:%SZ'
 
