@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
-'''Version information.'''
-'''
+"""Version information."""
+"""
   Kontalk XMPP server
-  Copyright (C) 2011 Kontalk Devteam <devteam@kontalk.org>
+  Copyright (C) 2014 Kontalk Devteam <devteam@kontalk.org>
 
  This program is free software: you can redistribute it and/or modify
  it under the terms of the GNU General Public License as published by
@@ -16,12 +16,12 @@
 
  You should have received a copy of the GNU General Public License
  along with this program.  If not, see <http://www.gnu.org/licenses/>.
-'''
+"""
 
 NAME = "Kontalk XMPP server"
 IDENTITY = "kontalk"
 PACKAGE = "kontalk-xmppserver"
-VERSION = "1.0"
+VERSION = "devel"
 AUTHORS = (
     {
         "name": "Daniele Ricci",

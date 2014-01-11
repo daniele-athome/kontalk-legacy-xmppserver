@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
-'''Twisted logging to Python loggin bridge.'''
-'''
+"""Twisted logging to Python logging bridge."""
+"""
   Kontalk XMPP server
-  Copyright (C) 2011 Kontalk Devteam <devteam@kontalk.org>
+  Copyright (C) 2014 Kontalk Devteam <devteam@kontalk.org>
 
  This program is free software: you can redistribute it and/or modify
  it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
 
  You should have received a copy of the GNU General Public License
  along with this program.  If not, see <http://www.gnu.org/licenses/>.
-'''
+"""
 
 
 from twisted.python import log
