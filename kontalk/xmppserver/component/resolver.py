@@ -79,20 +79,14 @@ class PresenceHandler(XMPPHandler):
         jid_to = jid.JID(stanza['to'])
         jid_from = jid.JID(stanza['from'])
 
-        try:
-            # servers are allowed to subscribe to user presence
-            allowed = not jid_from.user
+        fpr = self.parent.is_presence_allowed(jid_from, jid_to)
 
-            fpr = self.parent.keyring.user_allowed(jid_from.user, jid_to.user)
-            allowed = allowed or fpr
-        except keyring.KeyNotFoundException:
-            allowed = self.parent.config['allow_no_key']
-
-        if allowed:
+        if fpr:
             self.parent.subscribe(jid_to, jid_from, stanza.getAttribute('id'))
         else:
             log.debug("not authorized to subscribe to user's presence, sending request")
             try:
+                fpr = self.parent.keyring.get_fingerprint(jid_from.user)
                 keydata = self.parent.keyring.get_key(jid_from.user, fpr)
                 pubkey = stanza.addElement(('urn:xmpp:pubkey:2', 'pubkey'))
 
@@ -147,29 +141,12 @@ class PresenceHandler(XMPPHandler):
 
         jid_from = jid.JID(stanza['from'])
 
-        try:
-            # servers are allowed to subscribe to user presence
-            allowed = self.parent.keyring.user_allowed(jid_to.user, jid_from.user)
-        except keyring.KeyNotFoundException:
-            allowed = self.parent.config['allow_no_key']
-
-        if allowed:
+        if self.parent.is_presence_allowed(jid_to, jid_from):
             log.debug("SUBSCRIPTION SUCCESSFUL")
 
-            # subscribe to presence now if requester is available
-            """
-            FIXME wrong behaviour!!!
-            This assumes the requester was awaiting for presence data,
-            while in the meantime it could have unsubscribed. This way it will
-            be subscribed implicitly. THIS IS WRONG!
-            Also, this does not take into account the possibility of a
-            presence revocation mid-subscription.
-            A possible fix could be checking for presence clearance every time
-            a presence must be broadcasted. And be careful not to enlarge the
-            subscription data structures unnecessarily.
-            """
             if self.parent.cache.jid_available(jid_from):
-                self.parent.subscribe(jid_from, jid_to, stanza.getAttribute('id'))
+                # send subscription accepted immediately, but without subscribing
+                self.parent.subscribe(jid_from, jid_to, stanza.getAttribute('id'), True)
 
         else:
             # TODO not allowed
@@ -206,7 +183,7 @@ class IQHandler(XMPPHandler):
             stanza.consumed = True
             response = xmlstream2.toResponse(stanza, 'result')
             roster = response.addElement((xmlstream2.NS_IQ_ROSTER, 'query'))
-            requester = util.jid_user(stanza['from'])
+            requester = jid.JID(stanza['from'])
 
             probes =  []
             for item in _items:
@@ -218,12 +195,7 @@ class IQHandler(XMPPHandler):
                     item = roster.addElement((None, 'item'))
                     item['jid'] = self.parent.translateJID(entry.jid).userhost()
 
-                    try:
-                        allowed = self.parent.keyring.user_allowed(requester, itemJid.user)
-                    except keyring.KeyNotFoundException:
-                        allowed = self.parent.config['allow_no_key']
-
-                    if allowed:
+                    if self.parent.is_presence_allowed(requester, itemJid):
                         probes.append(entry.presence())
 
             self.send(response)
@@ -362,23 +334,16 @@ class MessageHandler(XMPPHandler):
 
     def message(self, stanza):
         if not stanza.consumed:
-            sender_user = util.jid_user(stanza['from'])
+            jid_from = jid.JID(stanza['from'])
 
             # no destination - use sender bare JID
             if not stanza.hasAttribute('to'):
-                to = jid.JID(stanza['from'])
-                to_user = to.user
-                stanza['to'] = to.userhost()
+                jid_to = jid.JID(stanza['from'])
+                stanza['to'] = jid_to.userhost()
             else:
-                to_user = util.jid_user(stanza['to'])
+                jid_to = jid.JID(stanza['to'])
 
-            try:
-                # servers are allowed to subscribe to send messages
-                allowed = not sender_user or self.parent.keyring.user_allowed(sender_user, to_user)
-            except keyring.KeyNotFoundException:
-                allowed = self.parent.config['allow_no_key']
-
-            if allowed:
+            if self.parent.is_presence_allowed(jid_from, jid_to):
                 # send to router (without implicitly consuming)
                 self.parent.send(stanza, force_delivery=True)
             else:
@@ -657,14 +622,14 @@ class JIDCache(XMPPHandler):
 
     def onVCardGet(self, stanza):
         log.debug("%s requested vCard for %s" % (stanza['from'], stanza['to']))
-        sender = util.jid_user(stanza['from'])
-        user = util.jid_user(stanza['to'])
+        jid_from = jid.JID(stanza['from'])
+        jid_to = jid.JID(stanza['to'])
         try:
-            fpr = self.parent.keyring.user_allowed(sender, user)
+            fpr = self.parent.is_presence_allowed(jid_from, jid_to)
             if not fpr:
                 raise Exception()
 
-            keydata = self.parent.keyring.get_key(user, fpr, full_key=(user==sender))
+            keydata = self.parent.keyring.get_key(jid_to.user, fpr, full_key=(jid_to.user==jid_from.user))
 
             iq = xmlstream2.toResponse(stanza, 'result')
             # add vcard
@@ -740,14 +705,7 @@ class JIDCache(XMPPHandler):
         to = jid.JID(stanza['to'])
         sender = jid.JID(stanza['from'])
 
-        try:
-            # servers are allowed to subscribe to user presence
-            allowed = not sender.user or self.parent.keyring.user_allowed(sender.user, to.user)
-        except keyring.KeyNotFoundException:
-            allowed = self.parent.config['allow_no_key']
-
-        # servers are allowed to probe presence
-        if allowed:
+        if self.parent.is_presence_allowed(sender, to):
             gid = stanza.getAttribute('id')
             if not self.send_user_presence(gid, sender, to):
                 response = xmlstream2.toResponse(stanza, 'error')
@@ -1079,15 +1037,17 @@ class Resolver(xmlstream2.SocketComponent):
                 if sub == user:
                     rlist.remove(sub)
 
-    def subscribe(self, to, subscriber, gid=None):
+    def subscribe(self, to, subscriber, gid=None, response_only=False):
         """Subscribe a given user to events from another one."""
-        try:
-            if subscriber not in self.subscriptions[to]:
-                self.subscriptions[to].append(subscriber)
-        except:
-            self.subscriptions[to] = [subscriber]
 
-        log.debug("subscriptions: %r" % (self.subscriptions, ))
+        if not response_only:
+            try:
+                if subscriber not in self.subscriptions[to]:
+                    self.subscriptions[to].append(subscriber)
+            except:
+                self.subscriptions[to] = [subscriber]
+
+            log.debug("subscriptions: %r" % (self.subscriptions, ))
 
         # send subscription accepted immediately
         pres = domish.Element((None, "presence"))
@@ -1098,10 +1058,11 @@ class Resolver(xmlstream2.SocketComponent):
         pres['type'] = 'subscribed'
         self.send(pres)
 
-        # simulate a presence probe response
-        if not gid:
-            gid = util.rand_str(8)
-        self.cache.send_user_presence(gid, subscriber, to)
+        if not response_only:
+            # simulate a presence probe response
+            if not gid:
+                gid = util.rand_str(8)
+            self.cache.send_user_presence(gid, subscriber, to)
 
         """
         # send a fake roster entry
@@ -1141,10 +1102,19 @@ class Resolver(xmlstream2.SocketComponent):
         if bareWatched in self.subscriptions:
             #stanza['from'] = watched.full()
 
+            removed = []
             for sub in self.subscriptions[bareWatched]:
-                log.debug("notifying subscriber %s" % (sub, ))
-                stanza['to'] = sub.userhost()
-                self.send(stanza)
+                if self.parent.is_presence_allowed(sub, watched):
+                    log.debug("notifying subscriber %s" % (sub, ))
+                    stanza['to'] = sub.userhost()
+                    self.send(stanza)
+                else:
+                    log.debug("%s is not allowed to see presence")
+                    removed.append(sub)
+
+            # remove unauthorized users
+            for e in removed:
+                self.subscriptions[bareWatched].remove(e)
 
     def translateJID(self, _jid):
         """
@@ -1155,3 +1125,23 @@ class Resolver(xmlstream2.SocketComponent):
         if _jid.host == self.servername or _jid.host in self.keyring.hostlist():
             return jid.JID(tuple=(_jid.user, self.network, _jid.resource))
         return _jid
+
+    def is_presence_allowed(self, jid_from, jid_to):
+        """
+        Checks if requester is allowed to see a user's presence.
+        @return fingerprint of the sender, True if allowed implicitly, False if not allowed, None if key not found
+        """
+
+        # servers are allowed to subscribe to user presence
+        if not jid_from.user:
+            return True
+
+        try:
+            fpr = self.keyring.user_allowed(jid_from.user, jid_to.user)
+            # this is because user_allowed returns None
+            if fpr:
+                return fpr
+            else:
+                return False
+        except keyring.KeyNotFoundException:
+            return None

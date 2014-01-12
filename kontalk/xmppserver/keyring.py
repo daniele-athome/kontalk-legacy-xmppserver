@@ -319,7 +319,7 @@ class Keyring:
         """
         Checks if sender is allowed to send messages or subscribe to
         recipient's presence.
-        @return key fingerprint on success, None otherwise
+        @return key fingerprint of sender on success, None otherwise
         @raise KeyNotFoundException: if sender or recipient key is not registered
         """
 
