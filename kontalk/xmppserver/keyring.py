@@ -118,6 +118,9 @@ class Keyring:
         'messages' : (0, 100)
     }
 
+    ATTRIBUTE_WHITELIST = 1
+    ATTRIBUTE_BLACKLIST = 2
+
     def __init__(self, db, fingerprint, network, servername, disable_signers=False):
         self._db = db
         self.fingerprint = str(fingerprint)
@@ -240,7 +243,7 @@ class Keyring:
             traceback.print_exc()
             return False
 
-    def _get_privacy_list_attribute(self, keydata, list_type=1):
+    def _get_privacy_list_attribute(self, keydata, list_type=self.ATTRIBUTE_WHITELIST):
         """Searches for the latest privacy list user attribute with a valid signature."""
         import pgpdump
         from pgpdump.packet import UserAttributePacket, SignaturePacket
@@ -319,7 +322,7 @@ class Keyring:
         """
         Checks if sender is allowed to send messages or subscribe to
         recipient's presence.
-        @return key fingerprint of sender on success, None otherwise
+        @return 1 on success, 0 otherwise, -1 if blacklisted
         @raise KeyNotFoundException: if sender or recipient key is not registered
         """
 
@@ -333,7 +336,7 @@ class Keyring:
         if key:
             # we are looking to ourselves!
             if sender == recipient:
-                return key.subkeys[0].fpr
+                return 1
 
             # check for a signature
             try:
@@ -344,7 +347,26 @@ class Keyring:
             try:
                 keydata = BytesIO()
                 self.ctx.export(signer_fpr, keydata, 0)
-                whitelist = self._get_privacy_list_attribute(keydata.getvalue(), 1)
+                keydata = keydata.getvalue()
+
+                # check blacklist first (it obviously has the priority)
+                blacklist = self._get_privacy_list_attribute(keydata, self.ATTRIBUTE_BLACKLIST)
+                if blacklist:
+                    log.debug("blacklist for user %s: %s" % (recipient, blacklist['list']))
+
+                    for u in blacklist['list']:
+                        if u.startswith(uid):
+                            try:
+                                check_uid, check_fpr = u.split('|')
+                            except ValueError:
+                                check_uid = u
+                                check_fpr = None
+
+                            if check_uid == uid:
+                                if (not check_fpr) or (check_fpr == self._fingerprints[sender]):
+                                    return -1
+
+                whitelist = self._get_privacy_list_attribute(keydata, self.ATTRIBUTE_WHITELIST)
 
                 if whitelist:
                     log.debug("whitelist for user %s: %s" % (recipient, whitelist['list']))
@@ -359,13 +381,13 @@ class Keyring:
 
                             if check_uid == uid:
                                 if (not check_fpr) or (check_fpr == self._fingerprints[sender]):
-                                    return key.subkeys[0].fpr
+                                    return 1
 
             except:
                 import traceback
                 traceback.print_exc()
 
-        return False
+        return 0
 
     def get_key(self, userid, fingerprint, full_key=False):
         """

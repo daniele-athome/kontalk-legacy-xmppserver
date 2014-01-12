@@ -79,10 +79,12 @@ class PresenceHandler(XMPPHandler):
         jid_to = jid.JID(stanza['to'])
         jid_from = jid.JID(stanza['from'])
 
-        fpr = self.parent.is_presence_allowed(jid_from, jid_to)
+        allowed = self.parent.is_presence_allowed(jid_from, jid_to)
 
-        if fpr:
+        if allowed == 1:
             self.parent.subscribe(jid_to, jid_from, stanza.getAttribute('id'))
+        elif allowed == -1:
+            log.debug("user is blacklisted, ignoring request")
         else:
             log.debug("not authorized to subscribe to user's presence, sending request")
             try:
@@ -141,7 +143,7 @@ class PresenceHandler(XMPPHandler):
 
         jid_from = jid.JID(stanza['from'])
 
-        if self.parent.is_presence_allowed(jid_to, jid_from):
+        if self.parent.is_presence_allowed(jid_to, jid_from) == 1:
             log.debug("SUBSCRIPTION SUCCESSFUL")
 
             if self.parent.cache.jid_available(jid_from):
@@ -192,10 +194,12 @@ class IQHandler(XMPPHandler):
                 # include the entry in the roster reply anyway
                 entry = self.parent.cache.lookup(itemJid)
                 if entry:
-                    item = roster.addElement((None, 'item'))
-                    item['jid'] = self.parent.translateJID(entry.jid).userhost()
+                    allowed = self.parent.is_presence_allowed(requester, itemJid)
+                    if allowed != -1:
+                        item = roster.addElement((None, 'item'))
+                        item['jid'] = self.parent.translateJID(entry.jid).userhost()
 
-                    if self.parent.is_presence_allowed(requester, itemJid):
+                    if allowed == 1:
                         probes.append(entry.presence())
 
             self.send(response)
@@ -343,7 +347,7 @@ class MessageHandler(XMPPHandler):
             else:
                 jid_to = jid.JID(stanza['to'])
 
-            if self.parent.is_presence_allowed(jid_from, jid_to):
+            if self.parent.is_presence_allowed(jid_from, jid_to) == 1:
                 # send to router (without implicitly consuming)
                 self.parent.send(stanza, force_delivery=True)
             else:
@@ -626,9 +630,10 @@ class JIDCache(XMPPHandler):
         jid_to = jid.JID(stanza['to'])
         try:
             fpr = self.parent.is_presence_allowed(jid_from, jid_to)
-            if not fpr:
+            if fpr != 1:
                 raise Exception()
 
+            fpr = self.parent.keyring.get_fingerprint(jid_to.user)
             keydata = self.parent.keyring.get_key(jid_to.user, fpr, full_key=(jid_to.user==jid_from.user))
 
             iq = xmlstream2.toResponse(stanza, 'result')
@@ -705,7 +710,7 @@ class JIDCache(XMPPHandler):
         to = jid.JID(stanza['to'])
         sender = jid.JID(stanza['from'])
 
-        if self.parent.is_presence_allowed(sender, to):
+        if self.parent.is_presence_allowed(sender, to) == 1:
             gid = stanza.getAttribute('id')
             if not self.send_user_presence(gid, sender, to):
                 response = xmlstream2.toResponse(stanza, 'error')
@@ -1104,7 +1109,7 @@ class Resolver(xmlstream2.SocketComponent):
 
             removed = []
             for sub in self.subscriptions[bareWatched]:
-                if self.parent.is_presence_allowed(sub, watched):
+                if self.parent.is_presence_allowed(sub, watched) == 1:
                     log.debug("notifying subscriber %s" % (sub, ))
                     stanza['to'] = sub.userhost()
                     self.send(stanza)
@@ -1129,19 +1134,14 @@ class Resolver(xmlstream2.SocketComponent):
     def is_presence_allowed(self, jid_from, jid_to):
         """
         Checks if requester is allowed to see a user's presence.
-        @return fingerprint of the sender, True if allowed implicitly, False if not allowed, None if key not found
+        @return 1 if allowed, 0 if not allowed, -1 if blacklisted, -2 if key not found
         """
 
         # servers are allowed to subscribe to user presence
         if not jid_from.user:
-            return True
+            return 1
 
         try:
-            fpr = self.keyring.user_allowed(jid_from.user, jid_to.user)
-            # this is because user_allowed returns None
-            if fpr:
-                return fpr
-            else:
-                return False
+            return self.keyring.user_allowed(jid_from.user, jid_to.user)
         except keyring.KeyNotFoundException:
-            return None
+            return -2
