@@ -99,7 +99,7 @@ def verify_certificate(cert):
     pubkey_ext = get_pgp_publickey_extension(cert)
 
     if pubkey and pubkey_ext:
-        # TODO keyid
+        # WARNING this goes "internal error" sometimes
         pubkey2 = convert_publickey(pubkey_ext, get_key_fingerprint(pubkey_ext))
 
         # compare public keys
