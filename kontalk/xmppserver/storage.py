@@ -20,6 +20,7 @@
 
 
 from twisted.internet import defer, reactor
+from twisted.internet.task import LoopingCall
 from twisted.enterprise import adbapi
 from twisted.words.protocols.jabber import jid
 
@@ -111,6 +112,23 @@ class UserValidationStorage:
 
     """Validation code length."""
     VALIDATION_CODE_LENGTH = 6
+
+    """Expired timeout call in seconds."""
+    EXPIRED_TIMEOUT = 60
+
+    def __init__(self, expire_time=0):
+        """
+        Creates a new validation storage.
+        @var expire_time: expire time in seconds, 0 to disable it
+        """
+        # register a timeout for expired codes check
+        if expire_time > 0:
+            self.expire_time = expire_time
+            LoopingCall(self.expired).start(self.EXPIRED_TIMEOUT, now=True)
+
+    def expired(self):
+        """Called every EXPIRED_TIMEOUT seconds to purge expired entries."""
+        pass
 
     def register(self, key, code=None):
         """Registers a validation code for a user."""
@@ -447,6 +465,9 @@ class MySQLUserValidationStorage(UserValidationStorage):
     """User validation storage."""
 
     TEXT_INVALID_CODE = 'Invalid validation code.'
+
+    def expired(self):
+        return dbpool.runOperation('DELETE FROM validations WHERE UNIX_TIMESTAMP() > (UNIX_TIMESTAMP(timestamp) + %d)' % (self.expire_time, ))
 
     def register(self, key, code=None):
         global dbpool

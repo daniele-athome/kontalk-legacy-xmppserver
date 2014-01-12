@@ -862,7 +862,13 @@ class C2SComponent(xmlstream2.SocketComponent):
         storage.init(self.config['database'])
         self.stanzadb = storage.MySQLStanzaStorage()
         self.presencedb = storage.MySQLPresenceStorage()
-        self.validationdb = storage.MySQLUserValidationStorage()
+
+        try:
+            validation_expire = self.config['registration']['expire']
+        except:
+            validation_expire = 0
+
+        self.validationdb = storage.MySQLUserValidationStorage(validation_expire)
 
         self.keyring = keyring.Keyring(storage.MySQLNetworkStorage(), self.config['fingerprint'], self.network, self.servername)
         authrealm = auth.SASLRealm("Kontalk")
