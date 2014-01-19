@@ -1163,6 +1163,11 @@ class Resolver(xmlstream2.SocketComponent):
 
         # translate to network JID first
         jid_from = self.translateJID(jid_from)
+        translated_to = self.translateJID(jid_to)
+
+        # talking to ourselves :)
+        if jid_from == translated_to:
+            return 1
 
         # blacklist has priority
         try:
