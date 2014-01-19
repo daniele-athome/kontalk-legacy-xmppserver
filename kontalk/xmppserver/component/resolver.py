@@ -143,16 +143,14 @@ class PresenceHandler(XMPPHandler):
 
         jid_from = jid.JID(stanza['from'])
 
-        if self.parent.is_presence_allowed(jid_to, jid_from) == 1:
-            log.debug("SUBSCRIPTION SUCCESSFUL")
+        # add "to" user to whitelist of "from" user
+        self.parent.add_whitelist(jid_from, jid_to)
 
-            if self.parent.cache.jid_available(jid_from):
-                # send subscription accepted immediately, but without subscribing
-                self.parent.subscribe(jid_from, jid_to, stanza.getAttribute('id'), True)
+        log.debug("SUBSCRIPTION SUCCESSFUL")
 
-        else:
-            # TODO not allowed
-            log.debug("SUBSCRIPTION NOT ALLOWED")
+        if self.parent.cache.jid_available(jid_from):
+            # send subscription accepted immediately, but without subscribing
+            self.parent.subscribe(jid_from, jid_to, stanza.getAttribute('id'), True)
 
 
 class IQHandler(XMPPHandler):
@@ -630,6 +628,7 @@ class JIDCache(XMPPHandler):
         jid_to = jid.JID(stanza['to'])
         try:
             fpr = self.parent.is_presence_allowed(jid_from, jid_to)
+            log.debug("is_presence_allowed: %d" % (fpr, ))
             if fpr != 1:
                 raise Exception()
 
@@ -867,8 +866,14 @@ class Resolver(xmlstream2.SocketComponent):
     JIDs (prime.kontalk.net), altering the "to" attribute, then it bounces the
     stanza back to the router.
 
-    @ivar subscriptions: a map of user subscriptions (key=watched, value=subscribers)
+    @ivar subscriptions: a map of active user subscriptions (key=watched, value=subscribers)
     @type subscriptions: L{dict}
+
+    @ivar whitelists: a map of user whitelists (key=user, value=list(allowed_users))
+    @type whitelists: L{dict}
+
+    @ivar blacklists: a map of user blacklists (key=user, value=list(blocked_users))
+    @type blacklists: L{dict}
 
     @ivar cache: a local JID cache
     @type cache: L{JIDCache}
@@ -899,6 +904,8 @@ class Resolver(xmlstream2.SocketComponent):
         self.keyring = keyring.Keyring(storage.MySQLNetworkStorage(), config['fingerprint'], self.network, self.servername, True)
 
         self.subscriptions = {}
+        self.whitelists = {}
+        self.blacklists = {}
 
         # protocol handlers here!!
         for handler in self.protocolHandlers:
@@ -1131,17 +1138,49 @@ class Resolver(xmlstream2.SocketComponent):
             return jid.JID(tuple=(_jid.user, self.network, _jid.resource))
         return _jid
 
+    def add_whitelist(self, jid_to, jid_from):
+        """Adds jid_from to jid_to's whitelist."""
+
+        try:
+            wl = self.whitelists[jid_to.user]
+        except KeyError:
+            wl = self.whitelists[jid_to.user] = set()
+
+        wl.add(self.translateJID(jid_from).userhost())
+
     def is_presence_allowed(self, jid_from, jid_to):
         """
         Checks if requester is allowed to see a user's presence.
-        @return 1 if allowed, 0 if not allowed, -1 if blacklisted, -2 if key not found
+        @return 1 if allowed, 0 if not allowed, -1 if blacklisted, -2 if user not found
         """
+
+        if not self.cache.lookup(jid_to):
+            return -2
 
         # servers are allowed to subscribe to user presence
         if not jid_from.user:
             return 1
 
+        # translate to network JID first
+        jid_from = self.translateJID(jid_from)
+
+        # blacklist has priority
         try:
-            return self.keyring.user_allowed(jid_from.user, jid_to.user)
-        except keyring.KeyNotFoundException:
-            return -2
+            bl = self.blacklists[jid_to.user]
+            if jid_from.userhost() in bl:
+                return -1
+
+        except KeyError:
+            # blacklist not present for user - go ahead
+            pass
+
+        try:
+            wl = self.whitelists[jid_to.user]
+            if jid_from.userhost() in wl:
+                return 1
+
+        except KeyError:
+            # whitelist not present for the user - not authorized
+            pass
+
+        return 0
