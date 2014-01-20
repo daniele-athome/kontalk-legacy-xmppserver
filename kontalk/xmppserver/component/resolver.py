@@ -1128,14 +1128,14 @@ class Resolver(xmlstream2.SocketComponent):
             for e in removed:
                 self.subscriptions[bareWatched].remove(e)
 
-    def translateJID(self, _jid):
+    def translateJID(self, _jid, resource=True):
         """
         Translate a server JID (user@prime.kontalk.net) into a network JID
         (user@kontalk.net).
         """
         # TODO ehm :D
         if _jid.host == self.servername or _jid.host in self.keyring.hostlist():
-            return jid.JID(tuple=(_jid.user, self.network, _jid.resource))
+            return jid.JID(tuple=(_jid.user, self.network, _jid.resource if resource else None))
         return _jid
 
     def add_whitelist(self, jid_to, jid_from):
@@ -1162,8 +1162,8 @@ class Resolver(xmlstream2.SocketComponent):
             return 1
 
         # translate to network JID first
-        jid_from = self.translateJID(jid_from)
-        translated_to = self.translateJID(jid_to)
+        jid_from = self.translateJID(jid_from, False)
+        translated_to = self.translateJID(jid_to, False)
 
         # talking to ourselves :)
         if jid_from == translated_to:
