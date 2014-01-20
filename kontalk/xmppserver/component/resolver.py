@@ -50,6 +50,28 @@ class PresenceHandler(XMPPHandler):
         if stanza.consumed:
             return
 
+        # initial presence from a remote resolver
+        if (stanza['from'] != self.parent.servername and \
+            stanza['from'] in self.parent.keyring.hostlist()):
+
+            if stanza.getAttribute('origin') == self.parent.network:
+                log.debug("remote resolver appeared, sending privacy lists")
+                # will happen later
+
+            elif stanza['from'] != ('network.' + self.parent.network):
+                log.debug("introducing ourselves to server %s" % (stanza['from'], ))
+                # introduce ourselves to remote resolver
+                p = domish.Element((None, 'presence'))
+                p['from'] = self.parent.network
+                p['to'] = stanza['from']
+                p['destination'] = self.parent.network
+                self.parent.send(p)
+
+                log.debug("sending privacy lists to server %s" % (stanza['from'], ))
+
+            for wl in self.parent.whitelists:
+                log.debug(wl)
+
         self.parent.broadcastSubscribers(stanza)
 
     def onPresenceUnavailable(self, stanza):
@@ -1146,7 +1168,23 @@ class Resolver(xmlstream2.SocketComponent):
         except KeyError:
             wl = self.whitelists[jid_to.user] = set()
 
-        wl.add(self.translateJID(jid_from).userhost())
+        src = self.translateJID(jid_to, False).userhost()
+        dest = self.translateJID(jid_from, False).userhost()
+        wl.add(dest)
+
+        # broadcast to all resolvers
+        iq = domish.Element((None, 'iq'))
+        iq['from'] = dest
+        iq['type'] = 'set'
+        iq['id'] = util.rand_str(8)
+        allow = iq.addElement(('urn:xmpp:blocking', 'allow'))
+        allow.addElement((None, 'item'), content=src)
+
+        for server in self.keyring.hostlist():
+            if server != self.servername:
+                iq['to'] = server
+                iq['destination'] = self.network
+                self.send(iq)
 
     def is_presence_allowed(self, jid_from, jid_to):
         """
