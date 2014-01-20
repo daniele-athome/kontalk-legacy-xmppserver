@@ -377,16 +377,17 @@ class MySQLStanzaStorage(StanzaStorage):
 class MySQLNetworkStorage(NetworkStorage):
 
     def get_list(self):
+        # WARNING accessing Twisted internals and *blocking*
         global dbpool
-        def _translate(tx):
-            out = {}
-            tx.execute('SELECT fingerprint, host FROM servers')
-            data = tx.fetchall()
-            for row in data:
-                # { fingerprint: host }
-                out[str(row[0])] = str(row[1])
-            return out
-        return dbpool.runInteraction(_translate)
+        conn = dbpool.connectionFactory(dbpool)
+        tx = dbpool.transactionFactory(dbpool, conn)
+        tx.execute('SELECT fingerprint, host FROM servers')
+        data = tx.fetchall()
+        out = {}
+        for row in data:
+            # { fingerprint: host }
+            out[str(row[0])] = str(row[1])
+        return out
 
 class MySQLPresenceStorage(PresenceStorage):
 

@@ -142,10 +142,7 @@ class Keyring:
         return self._list.itervalues()
 
     def _reload(self):
-        def done(data):
-            self._list = data
-
-        self._db.get_list().addCallback(done)
+        self._list = self._db.get_list()
 
     def host(self, fingerprint):
         return self._list[fingerprint]
