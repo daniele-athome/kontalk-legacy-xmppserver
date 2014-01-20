@@ -45,6 +45,7 @@ NS_IQ_REGISTER = 'jabber:iq:register'
 NS_IQ_VERSION = 'jabber:iq:version'
 NS_IQ_ROSTER = 'jabber:iq:roster'
 NS_IQ_LAST = 'jabber:iq:last'
+NS_IQ_BLOCKING = 'urn:xmpp:blocking'
 
 NS_XMPP_DELAY = 'urn:xmpp:delay'
 NS_XMPP_PING = 'urn:xmpp:ping'

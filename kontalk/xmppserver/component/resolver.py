@@ -69,8 +69,19 @@ class PresenceHandler(XMPPHandler):
 
                 log.debug("sending privacy lists to server %s" % (stanza['from'], ))
 
-            for wl in self.parent.whitelists:
-                log.debug(wl)
+            for user, wl in self.parent.whitelists.iteritems():
+                iq = domish.Element((None, 'iq'))
+                iq['from'] = '%s@%s' % (user, self.parent.network)
+                iq['type'] = 'set'
+                iq['id'] = util.rand_str(8)
+                iq['to'] = stanza['from']
+                iq['destination'] = self.parent.network
+                allow = iq.addElement(('urn:xmpp:blocking', 'whitelist'))
+
+                for item in wl:
+                    allow.addElement((None, 'item'), content=item)
+
+                self.parent.send(iq)
 
         self.parent.broadcastSubscribers(stanza)
 
@@ -343,6 +354,34 @@ class IQHandler(XMPPHandler):
                     tmpTo.host = server
                     lastIq['to'] = tmpTo.full()
                     self.send(lastIq)
+
+
+class PrivacyListHandler(XMPPHandler):
+    """
+    Handle IQ urn:xmpp:blocking stanzas.
+    @type parent: L{Resolver}
+    """
+
+    def connectionInitialized(self):
+        self.xmlstream.addObserver("/iq[@type='set']/whitelist[@xmlns='%s']" % (xmlstream2.NS_IQ_BLOCKING), self.whitelist, 100)
+        self.xmlstream.addObserver("/iq[@type='set']/allow[@xmlns='%s']" % (xmlstream2.NS_IQ_BLOCKING), self.allow, 100)
+
+    def _whitelist(self, jid_from, items):
+        for it in items:
+            jid_to = jid.JID(str(it))
+            self.parent.add_whitelist(jid_from, jid_to)
+
+    def whitelist(self, stanza):
+        jid_from = jid.JID(stanza['from'])
+        items = stanza.whitelist.elements(uri=xmlstream2.NS_IQ_BLOCKING, name='item')
+        if items:
+            self._whitelist(jid_from, items)
+
+    def allow(self, stanza):
+        jid_from = jid.JID(stanza['from'])
+        items = stanza.allow.elements(uri=xmlstream2.NS_IQ_BLOCKING, name='item')
+        if items:
+            self._whitelist(jid_from, items)
 
 
 class MessageHandler(XMPPHandler):
@@ -905,6 +944,7 @@ class Resolver(xmlstream2.SocketComponent):
         JIDCache,
         PresenceHandler,
         IQHandler,
+        PrivacyListHandler,
         MessageHandler,
     )
 
