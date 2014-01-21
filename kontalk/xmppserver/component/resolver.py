@@ -377,13 +377,19 @@ class PrivacyListHandler(XMPPHandler):
         self.xmlstream.addObserver("/iq[@type='set']/blocklist[@xmlns='%s']" % (xmlstream2.NS_IQ_BLOCKING), self.blacklist, 100)
         self.xmlstream.addObserver("/iq[@type='set']/whitelist[@xmlns='%s']" % (xmlstream2.NS_IQ_BLOCKING), self.whitelist, 100)
         self.xmlstream.addObserver("/iq[@type='set']/allow[@xmlns='%s']" % (xmlstream2.NS_IQ_BLOCKING), self.allow, 100)
+        self.xmlstream.addObserver("/iq[@type='set']/unallow[@xmlns='%s']" % (xmlstream2.NS_IQ_BLOCKING), self.unallow, 100)
         self.xmlstream.addObserver("/iq[@type='set']/block[@xmlns='%s']" % (xmlstream2.NS_IQ_BLOCKING), self.block, 100)
-        # TODO unblock
+        self.xmlstream.addObserver("/iq[@type='set']/unblock[@xmlns='%s']" % (xmlstream2.NS_IQ_BLOCKING), self.unblock, 100)
 
-    def _blacklist(self, jid_from, items):
+    def _blacklist(self, jid_from, items, remove=False):
+        if remove:
+            fn = self.parent.remove_blacklist
+        else:
+            fn = self.parent.add_blacklist
+
         for it in items:
             jid_to = jid.JID(str(it))
-            self.parent.add_blocklist(jid_from, jid_to)
+            fn(jid_from, jid_to)
 
     def _whitelist(self, jid_from, items):
         for it in items:
@@ -410,11 +416,23 @@ class PrivacyListHandler(XMPPHandler):
         if items:
             self._whitelist(jid_from, items)
 
+    def unallow(self, stanza):
+        jid_from = jid.JID(stanza['from'])
+        items = stanza.unallow.elements(uri=xmlstream2.NS_IQ_BLOCKING, name='item')
+        if items:
+            self._whitelist(jid_from, items, True)
+
     def block(self, stanza):
         jid_from = jid.JID(stanza['from'])
         items = stanza.block.elements(uri=xmlstream2.NS_IQ_BLOCKING, name='item')
         if items:
             self._blacklist(jid_from, items)
+
+    def unblock(self, stanza):
+        jid_from = jid.JID(stanza['from'])
+        items = stanza.block.elements(uri=xmlstream2.NS_IQ_BLOCKING, name='item')
+        if items:
+            self._blacklist(jid_from, items, True)
 
 
 class MessageHandler(XMPPHandler):
@@ -981,6 +999,9 @@ class Resolver(xmlstream2.SocketComponent):
         MessageHandler,
     )
 
+    WHITELIST = 1
+    BLACKLIST = 2
+
     def __init__(self, config):
         router_cfg = config['router']
         for key in ('socket', 'host', 'port'):
@@ -1233,31 +1254,74 @@ class Resolver(xmlstream2.SocketComponent):
             return jid.JID(tuple=(_jid.user, self.network, _jid.resource if resource else None))
         return _jid
 
-    def add_whitelist(self, jid_to, jid_from):
-        """Adds jid_from to jid_to's whitelist."""
-
-        try:
-            wl = self.whitelists[jid_to.user]
-        except KeyError:
-            wl = self.whitelists[jid_to.user] = set()
-
-        src = self.translateJID(jid_to, False).userhost()
-        dest = self.translateJID(jid_from, False).userhost()
-        wl.add(dest)
-
+    def _broadcast_privacy_list_change(self, dest, src, node):
         # broadcast to all resolvers
         iq = domish.Element((None, 'iq'))
         iq['from'] = dest
         iq['type'] = 'set'
         iq['id'] = util.rand_str(8)
-        allow = iq.addElement(('urn:xmpp:blocking', 'allow'))
-        allow.addElement((None, 'item'), content=src)
+        nodeElement = iq.addElement(('urn:xmpp:blocking', node))
+        nodeElement.addElement((None, 'item'), content=src)
 
         for server in self.keyring.hostlist():
             if server != self.servername:
                 iq['to'] = server
                 iq['destination'] = self.network
                 self.send(iq)
+
+    def _privacy_list_add(self, jid_to, jid_from, list_type):
+        if list_type == self.WHITELIST:
+            node = 'allow'
+            data = self.whitelists
+        elif list_type == self.BLACKLIST:
+            node = 'block'
+            data = self.blacklists
+
+        try:
+            wl = data[jid_to.user]
+        except KeyError:
+            wl = data[jid_to.user] = set()
+
+        src = self.translateJID(jid_to, False).userhost()
+        dest = self.translateJID(jid_from, False).userhost()
+        wl.add(dest)
+
+        # broadcast to all resolvers
+        self._broadcast_privacy_list_change(dest, src, node)
+
+    def _privacy_list_remove(self, jid_to, jid_from, list_type):
+        if list_type == self.WHITELIST:
+            node = 'unallow'
+            data = self.whitelists
+        elif list_type == self.BLACKLIST:
+            node = 'unblock'
+            data = self.blacklists
+
+        if jid_to.user in data:
+            wl = data[jid_to.user]
+
+            src = self.translateJID(jid_to, False).userhost()
+            dest = self.translateJID(jid_from, False).userhost()
+            wl.add(dest)
+
+            # broadcast to all resolvers
+            self._broadcast_privacy_list_change(dest, src, node)
+
+    def add_blacklist(self, jid_to, jid_from):
+        """Adds jid_from to jid_to's blacklist."""
+        self._privacy_list_add(jid_to, jid_from, self.BLACKLIST)
+
+    def add_whitelist(self, jid_to, jid_from):
+        """Adds jid_from to jid_to's whitelist."""
+        self._privacy_list_add(jid_to, jid_from, self.WHITELIST)
+
+    def remove_blacklist(self, jid_to, jid_from):
+        """Removes jid_from from jid_to's blacklist."""
+        self._privacy_list_remove(jid_to, jid_from, self.BLACKLIST)
+
+    def remove_whitelist(self, jid_to, jid_from):
+        """Removes jid_from from jid_to's whitelist."""
+        self._privacy_list_remove(jid_to, jid_from, self.WHITELIST)
 
     def is_presence_allowed(self, jid_from, jid_to):
         """
