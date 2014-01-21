@@ -277,16 +277,29 @@ class Keyring:
             fp = str(result.imports[0][0]).upper()
             key = self.ctx.get_key(fp)
 
+            # revoked key!
+            if key.revoked:
+                return None
+
             # check that at least one of the key uids is userid@network
             check_email = '%s@%s' % (userid, self.network)
             for uid in key.uids:
                 # uid found, check signatures
                 if uid.email == check_email:
+
+                    # revoked userid
+                    if uid.revoked:
+                        return None
+
                     for sig in uid.signatures:
                         try:
                             log.debug("found signature by [KEYID-%s]" % (sig.keyid, ))
                             mkey = self.ctx.get_key(sig.keyid, False)
                             if mkey:
+                                # signer key revoked!
+                                if mkey.revoked:
+                                    continue
+
                                 fpr = mkey.subkeys[0].fpr.upper()
 
                                 log.debug("found signature by %s" % (fpr, ))
