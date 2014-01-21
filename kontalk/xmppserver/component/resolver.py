@@ -55,7 +55,7 @@ class PresenceHandler(XMPPHandler):
             stanza['from'] in self.parent.keyring.hostlist()):
 
             if stanza.getAttribute('origin') == self.parent.network:
-                log.debug("remote resolver appeared, sending privacy lists")
+                log.debug("remote resolver appeared, sending privacy lists to server %s" % (stanza['from'], ))
                 # will happen later
 
             elif stanza['from'] != ('network.' + self.parent.network):
@@ -69,21 +69,25 @@ class PresenceHandler(XMPPHandler):
 
                 log.debug("sending privacy lists to server %s" % (stanza['from'], ))
 
-            for user, wl in self.parent.whitelists.iteritems():
-                iq = domish.Element((None, 'iq'))
-                iq['from'] = '%s@%s' % (user, self.parent.network)
-                iq['type'] = 'set'
-                iq['id'] = util.rand_str(8)
-                iq['to'] = stanza['from']
-                iq['destination'] = self.parent.network
-                allow = iq.addElement(('urn:xmpp:blocking', 'whitelist'))
-
-                for item in wl:
-                    allow.addElement((None, 'item'), content=item)
-
-                self.parent.send(iq)
+            self.send_privacy_lists(self.parent.blacklists, stanza['from'])
+            self.send_privacy_lists(self.parent.whitelists, stanza['from'])
 
         self.parent.broadcastSubscribers(stanza)
+
+    def send_privacy_lists(self, plist, addr_from):
+        for user, wl in plist:
+            iq = domish.Element((None, 'iq'))
+            iq['from'] = '%s@%s' % (user, self.parent.network)
+            iq['type'] = 'set'
+            iq['id'] = util.rand_str(8)
+            iq['to'] = addr_from
+            iq['destination'] = self.parent.network
+            allow = iq.addElement(('urn:xmpp:blocking', 'whitelist'))
+
+            for item in wl:
+                allow.addElement((None, 'item'), content=item)
+
+            self.parent.send(iq)
 
     def onPresenceUnavailable(self, stanza):
         """Handle unavailable presence stanzas."""
