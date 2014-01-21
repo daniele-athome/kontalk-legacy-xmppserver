@@ -58,6 +58,7 @@ class PresenceHandler(XMPPHandler):
                 log.debug("remote resolver appeared, sending privacy lists to server %s" % (stanza['from'], ))
                 # will happen later
 
+            # FIXME hard-coded host component
             elif stanza['from'] != ('network.' + self.parent.network):
                 log.debug("introducing ourselves to server %s" % (stanza['from'], ))
                 # introduce ourselves to remote resolver
@@ -366,19 +367,41 @@ class PrivacyListHandler(XMPPHandler):
     @type parent: L{Resolver}
     """
 
+    """
+    TODO this needs some versioning or timestamping. When receiving a new privacy
+    list, it will have a timestamp to indicate its versioning. The most recent
+    will take precedence.
+    """
+
     def connectionInitialized(self):
+        self.xmlstream.addObserver("/iq[@type='set']/blocklist[@xmlns='%s']" % (xmlstream2.NS_IQ_BLOCKING), self.blacklist, 100)
         self.xmlstream.addObserver("/iq[@type='set']/whitelist[@xmlns='%s']" % (xmlstream2.NS_IQ_BLOCKING), self.whitelist, 100)
         self.xmlstream.addObserver("/iq[@type='set']/allow[@xmlns='%s']" % (xmlstream2.NS_IQ_BLOCKING), self.allow, 100)
+        self.xmlstream.addObserver("/iq[@type='set']/block[@xmlns='%s']" % (xmlstream2.NS_IQ_BLOCKING), self.block, 100)
+        # TODO unblock
+
+    def _blacklist(self, jid_from, items):
+        for it in items:
+            jid_to = jid.JID(str(it))
+            self.parent.add_blocklist(jid_from, jid_to)
 
     def _whitelist(self, jid_from, items):
         for it in items:
             jid_to = jid.JID(str(it))
             self.parent.add_whitelist(jid_from, jid_to)
 
+    def blacklist(self, stanza):
+        jid_from = jid.JID(stanza['from'])
+        items = stanza.blocklist.elements(uri=xmlstream2.NS_IQ_BLOCKING, name='item')
+        if items:
+            # FIXME shouldn't we replace instead of just adding?
+            self._blacklist(jid_from, items)
+
     def whitelist(self, stanza):
         jid_from = jid.JID(stanza['from'])
         items = stanza.whitelist.elements(uri=xmlstream2.NS_IQ_BLOCKING, name='item')
         if items:
+            # FIXME shouldn't we replace instead of just adding?
             self._whitelist(jid_from, items)
 
     def allow(self, stanza):
@@ -386,6 +409,12 @@ class PrivacyListHandler(XMPPHandler):
         items = stanza.allow.elements(uri=xmlstream2.NS_IQ_BLOCKING, name='item')
         if items:
             self._whitelist(jid_from, items)
+
+    def block(self, stanza):
+        jid_from = jid.JID(stanza['from'])
+        items = stanza.block.elements(uri=xmlstream2.NS_IQ_BLOCKING, name='item')
+        if items:
+            self._blacklist(jid_from, items)
 
 
 class MessageHandler(XMPPHandler):
