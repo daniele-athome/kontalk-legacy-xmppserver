@@ -11,3 +11,5 @@ dropin.cache
 /server-pgp.key
 /server-pgp.beta.crt
 /server-pgp.beta.key
+/*.log
+/*.log.*
