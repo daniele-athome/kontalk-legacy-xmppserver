@@ -187,8 +187,9 @@ class PresenceHandler(XMPPHandler):
         log.debug("SUBSCRIPTION SUCCESSFUL")
 
         if self.parent.cache.jid_available(jid_from):
-            # send subscription accepted immediately, but without subscribing
-            self.parent.subscribe(jid_from, jid_to, stanza.getAttribute('id'), True)
+            # send subscription accepted immediately and subscribe
+            # TODO this is wrong, but do it for the moment until we find a way to handle this case
+            self.parent.subscribe(jid_from, jid_to, stanza.getAttribute('id'), False)
 
 
 class IQHandler(XMPPHandler):
