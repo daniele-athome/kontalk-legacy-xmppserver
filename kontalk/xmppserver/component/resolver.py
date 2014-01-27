@@ -1253,7 +1253,7 @@ class Resolver(xmlstream2.SocketComponent):
         # TODO ehm :D
         if _jid.host == self.servername or _jid.host in self.keyring.hostlist():
             return jid.JID(tuple=(_jid.user, self.network, _jid.resource if resource else None))
-        return _jid
+        return _jid if resource else _jid.userhostJID()
 
     def _broadcast_privacy_list_change(self, dest, src, node):
         # broadcast to all resolvers
