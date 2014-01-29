@@ -1285,10 +1285,13 @@ class Resolver(xmlstream2.SocketComponent):
 
         src = self.translateJID(jid_to, False).userhost()
         dest = self.translateJID(jid_from, False).userhost()
+
+        was_present = dest in wl
         wl.add(dest)
 
-        # broadcast to all resolvers
-        self._broadcast_privacy_list_change(dest, src, node)
+        # broadcast to all resolvers (if not previously advertised)
+        if not was_present:
+            self._broadcast_privacy_list_change(dest, src, node)
 
     def _privacy_list_remove(self, jid_to, jid_from, list_type):
         if list_type == self.WHITELIST:
