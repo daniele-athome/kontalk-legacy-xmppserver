@@ -1306,10 +1306,13 @@ class Resolver(xmlstream2.SocketComponent):
 
             src = self.translateJID(jid_to, False).userhost()
             dest = self.translateJID(jid_from, False).userhost()
-            wl.add(dest)
 
-            # broadcast to all resolvers
-            self._broadcast_privacy_list_change(dest, src, node)
+            was_present = dest in wl
+            wl.discard(dest)
+
+            # broadcast to all resolvers (if not previously advertised)
+            if was_present:
+                self._broadcast_privacy_list_change(dest, src, node)
 
     def add_blacklist(self, jid_to, jid_from):
         """Adds jid_from to jid_to's blacklist."""
