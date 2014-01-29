@@ -382,7 +382,7 @@ class PrivacyListHandler(XMPPHandler):
         self.xmlstream.addObserver("/iq[@type='set']/block[@xmlns='%s']" % (xmlstream2.NS_IQ_BLOCKING), self.block, 100)
         self.xmlstream.addObserver("/iq[@type='set']/unblock[@xmlns='%s']" % (xmlstream2.NS_IQ_BLOCKING), self.unblock, 100)
 
-    def _blacklist(self, jid_from, items, remove=False):
+    def _blacklist(self, jid_from, items, remove=False, broadcast=True):
         if remove:
             fn = self.parent.remove_blacklist
         else:
@@ -390,26 +390,31 @@ class PrivacyListHandler(XMPPHandler):
 
         for it in items:
             jid_to = jid.JID(str(it))
-            fn(jid_from, jid_to)
+            fn(jid_from, jid_to, broadcast)
 
-    def _whitelist(self, jid_from, items):
+    def _whitelist(self, jid_from, items, remove=False, broadcast=True):
+        if remove:
+            fn = self.parent.remove_whitelist
+        else:
+            fn = self.parent.add_whitelist
+
         for it in items:
             jid_to = jid.JID(str(it))
-            self.parent.add_whitelist(jid_from, jid_to)
+            fn(jid_from, jid_to, broadcast)
 
     def blacklist(self, stanza):
         jid_from = jid.JID(stanza['from'])
         items = stanza.blocklist.elements(uri=xmlstream2.NS_IQ_BLOCKING, name='item')
         if items:
             # FIXME shouldn't we replace instead of just adding?
-            self._blacklist(jid_from, items)
+            self._blacklist(jid_from, items, broadcast=False)
 
     def whitelist(self, stanza):
         jid_from = jid.JID(stanza['from'])
         items = stanza.whitelist.elements(uri=xmlstream2.NS_IQ_BLOCKING, name='item')
         if items:
             # FIXME shouldn't we replace instead of just adding?
-            self._whitelist(jid_from, items)
+            self._whitelist(jid_from, items, broadcast=False)
 
     def allow(self, stanza):
         jid_from = jid.JID(stanza['from'])
@@ -1270,7 +1275,7 @@ class Resolver(xmlstream2.SocketComponent):
                 iq['destination'] = self.network
                 self.send(iq)
 
-    def _privacy_list_add(self, jid_to, jid_from, list_type):
+    def _privacy_list_add(self, jid_to, jid_from, list_type, broadcast=True):
         if list_type == self.WHITELIST:
             node = 'allow'
             data = self.whitelists
@@ -1286,14 +1291,13 @@ class Resolver(xmlstream2.SocketComponent):
         src = self.translateJID(jid_to, False).userhost()
         dest = self.translateJID(jid_from, False).userhost()
 
-        was_present = dest in wl
         wl.add(dest)
 
-        # broadcast to all resolvers (if not previously advertised)
-        if not was_present:
+        # broadcast to all resolvers
+        if broadcast:
             self._broadcast_privacy_list_change(dest, src, node)
 
-    def _privacy_list_remove(self, jid_to, jid_from, list_type):
+    def _privacy_list_remove(self, jid_to, jid_from, list_type, broadcast=True):
         if list_type == self.WHITELIST:
             node = 'unallow'
             data = self.whitelists
@@ -1307,28 +1311,26 @@ class Resolver(xmlstream2.SocketComponent):
             src = self.translateJID(jid_to, False).userhost()
             dest = self.translateJID(jid_from, False).userhost()
 
-            was_present = dest in wl
             wl.discard(dest)
 
-            # broadcast to all resolvers (if not previously advertised)
-            if was_present:
-                self._broadcast_privacy_list_change(dest, src, node)
+            # broadcast to all resolvers
+            self._broadcast_privacy_list_change(dest, src, node)
 
-    def add_blacklist(self, jid_to, jid_from):
+    def add_blacklist(self, jid_to, jid_from, broadcast=True):
         """Adds jid_from to jid_to's blacklist."""
-        self._privacy_list_add(jid_to, jid_from, self.BLACKLIST)
+        self._privacy_list_add(jid_to, jid_from, self.BLACKLIST, broadcast)
 
-    def add_whitelist(self, jid_to, jid_from):
+    def add_whitelist(self, jid_to, jid_from, broadcast=True):
         """Adds jid_from to jid_to's whitelist."""
-        self._privacy_list_add(jid_to, jid_from, self.WHITELIST)
+        self._privacy_list_add(jid_to, jid_from, self.WHITELIST, broadcast)
 
-    def remove_blacklist(self, jid_to, jid_from):
+    def remove_blacklist(self, jid_to, jid_from, broadcast=True):
         """Removes jid_from from jid_to's blacklist."""
-        self._privacy_list_remove(jid_to, jid_from, self.BLACKLIST)
+        self._privacy_list_remove(jid_to, jid_from, self.BLACKLIST, broadcast)
 
-    def remove_whitelist(self, jid_to, jid_from):
+    def remove_whitelist(self, jid_to, jid_from, broadcast=True):
         """Removes jid_from from jid_to's whitelist."""
-        self._privacy_list_remove(jid_to, jid_from, self.WHITELIST)
+        self._privacy_list_remove(jid_to, jid_from, self.WHITELIST, broadcast)
 
     def is_presence_allowed(self, jid_from, jid_to):
         """
