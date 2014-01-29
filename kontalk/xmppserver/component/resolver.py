@@ -1233,7 +1233,7 @@ class Resolver(xmlstream2.SocketComponent):
 
             removed = []
             for sub in self.subscriptions[bareWatched]:
-                if self.parent.is_presence_allowed(sub, watched) == 1:
+                if self.is_presence_allowed(sub, watched) == 1:
                     log.debug("notifying subscriber %s" % (sub, ))
                     stanza['to'] = sub.userhost()
                     self.send(stanza)
