@@ -420,25 +420,29 @@ class PrivacyListHandler(XMPPHandler):
         jid_from = jid.JID(stanza['from'])
         items = stanza.allow.elements(uri=xmlstream2.NS_IQ_BLOCKING, name='item')
         if items:
-            self._whitelist(jid_from, items)
+            # TODO c2s must reject stanzas with "origin" attribute for security reasons
+            self._whitelist(jid_from, items, broadcast=(stanza.getAttribute('origin')==self.parent.network))
 
     def unallow(self, stanza):
         jid_from = jid.JID(stanza['from'])
         items = stanza.unallow.elements(uri=xmlstream2.NS_IQ_BLOCKING, name='item')
         if items:
-            self._whitelist(jid_from, items, True)
+            # TODO c2s must reject stanzas with "origin" attribute for security reasons
+            self._whitelist(jid_from, items, True, broadcast=(stanza.getAttribute('origin')==self.parent.network))
 
     def block(self, stanza):
         jid_from = jid.JID(stanza['from'])
         items = stanza.block.elements(uri=xmlstream2.NS_IQ_BLOCKING, name='item')
         if items:
-            self._blacklist(jid_from, items)
+            # TODO c2s must reject stanzas with "origin" attribute for security reasons
+            self._blacklist(jid_from, items, broadcast=(stanza.getAttribute('origin')==self.parent.network))
 
     def unblock(self, stanza):
         jid_from = jid.JID(stanza['from'])
         items = stanza.block.elements(uri=xmlstream2.NS_IQ_BLOCKING, name='item')
         if items:
-            self._blacklist(jid_from, items, True)
+            # TODO c2s must reject stanzas with "origin" attribute for security reasons
+            self._blacklist(jid_from, items, True, broadcast=(stanza.getAttribute('origin')==self.parent.network))
 
 
 class MessageHandler(XMPPHandler):
@@ -1263,6 +1267,8 @@ class Resolver(xmlstream2.SocketComponent):
     def _broadcast_privacy_list_change(self, dest, src, node):
         # broadcast to all resolvers
         iq = domish.Element((None, 'iq'))
+        # origin is included to distinguish resolver broadcats from client requests
+        iq['origin'] = self.network
         iq['from'] = dest
         iq['type'] = 'set'
         iq['id'] = util.rand_str(8)
