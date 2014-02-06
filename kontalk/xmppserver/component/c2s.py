@@ -71,16 +71,7 @@ class XMPPServerFactory(xish_xmlstream.XmlStreamFactoryMixin, ServerFactory):
         if ssl is None:
             raise xmlstream.TLSNotSupported()
 
-        cert = open(certfile, 'rb')
-        cert_buf = cert.read()
-        cert.close()
-        cert = open(keyfile, 'rb')
-        key_buf = cert.read()
-        cert.close()
-
-        pkey = crypto.load_privatekey(crypto.FILETYPE_PEM, key_buf)
-        cert = crypto.load_certificate(crypto.FILETYPE_PEM, cert_buf)
-        self.tls_ctx = xmlstream2.MyOpenSSLCertificateOptions(pkey, cert, self._sslVerify)
+        self.tls_ctx = xmlstream2.MyOpenSSLCertificateOptions(keyfile, certfile, self._sslVerify)
 
     def _sslVerify(self, conn, cert, errno, depth, preverify_ok):
         return keyring.verify_certificate(cert)

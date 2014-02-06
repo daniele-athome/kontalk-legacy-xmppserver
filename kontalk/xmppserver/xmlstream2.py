@@ -147,9 +147,9 @@ class MyOpenSSLCertificateOptions(object):
     _OP_ALL = getattr(SSL, 'OP_ALL', 0x0000FFFF)
     method = SSL.TLSv1_METHOD
 
-    def __init__(self, privateKey=None, certificate=None, verifyCallback=None, enableSingleUseKeys=True):
-        self.privateKey = privateKey
-        self.certificate = certificate
+    def __init__(self, privateKeyFile=None, certificateFile=None, verifyCallback=None, enableSingleUseKeys=True):
+        self.privateKeyFile = privateKeyFile
+        self.certificateFile = certificateFile
         self._verifyCallback = verifyCallback
         self.enableSingleUseKeys = enableSingleUseKeys
 
@@ -164,9 +164,9 @@ class MyOpenSSLCertificateOptions(object):
     def _makeContext(self):
         ctx = SSL.Context(self.method)
 
-        if self.certificate is not None and self.privateKey is not None:
-            ctx.use_certificate(self.certificate)
-            ctx.use_privatekey(self.privateKey)
+        if self.certificateFile is not None and self.privateKeyFile is not None:
+            ctx.use_certificate_chain_file(self.certificateFile)
+            ctx.use_privatekey_file(self.privateKeyFile)
             # Sanity check
             ctx.check_privatekey()
 
