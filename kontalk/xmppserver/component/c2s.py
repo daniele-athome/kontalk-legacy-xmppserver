@@ -186,7 +186,7 @@ class XMPPListenAuthenticator(xmlstream.ListenAuthenticator):
 
         xs.initializers = []
         inits = (
-            (xmlstream2.TLSReceivingInitializer, False, False),
+            (xmlstream2.TLSReceivingInitializer, True, False),
             (xmlstream2.SASLReceivingInitializer, True, True),
             (xmlstream2.RegistrationInitializer, True, True),
             # doesn't work yet -- (compression.CompressReceivingInitializer, False, False),
