@@ -58,6 +58,7 @@ class KontalkCertificate(object):
         self.cert = cert
 
     def check(self, fingerprint, kr, presencedb=None):
+        _jid = None
 
         if isinstance(self.cert, OpenPGPCertificate):
             uid = self.cert.uid(0)
@@ -65,16 +66,17 @@ class KontalkCertificate(object):
             fpr = self.cert.fingerprint
 
         elif isinstance(self.cert, X509):
-            keydata = keyring.get_pgp_publickey_extension(self.cert)
-            if keydata:
-                pkey = OpenPGPCertificate(keydata)
-                if pkey:
-                    uid = pkey.uid(0)
-                    if uid:
-                        _jid = jid.JID(uid.email)
-                        fpr = kr.check_user_key(keydata, _jid.user)
-                        if not fpr:
-                            _jid = None
+            if keyring.verify_certififcate(self.cert):
+                keydata = keyring.get_pgp_publickey_extension(self.cert)
+                if keydata:
+                    pkey = OpenPGPCertificate(keydata)
+                    if pkey:
+                        uid = pkey.uid(0)
+                        if uid:
+                            _jid = jid.JID(uid.email)
+                            fpr = kr.check_user_key(keydata, _jid.user)
+                            if not fpr:
+                                _jid = None
 
         if _jid:
             def _continue(presence, _jid, fingerprint):

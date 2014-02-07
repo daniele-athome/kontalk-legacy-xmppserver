@@ -71,10 +71,7 @@ class XMPPServerFactory(xish_xmlstream.XmlStreamFactoryMixin, ServerFactory):
         if ssl is None:
             raise xmlstream.TLSNotSupported()
 
-        self.tls_ctx = xmlstream2.MyOpenSSLCertificateOptions(keyfile, certfile, self._sslVerify)
-
-    def _sslVerify(self, conn, cert, errno, depth, preverify_ok):
-        return keyring.verify_certificate(cert)
+        self.tls_ctx = xmlstream2.MyOpenSSLCertificateOptions(keyfile, certfile)
 
     def buildProtocol(self, addr):
         xs = self.protocol(XMPPListenAuthenticator(self.network))
