@@ -145,7 +145,8 @@ class MyOpenSSLCertificateOptions(object):
     _context = None
     # Older versions of PyOpenSSL didn't provide OP_ALL.  Fudge it here, just in case.
     _OP_ALL = getattr(SSL, 'OP_ALL', 0x0000FFFF)
-    method = SSL.TLSv1_METHOD
+    method = SSL.SSLv23_METHOD
+    options = SSL.OP_NO_SSLv3 | SSL.OP_NO_SSLv2
 
     def __init__(self, privateKeyFile=None, certificateFile=None, verifyCallback=None, enableSingleUseKeys=True):
         self.privateKeyFile = privateKeyFile
@@ -163,6 +164,7 @@ class MyOpenSSLCertificateOptions(object):
 
     def _makeContext(self):
         ctx = SSL.Context(self.method)
+        ctx.set_options(self.options)
 
         if self.certificateFile is not None and self.privateKeyFile is not None:
             ctx.use_certificate_chain_file(self.certificateFile)
