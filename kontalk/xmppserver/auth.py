@@ -66,7 +66,7 @@ class KontalkCertificate(object):
             fpr = self.cert.fingerprint
 
         elif isinstance(self.cert, X509):
-            if keyring.verify_certififcate(self.cert):
+            if keyring.verify_certificate(self.cert):
                 keydata = keyring.get_pgp_publickey_extension(self.cert)
                 if keydata:
                     pkey = OpenPGPCertificate(keydata)
