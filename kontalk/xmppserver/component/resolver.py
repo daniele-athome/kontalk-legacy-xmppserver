@@ -76,7 +76,7 @@ class PresenceHandler(XMPPHandler):
         self.parent.broadcastSubscribers(stanza)
 
     def send_privacy_lists(self, plist, addr_from):
-        for user, wl in plist:
+        for user, wl in plist.iteritems():
             iq = domish.Element((None, 'iq'))
             iq['from'] = '%s@%s' % (user, self.parent.network)
             iq['type'] = 'set'
