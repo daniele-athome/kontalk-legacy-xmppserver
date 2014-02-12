@@ -20,6 +20,7 @@
 
 
 import base64
+import oursql
 
 from twisted.internet import reactor
 from twisted.words.protocols.jabber import xmlstream, error
@@ -205,8 +206,11 @@ class SMSRegistrationProvider(XMPPRegistrationProvider):
                 log.debug("error: %s" % (failure, ))
                 if isinstance(failure.value, RuntimeError):
                     e = error.StanzaError('bad-request', 'modify', failure.getErrorMessage())
+                elif isinstance(failure.value, oursql.IntegrityError):
+                    # duplicate key of userid: throttling
+                    e = error.StanzaError('service-unavailable', 'wait', 'Too many attempts.')
                 else:
-                    e = error.StanzaError('service-unavailable', 'wait', failure.getErrorMessage())
+                    e = error.StanzaError('service-unavailable', 'cancel', failure.getErrorMessage())
                 iq = xmlstream.toResponse(stanza, 'error')
                 iq.addChild(e.getElement())
                 manager.send(iq, True)
