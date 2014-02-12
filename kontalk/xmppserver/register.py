@@ -159,7 +159,12 @@ class SMSRegistrationProvider(XMPPRegistrationProvider):
 
             def _error(failure, stanza):
                 log.debug("error: %s" % (failure, ))
-                e = error.StanzaError('service-unavailable', 'wait', failure.getErrorMessage())
+                if isinstance(failure.value, oursql.IntegrityError):
+                    # duplicate key of userid: throttling
+                    e = error.StanzaError('service-unavailable', 'wait', 'Too many attempts.')
+                else:
+                    e = error.StanzaError('service-unavailable', 'cancel', failure.getErrorMessage())
+
                 iq = xmlstream.toResponse(stanza, 'error')
                 iq.addChild(e.getElement())
                 manager.send(iq, True)
@@ -206,9 +211,6 @@ class SMSRegistrationProvider(XMPPRegistrationProvider):
                 log.debug("error: %s" % (failure, ))
                 if isinstance(failure.value, RuntimeError):
                     e = error.StanzaError('bad-request', 'modify', failure.getErrorMessage())
-                elif isinstance(failure.value, oursql.IntegrityError):
-                    # duplicate key of userid: throttling
-                    e = error.StanzaError('service-unavailable', 'wait', 'Too many attempts.')
                 else:
                     e = error.StanzaError('service-unavailable', 'cancel', failure.getErrorMessage())
                 iq = xmlstream.toResponse(stanza, 'error')
