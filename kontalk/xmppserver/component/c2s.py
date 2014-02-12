@@ -380,8 +380,7 @@ class InitialPresenceHandler(XMPPHandler):
         """
         This initial presence is from a broadcast sent by external entities
         (e.g. not the sm); sm wouldn't see it because it has no observer.
-        Here we are sending offline messages to the resolver which will deliver
-        them through the actual route.
+        Here we are sending offline messages directly to the connected user.
         """
 
         # receiving initial presence from remote server or from local resolver, send all presence
@@ -400,8 +399,10 @@ class InitialPresenceHandler(XMPPHandler):
             self.parent.presencedb.delete(sender.user)
 
         # initial presence - deliver offline storage
-        def output(data):
+        def output(data, user):
             log.debug("data: %r" % (data, ))
+            to = user.full()
+
             for msg in data:
                 log.debug("msg[%s]=%s" % (msg['id'], msg['stanza'].toXml().encode('utf-8'), ))
                 try:
@@ -419,6 +420,7 @@ class InitialPresenceHandler(XMPPHandler):
                         delay = msg['stanza'].addElement((xmlstream2.NS_XMPP_DELAY, 'delay'))
                         delay['stamp'] = msg['timestamp'].strftime(xmlstream2.XMPP_STAMP_FORMAT)
 
+                    msg['to'] = to
                     self.send(msg['stanza'])
                     """
                     We don't delete the message from storage now; we must be
@@ -429,7 +431,7 @@ class InitialPresenceHandler(XMPPHandler):
                     traceback.print_exc()
 
         d = self.parent.stanzadb.get_by_recipient(sender)
-        d.addCallback(output)
+        d.addCallback(output, sender)
 
 
 class PresenceProbeHandler(XMPPHandler):
