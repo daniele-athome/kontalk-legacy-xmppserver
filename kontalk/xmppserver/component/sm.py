@@ -323,12 +323,28 @@ class UploadHandler(XMPPHandler):
         return ({'node': xmlstream2.NS_MESSAGE_UPLOAD, 'items': self.services }, )
 
 
-
-class IQHandler(XMPPHandler):
-    """Handle various iq stanzas."""
+class RosterHandler(XMPPHandler):
+    """Handles the roster and XMPP compatibility mode."""
 
     def connectionInitialized(self):
         self.xmlstream.addObserver("/iq[@type='get']/query[@xmlns='%s']" % (xmlstream2.NS_IQ_ROSTER), self.roster, 100)
+
+    def roster(self, stanza):
+        # enforce destination (resolver)
+        stanza['to'] = self.parent.network
+
+        if not xmlstream2.has_element(stanza.query, uri=xmlstream2.NS_IQ_ROSTER, name='item'):
+            # requesting initial roster - enter XMPP compatibility mode
+            self.parent.compatibility_mode = True
+
+        # forward to resolver
+        self.parent.forward(stanza)
+
+
+class IQHandler(XMPPHandler):
+    """Handles various iq stanzas."""
+
+    def connectionInitialized(self):
         self.xmlstream.addObserver("/iq/query[@xmlns='%s']" % (xmlstream2.NS_IQ_LAST), self.forward_check, 100,
             fn=self.parent.forward, componentfn=self.last_activity)
         self.xmlstream.addObserver("/iq/query[@xmlns='%s']" % (xmlstream2.NS_IQ_VERSION), self.forward_check, 100,
@@ -347,17 +363,6 @@ class IQHandler(XMPPHandler):
                 return componentfn(stanza)
             else:
                 return fn(stanza)
-
-    def roster(self, stanza):
-        # enforce destination (resolver)
-        stanza['to'] = self.parent.network
-
-        # requesting items lookup, forward to resolver
-        if xmlstream2.has_element(stanza.query, uri=xmlstream2.NS_IQ_ROSTER, name='item'):
-            self.parent.forward(stanza)
-        # requesting initial roster - no action
-        else:
-            self.parent.bounce(stanza)
 
     def last_activity(self, stanza):
         stanza.consumed = True
@@ -596,6 +601,7 @@ class C2SManager(xmlstream2.StreamManager):
         PushNotificationsHandler,
         UploadHandler,
         IQHandler,
+        RosterHandler,
         MessageHandler,
     )
 
@@ -605,6 +611,7 @@ class C2SManager(xmlstream2.StreamManager):
         self.network = network
         self.servername = servername
         self._presence = None
+        self.compatibility_mode = False
         xmlstream2.StreamManager.__init__(self, xs)
 
         """
