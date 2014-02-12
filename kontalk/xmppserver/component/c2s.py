@@ -1033,7 +1033,7 @@ class C2SComponent(xmlstream2.SocketComponent):
             log.debug("data: %r" % (data, ))
             # this will be used to set a safe recipient
             # WARNING this will create a JID anyway :(
-            to = self.resolveJID(user).userhost()
+            to = self.resolveJID(user).full()
             for msg in data:
                 log.debug("msg[%s]=%s" % (msg['id'], msg['stanza'].toXml().encode('utf-8'), ))
                 try:
