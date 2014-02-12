@@ -762,16 +762,17 @@ class MessageHandler(XMPPHandler):
                             if receipt:
                                 try:
                                     origin = receipt['origin']
-                                    stanza['from'] = origin
-                                    try:
-                                        del stanza['origin']
-                                    except:
-                                        pass
-                                    try:
-                                        del stanza['destination']
-                                    except:
-                                        pass
-                                    self.send_ack(stanza, delivery, stamp, request)
+                                    if origin != self.parent.servername:
+                                        stanza['from'] = origin
+                                        try:
+                                            del stanza['origin']
+                                        except:
+                                            pass
+                                        try:
+                                            del stanza['destination']
+                                        except:
+                                            pass
+                                        self.send_ack(stanza, delivery, stamp, request)
                                 except:
                                     pass
 
