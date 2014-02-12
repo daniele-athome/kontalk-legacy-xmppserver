@@ -129,7 +129,7 @@ class SMSRegistrationProvider(XMPPRegistrationProvider):
                 phone = '+' + phone[2:]
 
             # generate userid
-            userid = util.sha1(phone) + util.rand_str(8, util.CHARSBOX_AZN_UPPERCASE)
+            userid = util.sha1(phone)
             d = self.component.validationdb.register(userid)
 
             def _continue(code, stanza, phone):
@@ -174,7 +174,7 @@ class SMSRegistrationProvider(XMPPRegistrationProvider):
 
             def _continue(userid):
                 pkey = base64.b64decode(var_pkey.value.__str__().encode('utf-8'))
-                signed_pkey = manager.link_public_key(pkey, userid[:util.USERID_LENGTH])
+                signed_pkey = manager.link_public_key(pkey, userid)
                 if signed_pkey:
                     iq = xmlstream.toResponse(stanza, 'result')
                     query = iq.addElement((xmlstream2.NS_IQ_REGISTER, 'query'))
@@ -186,13 +186,6 @@ class SMSRegistrationProvider(XMPPRegistrationProvider):
                     hidden['type'] = 'hidden'
                     hidden['var'] = 'FORM_TYPE'
                     hidden.addElement((None, 'value'), content='http://kontalk.org/protocol/register#code')
-
-                    str_token = self.component.keyring.generate_user_token(userid)
-                    token = form.addElement((None, 'field'))
-                    token['type'] = 'text-single'
-                    token['label'] = 'Authentication token'
-                    token['var'] = 'token'
-                    token.addElement((None, 'value'), content=str_token)
 
                     signed = form.addElement((None, 'field'))
                     signed['type'] = 'text-single'
