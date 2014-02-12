@@ -23,7 +23,7 @@ import copy
 
 from twisted.cred import error as cred_error
 from twisted.internet import reactor, defer
-from twisted.words.protocols.jabber import client, ijabber, xmlstream, sasl
+from twisted.words.protocols.jabber import client, ijabber, xmlstream, sasl, error
 from twisted.words.protocols.jabber.error import NS_XMPP_STANZAS
 from twisted.words.xish import domish
 
@@ -331,11 +331,19 @@ class RegistrationInitializer(BaseFeatureReceivingInitializer):
         self.xmlstream.removeObserver("/iq[@type='get']/query[@xmlns='%s']" % (NS_IQ_REGISTER), self.onRequest)
         self.xmlstream.removeObserver("/iq[@type='set']/query[@xmlns='%s']" % (NS_IQ_REGISTER), self.onRegister)
 
+    def _error(self, stanza):
+        e = error.StanzaError('service-unavailable', 'cancel', 'Registration not available.')
+        self.xmlstream.send(e.toResponse(stanza))
+
     def onRequest(self, stanza):
         if not self.canInitialize(self):
             return
 
         stanza.consumed = True
+
+        if not self.xmlstream.manager.router.registration:
+            return self._error(stanza)
+
         self.xmlstream.manager.router.registration.request(self.xmlstream.manager, stanza)
 
     def onRegister(self, stanza):
@@ -343,6 +351,10 @@ class RegistrationInitializer(BaseFeatureReceivingInitializer):
             return
 
         stanza.consumed = True
+
+        if not self.xmlstream.manager.router.registration:
+            return self._error(stanza)
+
         self.xmlstream.manager.router.registration.register(self.xmlstream.manager, stanza)
 
 
