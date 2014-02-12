@@ -1,11 +1,11 @@
 -- phpMyAdmin SQL Dump
--- version 4.0.4.2deb1
+-- version 4.0.10deb1
 -- http://www.phpmyadmin.net
 --
 -- Host: localhost
--- Generation Time: Aug 03, 2013 at 03:25 PM
--- Server version: 5.5.31-1
--- PHP Version: 5.5.1-1
+-- Generation Time: Feb 12, 2014 at 09:20 PM
+-- Server version: 5.5.33-1
+-- PHP Version: 5.5.8-3
 
 SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
 SET time_zone = "+00:00";
@@ -15,6 +15,10 @@ SET time_zone = "+00:00";
 /*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;
 /*!40101 SET @OLD_COLLATION_CONNECTION=@@COLLATION_CONNECTION */;
 /*!40101 SET NAMES utf8 */;
+
+--
+-- Database: `xmppmessenger`
+--
 
 -- --------------------------------------------------------
 
@@ -104,7 +108,7 @@ CREATE TABLE `stanzas_presence` (
 --
 
 CREATE TABLE `validations` (
-  `userid` char(48) NOT NULL COMMENT 'User ID',
+  `userid` char(40) NOT NULL COMMENT 'User ID',
   `code` char(6) NOT NULL COMMENT 'Verification code',
   `timestamp` datetime DEFAULT NULL COMMENT 'Validation code timestamp',
   PRIMARY KEY (`userid`),
