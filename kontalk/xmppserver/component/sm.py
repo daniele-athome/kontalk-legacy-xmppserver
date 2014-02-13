@@ -329,6 +329,9 @@ class RosterHandler(XMPPHandler):
     def connectionInitialized(self):
         self.xmlstream.addObserver("/iq[@type='get']/query[@xmlns='%s']" % (xmlstream2.NS_IQ_ROSTER), self.roster, 100)
 
+    def features(self):
+        return (xmlstream2.NS_IQ_ROSTER, )
+
     def roster(self, stanza):
         # enforce destination (resolver)
         stanza['to'] = self.parent.network
@@ -483,7 +486,6 @@ class IQHandler(XMPPHandler):
             xmlstream2.NS_DISCO_INFO,
             xmlstream2.NS_DISCO_ITEMS,
             xmlstream2.NS_IQ_VERSION,
-            xmlstream2.NS_IQ_ROSTER,
             xmlstream2.NS_IQ_LAST,
         ]
         if self.parent.router.registration:
