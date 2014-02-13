@@ -22,6 +22,7 @@
 import time
 import base64
 from datetime import datetime
+from copy import deepcopy
 
 from twisted.python import failure
 from twisted.internet import defer, reactor, task
@@ -192,37 +193,24 @@ class PresenceHandler(XMPPHandler):
             self.parent.subscribe(jid_from, jid_to, stanza.getAttribute('id'), False)
 
 
-class IQHandler(XMPPHandler):
+class RosterHandler(XMPPHandler):
     """
-    Handle IQ stanzas.
+    Handles the roster and XMPP compatibility mode.
     @type parent: L{Resolver}
     """
 
     def connectionInitialized(self):
         self.xmlstream.addObserver("/iq[@type='get']/query[@xmlns='%s']" % (xmlstream2.NS_IQ_ROSTER), self.roster, 100)
-        self.xmlstream.addObserver("/iq[@type='get']/query[@xmlns='%s']" % (xmlstream2.NS_IQ_LAST, ), self.last_activity, 100)
-        self.xmlstream.addObserver("/iq[@type='get']/query[@xmlns='%s']" % (xmlstream2.NS_IQ_VERSION, ), self.version, 100)
-        self.xmlstream.addObserver("/iq[@type='result']", self.parent.bounce, 100)
-        self.xmlstream.addObserver("/iq/query", self.parent.error, 80)
-
-    def build_vcard(self, userid, iq, full_key=False):
-        """Adds a vCard to the given iq stanza."""
-        fpr = self.parent.keyring.get_fingerprint(userid)
-        keydata = self.parent.keyring.get_key(userid, fpr, full_key=full_key)
-        # add vcard
-        vcard = iq.addElement((xmlstream2.NS_XMPP_VCARD4, 'vcard'))
-        vcard_key = vcard.addElement((None, 'key'))
-        vcard_data = vcard_key.addElement((None, 'uri'))
-        vcard_data.addContent(xmlstream2.DATA_PGP_PREFIX + base64.b64encode(keydata))
-        return iq
 
     def roster(self, stanza):
         _items = stanza.query.elements(uri=xmlstream2.NS_IQ_ROSTER, name='item')
+        requester = jid.JID(stanza['from'])
+
+        # items present, requesting roster lookup
         if _items:
             stanza.consumed = True
             response = xmlstream2.toResponse(stanza, 'result')
             roster = response.addElement((xmlstream2.NS_IQ_ROSTER, 'query'))
-            requester = jid.JID(stanza['from'])
 
             probes =  []
             for item in _items:
@@ -243,7 +231,6 @@ class IQHandler(XMPPHandler):
 
             if len(probes) > 0:
                 # simulate a presence probe and send vcards
-                from copy import deepcopy
                 for presence_list in probes:
                     gid = util.rand_str(8, util.CHARSBOX_AZN_LOWERCASE)
                     i = len(presence_list)
@@ -267,6 +254,81 @@ class IQHandler(XMPPHandler):
                         iq['to'] = stanza['from']
                         self.build_vcard(jid_from.user, iq)
                         self.send(iq)
+
+        # no items, requesting initial roster (XMPP compatibility mode)
+        else:
+            # prepare response stanza
+            response = xmlstream2.toResponse(stanza, 'result')
+            roster = response.addElement((xmlstream2.NS_IQ_ROSTER, 'query'))
+
+            # include items from the user's whitelist
+            wl = self.parent.get_whitelist(requester)
+            probes = None
+            if wl:
+                probes = []
+                for e in wl:
+                    item = roster.addElement((None, 'item'))
+                    item['jid'] = e
+
+                    itemJid = jid.JID(e)
+
+                    # check if subscription status is 'both' or just 'from'
+                    allowed = self.parent.is_presence_allowed(requester, itemJid)
+                    if allowed == 1:
+                        status = 'both'
+                    else:
+                        status = 'from'
+
+                    # TODO include name from PGP key?
+                    item['subscription'] = status
+
+                    # add to presence probe response if allowed
+                    if allowed == 1:
+                        entry = self.parent.cache.lookup(itemJid)
+                        if entry:
+                            probes.append(entry)
+
+            self.send(response)
+
+            # send presence data
+            if probes and len(probes) > 0:
+                for presence_list in probes:
+                    gid = util.rand_str(8, util.CHARSBOX_AZN_LOWERCASE)
+                    i = len(presence_list)
+
+                    if i > 0:
+                        for presence in presence_list:
+                            presence = deepcopy(presence)
+                            presence['to'] = stanza['from']
+                            group = presence.addElement((xmlstream2.NS_XMPP_STANZA_GROUP, 'group'))
+                            group['id'] = gid
+                            group['count'] = str(i)
+                            i -= 1
+                            self.send(presence)
+
+
+class IQHandler(XMPPHandler):
+    """
+    Handles IQ stanzas.
+    @type parent: L{Resolver}
+    """
+
+    def connectionInitialized(self):
+        self.xmlstream.addObserver("/iq[@type='get']/query[@xmlns='%s']" % (xmlstream2.NS_IQ_LAST, ), self.last_activity, 100)
+        self.xmlstream.addObserver("/iq[@type='get']/query[@xmlns='%s']" % (xmlstream2.NS_IQ_VERSION, ), self.version, 100)
+        self.xmlstream.addObserver("/iq[@type='result']", self.parent.bounce, 100)
+        self.xmlstream.addObserver("/iq/query", self.parent.error, 80)
+
+    def build_vcard(self, userid, iq, full_key=False):
+        """Adds a vCard to the given iq stanza."""
+        fpr = self.parent.keyring.get_fingerprint(userid)
+        keydata = self.parent.keyring.get_key(userid, fpr, full_key=full_key)
+        # add vcard
+        vcard = iq.addElement((xmlstream2.NS_XMPP_VCARD4, 'vcard'))
+        vcard_key = vcard.addElement((None, 'key'))
+        vcard_data = vcard_key.addElement((None, 'uri'))
+        vcard_data.addContent(xmlstream2.DATA_PGP_PREFIX + base64.b64encode(keydata))
+        return iq
 
     def version(self, stanza):
         if not stanza.consumed:
@@ -804,7 +866,6 @@ class JIDCache(XMPPHandler):
             data = stub.presence()
             i = len(data)
             for x in data:
-                from copy import deepcopy
                 presence = deepcopy(x)
                 presence['to'] = sender.full()
                 if gid:
@@ -1004,6 +1065,7 @@ class Resolver(xmlstream2.SocketComponent):
     protocolHandlers = (
         JIDCache,
         PresenceHandler,
+        RosterHandler,
         IQHandler,
         PrivacyListHandler,
         MessageHandler,
@@ -1338,9 +1400,15 @@ class Resolver(xmlstream2.SocketComponent):
         """Removes jid_from from jid_to's whitelist."""
         self._privacy_list_remove(jid_to, jid_from, self.WHITELIST, broadcast)
 
+    def get_whitelist(self, _jid):
+        try:
+            return self.whitelists[_jid.user]
+        except KeyError:
+            return None
+
     def is_presence_allowed(self, jid_from, jid_to):
         """
-        Checks if requester is allowed to see a user's presence.
+        Checks if requester (from) is allowed to see a user's (to) presence.
         @return 1 if allowed, 0 if not allowed, -1 if blacklisted, -2 if user not found
         """
 
