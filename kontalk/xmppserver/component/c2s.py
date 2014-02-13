@@ -962,12 +962,18 @@ class C2SComponent(xmlstream2.SocketComponent):
         component.Component._authd(self, xs)
         log.debug("connected to router.")
         self.xmlstream.addObserver("/presence", self.dispatch)
+        self.xmlstream.addObserver("/iq", self.iq, 50)
         self.xmlstream.addObserver("/iq", self.dispatch)
         # <message/> has its own handler
 
     def _disconnected(self, reason):
         component.Component._disconnected(self, reason)
         log.debug("lost connection to router (%s)" % (reason, ))
+
+    def iq(self, stanza):
+        """Removes from attribute if it's from network name."""
+        if stanza.getAttribute('from') == self.network:
+            del stanza['from']
 
     def dispatch(self, stanza):
         """
