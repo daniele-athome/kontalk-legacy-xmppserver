@@ -329,9 +329,6 @@ class RosterHandler(XMPPHandler):
     def connectionInitialized(self):
         self.xmlstream.addObserver("/iq[@type='get']/query[@xmlns='%s']" % (xmlstream2.NS_IQ_ROSTER), self.roster, 100)
 
-    def features(self):
-        return (xmlstream2.NS_IQ_ROSTER, )
-
     def roster(self, stanza):
         # enforce destination (resolver)
         stanza['to'] = self.parent.network
@@ -342,6 +339,12 @@ class RosterHandler(XMPPHandler):
 
         # forward to resolver
         self.parent.forward(stanza)
+
+    def features(self):
+        return (xmlstream2.NS_IQ_ROSTER, )
+
+    def items(self):
+        pass
 
 
 class IQHandler(XMPPHandler):
