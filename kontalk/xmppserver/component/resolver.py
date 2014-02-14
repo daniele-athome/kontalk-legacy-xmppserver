@@ -259,6 +259,9 @@ class RosterHandler(XMPPHandler):
                     # add to subscription list
                     subscriptions.append(itemJid)
 
+            # send the roster
+            self.send(response)
+
             # subscribe to all users (without sending subscribed stanza of course)
             for itemJid in subscriptions:
                 self.parent.subscribe(requester, itemJid, send_subscribed=False)
