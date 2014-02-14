@@ -122,7 +122,7 @@ class PresenceHandler(XMPPHandler):
         jid_to = jid.JID(stanza['to'])
         jid_from = jid.JID(stanza['from'])
 
-        self.parent.subscribe(jid_to, jid_from, stanza.getAttribute('id'))
+        self.parent.subscribe(jid_from, jid_to, stanza.getAttribute('id'))
 
     def onUnsubscribe(self, stanza):
         """Handle unsubscription requests."""
