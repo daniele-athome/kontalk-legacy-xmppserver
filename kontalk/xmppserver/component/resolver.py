@@ -1239,14 +1239,15 @@ class Resolver(xmlstream2.SocketComponent):
 
             log.debug("subscriptions: %r" % (self.subscriptions, ))
 
-        # send subscription accepted immediately
-        pres = domish.Element((None, "presence"))
-        if gid:
-            pres['id'] = gid
-        pres['to'] = subscriber.full()
-        pres['from'] = to.userhost()
-        pres['type'] = 'subscribed'
-        self.send(pres)
+        if send_subscribed:
+            # send subscription accepted immediately
+            pres = domish.Element((None, "presence"))
+            if gid:
+                pres['id'] = gid
+            pres['to'] = subscriber.full()
+            pres['from'] = to.userhost()
+            pres['type'] = 'subscribed'
+            self.send(pres)
 
         if not response_only:
             # simulate a presence probe response
