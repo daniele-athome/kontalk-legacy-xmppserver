@@ -36,7 +36,11 @@ from kontalk.xmppserver import log, storage, util, xmlstream2, version, keyring
 
 
 class PresenceHandler(XMPPHandler):
-    """Handle presence stanzas."""
+    """
+    Handle presence stanzas.
+    @ivar parent: resolver instance
+    @type parent: L{Resolver}
+    """
 
     def connectionInitialized(self):
         self.xmlstream.addObserver("/presence[not(@type)]", self.onPresenceAvailable, 100)
@@ -118,42 +122,7 @@ class PresenceHandler(XMPPHandler):
         jid_to = jid.JID(stanza['to'])
         jid_from = jid.JID(stanza['from'])
 
-        allowed = self.parent.is_presence_allowed(jid_from, jid_to)
-
-        if allowed == 1:
-            self.parent.subscribe(jid_to, jid_from, stanza.getAttribute('id'))
-        elif allowed == -1:
-            log.debug("user is blacklisted, ignoring request")
-        else:
-            log.debug("not authorized to subscribe to user's presence, sending request")
-            try:
-                fpr = self.parent.keyring.get_fingerprint(jid_from.user)
-                keydata = self.parent.keyring.get_key(jid_from.user, fpr)
-                pubkey = stanza.addElement(('urn:xmpp:pubkey:2', 'pubkey'))
-
-                # key data
-                key = pubkey.addElement((None, 'key'))
-                key.addContent(base64.b64encode(keydata))
-
-                # fingerprint
-                fprint = pubkey.addElement((None, 'print'))
-                fprint.addContent(fpr)
-
-                self.send(stanza)
-            except:
-                import traceback
-                traceback.print_exc()
-
-        # simulate a presence probe
-        """
-        probe = domish.Element((None, 'presence'))
-        probe['type'] = 'probe'
-        probe['from'] = stanza['from']
-        probe['to'] = stanza['to']
-        if stanza.hasAttribute('id'):
-            probe['id'] = stanza['id']
-        self.send(probe)
-        """
+        self.parent.subscribe(jid_to, jid_from, stanza.getAttribute('id'))
 
     def onUnsubscribe(self, stanza):
         """Handle unsubscription requests."""
@@ -190,12 +159,13 @@ class PresenceHandler(XMPPHandler):
         if self.parent.cache.jid_available(jid_from):
             # send subscription accepted immediately and subscribe
             # TODO this is wrong, but do it for the moment until we find a way to handle this case
-            self.parent.subscribe(jid_from, jid_to, stanza.getAttribute('id'), False)
+            self.parent.doSubscribe(jid_from, jid_to, stanza.getAttribute('id'), response_only=False)
 
 
 class RosterHandler(XMPPHandler):
     """
     Handles the roster and XMPP compatibility mode.
+    @ivar parent: resolver instance
     @type parent: L{Resolver}
     """
 
@@ -231,13 +201,45 @@ class RosterHandler(XMPPHandler):
                 if allowed == 1:
                     probes.append(entry.presence())
 
+        # roster lookup, send presence data and vcards
+        if roster_lookup:
+
+            # lookup response
+            self.send(response)
+
+            # simulate a presence probe and send vcards
+            for presence_list in probes:
+                gid = util.rand_str(8, util.CHARSBOX_AZN_LOWERCASE)
+                i = len(presence_list)
+
+                if i > 0:
+                    for presence in presence_list:
+                        presence = deepcopy(presence)
+                        presence['to'] = stanza['from']
+                        group = presence.addElement((xmlstream2.NS_XMPP_STANZA_GROUP, 'group'))
+                        group['id'] = gid
+                        group['count'] = str(i)
+                        i -= 1
+                        self.send(presence)
+
+                    # send vcard for this user
+                    jid_from = jid.JID(presence_list[0]['from'])
+                    iq = domish.Element((None, 'iq'))
+                    # FIXME is type=result right in this case?
+                    iq['type'] = 'result'
+                    iq['from'] = jid_from.userhost()
+                    iq['to'] = stanza['from']
+                    self.build_vcard(jid_from.user, iq)
+                    self.send(iq)
+
         # no roster lookup, XMPP standard roster instead
-        if not roster_lookup:
+        else:
+
             # include items from the user's whitelist
             wl = self.parent.get_whitelist(requester)
             probes = None
             if wl:
-                probes = []
+                subscriptions = []
                 for e in wl:
                     item = roster.addElement((None, 'item'))
                     item['jid'] = e
@@ -254,41 +256,12 @@ class RosterHandler(XMPPHandler):
                     # TODO include name from PGP key?
                     item['subscription'] = status
 
-                    # add to presence probe response if allowed
-                    if allowed == 1:
-                        entry = self.parent.cache.lookup(itemJid)
-                        if entry:
-                            probes.append(entry.presence())
+                    # add to subscription list
+                    subscriptions.append(itemJid)
 
-        self.send(response)
-
-        if len(probes) > 0:
-            # simulate a presence probe and send vcards
-            for presence_list in probes:
-                gid = util.rand_str(8, util.CHARSBOX_AZN_LOWERCASE)
-                i = len(presence_list)
-
-                if i > 0:
-                    for presence in presence_list:
-                        presence = deepcopy(presence)
-                        presence['to'] = stanza['from']
-                        group = presence.addElement((xmlstream2.NS_XMPP_STANZA_GROUP, 'group'))
-                        group['id'] = gid
-                        group['count'] = str(i)
-                        i -= 1
-                        self.send(presence)
-
-                    # vcard is sent only when looking up the roster
-                    if roster_lookup:
-                        # send vcard for this user
-                        jid_from = jid.JID(presence_list[0]['from'])
-                        iq = domish.Element((None, 'iq'))
-                        # FIXME is type=result right in this case?
-                        iq['type'] = 'result'
-                        iq['from'] = jid_from.userhost()
-                        iq['to'] = stanza['from']
-                        self.build_vcard(jid_from.user, iq)
-                        self.send(iq)
+            # subscribe to all users (without sending subscribed stanza of course)
+            for itemJid in subscriptions:
+                self.parent.subscribe(requester, itemJid, send_subscribed=False)
 
 
 class IQHandler(XMPPHandler):
@@ -1221,7 +1194,40 @@ class Resolver(xmlstream2.SocketComponent):
                 if sub == user:
                     rlist.remove(sub)
 
-    def subscribe(self, to, subscriber, gid=None, response_only=False):
+    def subscribe(self, jid_from, jid_to, gid=None, send_subscribed=True):
+        allowed = self.is_presence_allowed(jid_from, jid_to)
+
+        if allowed == 1:
+            self.doSubscribe(jid_to, jid_from, gid, send_subscribed=send_subscribed)
+        elif allowed == -1:
+            log.debug("user is blacklisted, ignoring request")
+        else:
+            log.debug("not authorized to subscribe to user's presence, sending request")
+            try:
+                stanza = domish.Element((None, 'presence'))
+                stanza['type'] = 'subscribe'
+                stanza['from'] = jid_from.full()
+                stanza['to'] = jid_to.full()
+
+                fpr = self.keyring.get_fingerprint(jid_from.user)
+                keydata = self.keyring.get_key(jid_from.user, fpr)
+                pubkey = stanza.addElement(('urn:xmpp:pubkey:2', 'pubkey'))
+
+                # key data
+                key = pubkey.addElement((None, 'key'))
+                key.addContent(base64.b64encode(keydata))
+
+                # fingerprint
+                fprint = pubkey.addElement((None, 'print'))
+                fprint.addContent(fpr)
+
+                self.send(stanza)
+            except:
+                import traceback
+                traceback.print_exc()
+
+
+    def doSubscribe(self, to, subscriber, gid=None, response_only=False, send_subscribed=True):
         """Subscribe a given user to events from another one."""
 
         if not response_only:
