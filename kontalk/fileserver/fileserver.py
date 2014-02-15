@@ -23,13 +23,16 @@ import os
 
 from zope.interface import implements
 
-from twisted.application import strports, service
+from twisted.application import service
+from twisted.application.internet import StreamServerEndpointService
+from twisted.internet import reactor
+from twisted.internet.endpoints import SSL4ServerEndpoint
 from twisted.web import server, resource
 from twisted.cred.portal import IRealm, Portal
 from twisted.web.guard import HTTPAuthSessionWrapper
 from twisted.protocols.basic import FileSender
 
-from kontalk.xmppserver import log, storage, keyring, auth, util
+from kontalk.xmppserver import log, storage, keyring, auth, util, xmlstream2
 
 
 class FileDownload(resource.Resource):
@@ -192,8 +195,16 @@ class Fileserver(resource.Resource, service.Service):
 
         # http service
         self.factory = server.Site(self)
-        return strports.service('tcp:' + str(self.config['bind'][1]) +
-            ':interface=' + str(self.config['bind'][0]), self.factory)
+        sslFactory = xmlstream2.MyOpenSSLCertificateOptions(self.config['ssl_key'], self.config['ssl_cert'], self._sslVerify)
+        endpoint = SSL4ServerEndpoint(reactor, self.config['bind'][1], sslFactory, interface=str(self.config['bind'][0]))
+        svc = StreamServerEndpointService(endpoint, self.factory)
+        svc._raiseSynchronously = True
+        return svc
+
+
+    def _sslVerify(self, conn, cert, errno, depth, preverify_ok):
+        # TODO is this safe?
+        return True
 
     def startService(self):
         service.Service.startService(self)
