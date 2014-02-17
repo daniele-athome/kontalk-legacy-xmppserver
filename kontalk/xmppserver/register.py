@@ -25,6 +25,8 @@ import oursql
 from twisted.internet import reactor
 from twisted.words.protocols.jabber import xmlstream, error
 
+from nexmomessage import NexmoMessage
+
 from kontalk.xmppserver import log, xmlstream2, util
 
 
@@ -134,26 +136,33 @@ class SMSRegistrationProvider(XMPPRegistrationProvider):
             d = self.component.validationdb.register(userid)
 
             def _continue(code, stanza, phone):
-                self.send_sms(phone, code)
+                status = self.send_sms(phone, code)
 
-                # send response with sms sender number
-                iq = xmlstream.toResponse(stanza, 'result')
-                query = iq.addElement((xmlstream2.NS_IQ_REGISTER, 'query'))
-                query.addElement((None, 'instructions'), content=self.ack_instructions)
+                if status:
+                    # send response with sms sender number
+                    iq = xmlstream.toResponse(stanza, 'result')
+                    query = iq.addElement((xmlstream2.NS_IQ_REGISTER, 'query'))
+                    query.addElement((None, 'instructions'), content=self.ack_instructions)
 
-                form = query.addElement(('jabber:x:data', 'x'))
-                form['type'] = 'form'
+                    form = query.addElement(('jabber:x:data', 'x'))
+                    form['type'] = 'form'
 
-                hidden = form.addElement((None, 'field'))
-                hidden['type'] = 'hidden'
-                hidden['var'] = 'FORM_TYPE'
-                hidden.addElement((None, 'value'), content=xmlstream2.NS_IQ_REGISTER)
+                    hidden = form.addElement((None, 'field'))
+                    hidden['type'] = 'hidden'
+                    hidden['var'] = 'FORM_TYPE'
+                    hidden.addElement((None, 'value'), content=xmlstream2.NS_IQ_REGISTER)
 
-                phone = form.addElement((None, 'field'))
-                phone['type'] = 'text-single'
-                phone['label'] = 'SMS sender'
-                phone['var'] = 'from'
-                phone.addElement((None, 'value'), content=self.config['from'])
+                    phone = form.addElement((None, 'field'))
+                    phone['type'] = 'text-single'
+                    phone['label'] = 'SMS sender'
+                    phone['var'] = 'from'
+                    phone.addElement((None, 'value'), content=self.config['from'])
+
+                else:
+                    # send error
+                    iq = xmlstream.toResponse(stanza, 'error')
+                    e = error.StanzaError('not-acceptable', 'modify', 'Unable to send SMS.')
+                    iq.addChild(e.getElement())
 
                 return manager.send(iq, True)
 
@@ -228,7 +237,13 @@ class SMSRegistrationProvider(XMPPRegistrationProvider):
 
 
     def send_sms(self, number, code):
-        """Implement this with the actual SMS sending logic."""
+        """
+        Implement this with the actual SMS sending logic.
+        @param number: phone number in E.164 format
+        @param code: verification code
+        @return: true if the SMS has been sent, false otherwise
+        @rtype: bool
+        """
         raise NotImplementedError()
 
 
@@ -248,6 +263,7 @@ class AndroidEmulatorSMSRegistrationProvider(SMSRegistrationProvider):
             os.system('adb emu sms send %s %s' % (self.config['from'], code))
         # simulate some delay :)
         reactor.callLater(2, _send, code)
+        return True
 
 
 class NexmoSMSRegistrationProvider(SMSRegistrationProvider):
@@ -260,7 +276,6 @@ class NexmoSMSRegistrationProvider(SMSRegistrationProvider):
     ack_instructions = 'A SMS containing a verification code will be sent to the phone number you provided.'
 
     def send_sms(self, number, code):
-        from nexmomessage import NexmoMessage
         msg = {
             'reqtype' : 'json',
             'username' : self.config['nx.username'],
@@ -271,8 +286,10 @@ class NexmoSMSRegistrationProvider(SMSRegistrationProvider):
         sms = NexmoMessage(msg)
         # FIXME send just the code for now
         sms.set_text_info(code)
-        js = sms.send_request()
-        log.debug("sms sent [response=%s]" % js)
+        response = sms.send_request()
+        log.debug("sms sent [response=%s]" % response)
+        return (response and int(response['message-count']) == 1
+            and int(response['messages'][0]['status']) == 0)
 
 
 
