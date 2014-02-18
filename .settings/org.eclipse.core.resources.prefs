@@ -1,5 +1,6 @@
 eclipse.preferences.version=1
 encoding//kontalk/fileserver/fileserver.py=utf-8
+encoding//kontalk/fileserver/httpauth.py=utf-8
 encoding//kontalk/xmppserver/auth.py=utf-8
 encoding//kontalk/xmppserver/component/c2s.py=utf-8
 encoding//kontalk/xmppserver/component/net.py=utf-8

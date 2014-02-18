@@ -29,9 +29,9 @@ from twisted.internet import reactor
 from twisted.internet.endpoints import SSL4ServerEndpoint
 from twisted.web import server, resource
 from twisted.cred.portal import IRealm, Portal
-from twisted.web.guard import HTTPAuthSessionWrapper
 from twisted.protocols.basic import FileSender
 
+from httpauth import HTTPSAuthSessionWrapper
 from kontalk.xmppserver import log, storage, keyring, auth, util, xmlstream2
 
 
@@ -180,17 +180,16 @@ class Fileserver(resource.Resource, service.Service):
 
         self.keyring = keyring.Keyring(storage.MySQLNetworkStorage(), self.config['fingerprint'], self.network, self.servername)
 
-        credFactory = auth.AuthKontalkTokenFactory(str(self.config['fingerprint']), self.keyring)
         token_auth = auth.AuthKontalkChecker(self.config['fingerprint'], self.keyring, self.presencedb)
 
         # upload endpoint
         portal = Portal(FileUploadRealm(self), [token_auth])
-        resource = HTTPAuthSessionWrapper(portal, [credFactory])
+        resource = HTTPSAuthSessionWrapper(portal)
         self.putChild('upload', resource)
 
         # download endpoint
         portal = Portal(FileDownloadRealm(self), [token_auth])
-        resource = HTTPAuthSessionWrapper(portal, [credFactory])
+        resource = HTTPSAuthSessionWrapper(portal)
         self.putChild('download', resource)
 
         # http service
