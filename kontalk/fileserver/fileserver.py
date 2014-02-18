@@ -179,17 +179,16 @@ class Fileserver(resource.Resource, service.Service):
         self.storage = klass(*self.config['storage']['params'])
 
         self.keyring = keyring.Keyring(storage.MySQLNetworkStorage(), self.config['fingerprint'], self.network, self.servername)
-
         token_auth = auth.AuthKontalkChecker(self.config['fingerprint'], self.keyring, self.presencedb)
 
         # upload endpoint
         portal = Portal(FileUploadRealm(self), [token_auth])
-        resource = HTTPSAuthSessionWrapper(portal)
+        resource = HTTPSAuthSessionWrapper(portal, auth.KontalkCertificate)
         self.putChild('upload', resource)
 
         # download endpoint
         portal = Portal(FileDownloadRealm(self), [token_auth])
-        resource = HTTPSAuthSessionWrapper(portal)
+        resource = HTTPSAuthSessionWrapper(portal, auth.KontalkCertificate)
         self.putChild('download', resource)
 
         # http service

@@ -1,2 +1,2 @@
 #!/bin/sh
-exec twistd --pidfile fileserver.pid -n kontalk-fileserver
+GNUPGHOME=$PWD/.gnupg exec twistd --pidfile fileserver.pid -n kontalk-fileserver
