@@ -27,7 +27,7 @@ from twisted.cred import error
 from twisted.cred.credentials import Anonymous
 from twisted.python.components import proxyForInterface
 
-from kontalk.xmppserver import log, auth
+from kontalk.xmppserver import log
 
 
 class UnauthorizedResource(object):
@@ -58,18 +58,23 @@ class HTTPSAuthSessionWrapper(object):
 
     @ivar _portal: The L{Portal} which will be used to retrieve L{IResource}
         avatars.
+    @ivar _credential: Credential class that will be passed the peer certificate.
     """
     implements(IResource)
     isLeaf = False
 
-    def __init__(self, portal):
+    def __init__(self, portal, credential):
         """
         Initialize a session wrapper
 
         @type portal: C{Portal}
         @param portal: The portal that will authenticate the remote client
+
+        @type credential: C{ICredentials}
+        @param credential: Credential class to be instanciated with the peer certificate
         """
         self._portal = portal
+        self._credential = credential
 
 
     def _authorizedResource(self, request):
@@ -86,7 +91,7 @@ class HTTPSAuthSessionWrapper(object):
             return webutil.DeferredResource(self._login(Anonymous()))
 
         # TODO hard-coded to Kontalk usage
-        return webutil.DeferredResource(self._login(auth.KontalkCertificate(cert)))
+        return webutil.DeferredResource(self._login(self._credential(cert)))
 
 
     def render(self, request):
