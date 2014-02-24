@@ -319,7 +319,7 @@ class MySQLStanzaStorage(StanzaStorage):
                      for t in self.tables]
             qargs = [recipient.user for t in self.tables]
 
-            tx.execute('SELECT * FROM (' + ' UNION '.join(qlist) + ') ORDER BY `timestamp`', qargs)
+            tx.execute('SELECT * FROM (' + ' UNION '.join(qlist) + ') a ORDER BY `timestamp`', qargs)
             data = tx.fetchall()
             for row in data:
                 stanzaId = str(row[0])
