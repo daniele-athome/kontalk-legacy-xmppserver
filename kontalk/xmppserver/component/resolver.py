@@ -274,8 +274,9 @@ class RosterHandler(XMPPHandler):
             self.send(response)
 
             # subscribe to all users (without sending subscribed stanza of course)
-            for itemJid in subscriptions:
-                self.parent.subscribe(requester, itemJid, send_subscribed=False)
+            if wl:
+                for itemJid in subscriptions:
+                    self.parent.subscribe(requester, itemJid, send_subscribed=False)
 
 
 class IQHandler(XMPPHandler):
