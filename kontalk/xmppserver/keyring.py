@@ -220,6 +220,7 @@ class Keyring:
         return self._list.values()
 
     def get_fingerprint(self, userid):
+        """Used only by the resolver."""
         try:
             return self._fingerprints[userid]
         except KeyError:
@@ -294,7 +295,7 @@ class Keyring:
                     for sig in uid.signatures:
                         try:
                             log.debug("found signature by [KEYID-%s]" % (sig.keyid, ))
-                            mkey = self.ctx.get_key(sig.keyid, False)
+                            mkey = self.ctx.get_key(sig.keyid)
                             if mkey:
                                 # signer key revoked!
                                 if mkey.revoked:

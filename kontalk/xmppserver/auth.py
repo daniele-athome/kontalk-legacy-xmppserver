@@ -26,6 +26,7 @@ from twisted.cred import credentials, checkers, error, portal
 from twisted.python import failure
 from twisted.internet import defer
 from twisted.words.protocols.jabber import jid, sasl
+from twisted.words.xish import domish
 
 from gnutls.crypto import OpenPGPCertificate
 from OpenSSL.crypto import X509
@@ -47,7 +48,7 @@ class OpenPGPKontalkCredentials(tls.OpenPGPCredentials):
 
 class IKontalkCertificate(credentials.ICredentials):
 
-    def check(fingerprint, kr, presencedb=None):
+    def check(fingerprint, kr, verify_cb):
         pass
 
 
@@ -57,7 +58,7 @@ class KontalkCertificate(object):
     def __init__(self, cert):
         self.cert = cert
 
-    def check(self, fingerprint, kr, presencedb=None):
+    def check(self, fingerprint, kr, verify_cb):
         _jid = None
 
         if isinstance(self.cert, OpenPGPCertificate):
@@ -79,28 +80,23 @@ class KontalkCertificate(object):
                                 _jid = None
 
         if _jid:
-            """
-            !!! FIXME FIXME FIXME HUGE BUG !!!
-            this will allow users with an old key to overrule the new key if
-            it connects to another server.
-            This fingerprint lookup should be made from the network cache (which
-            is maintained by the resolver :S). Should we rely on the resolver
-            for authentication? Seems like an overkill...
-            """
-            def _continue(presence, _jid, fingerprint):
-                if not presence or str(presence['fingerprint']) == fingerprint:
-                    return _jid
+            def _continue(userjid):
+                return userjid
+            def _error(reason):
+                return None
 
-            db = presencedb.get(_jid.user)
-            db.addCallback(_continue, _jid, fpr)
-            return db
+            # deferred to check fingerprint against resolver data
+            d = verify_cb(_jid, fpr)
+            d.addCallback(_continue)
+            d.addErrback(_error)
+            return d
 
         return None
 
 
 class IKontalkToken(credentials.ICredentials):
 
-    def check(fingerprint, kr):
+    def check(fingerprint, kr, verify_cb):
         pass
 
 
@@ -111,7 +107,7 @@ class KontalkToken(object):
         self.token = token
         self.decode_b64 = decode_b64
 
-    def check(self, fingerprint, kr, presencedb=None):
+    def check(self, fingerprint, kr, verify_cb):
         try:
             if self.decode_b64:
                 data = sasl.fromBase64(self.token)
@@ -131,10 +127,10 @@ class AuthKontalkChecker(object):
 
     credentialInterfaces = IKontalkToken, IKontalkCertificate
 
-    def __init__(self, fingerprint, kr, presencedb):
+    def __init__(self, fingerprint, kr, verify_cb):
         self.fingerprint = str(fingerprint)
         self.keyring = kr
-        self.presencedb = presencedb
+        self.verify_cb = verify_cb
 
     def _cbTokenValid(self, userid):
         if userid:
@@ -144,7 +140,7 @@ class AuthKontalkChecker(object):
 
     def requestAvatarId(self, credentials):
         return defer.maybeDeferred(
-            credentials.check, self.fingerprint, self.keyring, self.presencedb).addCallback(
+            credentials.check, self.fingerprint, self.keyring, self.verify_cb).addCallback(
             self._cbTokenValid)
 
 

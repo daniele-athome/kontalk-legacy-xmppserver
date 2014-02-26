@@ -23,7 +23,8 @@ import time
 import base64
 import traceback
 
-from twisted.internet import reactor
+from twisted.python import failure
+from twisted.internet import reactor, defer
 from twisted.application import strports
 from twisted.application.internet import StreamServerEndpointService
 from twisted.cred import portal
@@ -867,7 +868,7 @@ class C2SComponent(xmlstream2.SocketComponent):
 
         self.keyring = keyring.Keyring(storage.MySQLNetworkStorage(), self.config['fingerprint'], self.network, self.servername)
         authrealm = auth.SASLRealm("Kontalk")
-        authportal = portal.Portal(authrealm, [auth.AuthKontalkChecker(self.config['fingerprint'], self.keyring, self.presencedb)])
+        authportal = portal.Portal(authrealm, [auth.AuthKontalkChecker(self.config['fingerprint'], self.keyring, self._verify_fingerprint)])
 
         self.sfactory = XMPPServerFactory(authportal, self, self.network, self.servername)
         self.sfactory.logTraffic = self.config['debug']
@@ -1023,6 +1024,50 @@ class C2SComponent(xmlstream2.SocketComponent):
 
     def consume(self, stanza):
         stanza.consumed = True
+
+    def _verify_fingerprint(self, userjid, fingerprint):
+        """Requests a vCard to the resolver for fingerprint matching on login."""
+
+        def _response(d, fingerprint, stanza):
+            stanza.consumed = True
+            # TODO ugly stuff
+
+            if stanza.vcard:
+                # error (TODO check if is actually vcard not found)
+                if stanza.error:
+                    d.callback(userjid)
+
+                # got vcard, check if fingerprint matches
+                elif stanza.vcard.key:
+                    # extract key data from vcard and retrieve fingerprint
+                    # we do this because of the uri member in domish.Element
+                    keydata = stanza.vcard.key.firstChildElement()
+                    if keydata.name == 'uri':
+                        keydata = str(keydata)
+
+                        if keydata.startswith(xmlstream2.DATA_PGP_PREFIX):
+                            keydata = base64.b64decode(keydata[len(xmlstream2.DATA_PGP_PREFIX):])
+                            # import into keyring
+                            fpr, unused = self.keyring.import_key(keydata)
+                            if fpr == fingerprint:
+                                d.callback(userjid)
+                            else:
+                                d.errback(Exception())
+
+        # request vcard to the resolver for fingerprint matching
+        stanzaId = util.rand_str(10)
+        d = defer.Deferred()
+        self.xmlstream.addOnetimeObserver("/iq[@id='%s']" % (stanzaId, ), _response, 0, d, fingerprint)
+
+        iq = domish.Element((None, 'iq'))
+        iq['id'] = stanzaId
+        iq['type'] = 'get'
+        iq['from'] = self.servername
+        iq['to'] = userjid.userhost()
+        iq.addElement((xmlstream2.NS_XMPP_VCARD4, 'vcard'))
+        self.send(iq)
+
+        return d
 
     def local_presence(self, user, stanza):
         """
