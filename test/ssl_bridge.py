@@ -126,6 +126,6 @@ if __name__ == '__main__':
     else:
         host, port = args.address, PORT
 
-    print 'listening on port %d, forwarding to %s:%d' % (args.port, host, port)
-    reactor.listenTCP(args.port, BridgeFactory(args.domain, host, port, args.certificate, args.privatekey))
+    print 'listening on port %d, forwarding to %s:%d' % (int(args.port), host, port)
+    reactor.listenTCP(int(args.port), BridgeFactory(args.domain, host, port, args.certificate, args.privatekey))
     reactor.run()
