@@ -172,6 +172,17 @@ class RosterHandler(XMPPHandler):
     def connectionInitialized(self):
         self.xmlstream.addObserver("/iq[@type='get']/query[@xmlns='%s']" % (xmlstream2.NS_IQ_ROSTER), self.roster, 100)
 
+    def build_vcard(self, userid, iq, full_key=False):
+        """Adds a vCard to the given iq stanza."""
+        fpr = self.parent.keyring.get_fingerprint(userid)
+        keydata = self.parent.keyring.get_key(userid, fpr, full_key=full_key)
+        # add vcard
+        vcard = iq.addElement((xmlstream2.NS_XMPP_VCARD4, 'vcard'))
+        vcard_key = vcard.addElement((None, 'key'))
+        vcard_data = vcard_key.addElement((None, 'uri'))
+        vcard_data.addContent(xmlstream2.DATA_PGP_PREFIX + base64.b64encode(keydata))
+        return iq
+
     def roster(self, stanza):
         _items = stanza.query.elements(uri=xmlstream2.NS_IQ_ROSTER, name='item')
         requester = jid.JID(stanza['from'])
@@ -278,17 +289,6 @@ class IQHandler(XMPPHandler):
         self.xmlstream.addObserver("/iq[@type='get']/query[@xmlns='%s']" % (xmlstream2.NS_IQ_VERSION, ), self.version, 100)
         self.xmlstream.addObserver("/iq[@type='result']", self.parent.bounce, 100)
         self.xmlstream.addObserver("/iq/query", self.parent.error, 80)
-
-    def build_vcard(self, userid, iq, full_key=False):
-        """Adds a vCard to the given iq stanza."""
-        fpr = self.parent.keyring.get_fingerprint(userid)
-        keydata = self.parent.keyring.get_key(userid, fpr, full_key=full_key)
-        # add vcard
-        vcard = iq.addElement((xmlstream2.NS_XMPP_VCARD4, 'vcard'))
-        vcard_key = vcard.addElement((None, 'key'))
-        vcard_data = vcard_key.addElement((None, 'uri'))
-        vcard_data.addContent(xmlstream2.DATA_PGP_PREFIX + base64.b64encode(keydata))
-        return iq
 
     def version(self, stanza):
         if not stanza.consumed:

@@ -84,7 +84,7 @@ class KontalkCertificate(object):
             this will allow users with an old key to overrule the new key if
             it connects to another server.
             This fingerprint lookup should be made from the network cache (which
-            is maintained by the resolver :S). Should we rely to the resolver
+            is maintained by the resolver :S). Should we rely on the resolver
             for authentication? Seems like an overkill...
             """
             def _continue(presence, _jid, fingerprint):
