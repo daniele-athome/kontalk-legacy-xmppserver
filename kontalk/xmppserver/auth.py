@@ -79,6 +79,14 @@ class KontalkCertificate(object):
                                 _jid = None
 
         if _jid:
+            """
+            !!! FIXME FIXME FIXME HUGE BUG !!!
+            this will allow users with an old key to overrule the new key if
+            it connects to another server.
+            This fingerprint lookup should be made from the network cache (which
+            is maintained by the resolver :S). Should we rely to the resolver
+            for authentication? Seems like an overkill...
+            """
             def _continue(presence, _jid, fingerprint):
                 if not presence or str(presence['fingerprint']) == fingerprint:
                     return _jid
