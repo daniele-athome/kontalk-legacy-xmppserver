@@ -1,18 +1,26 @@
 #!/usr/bin/env python
 # SSL bridge for XMPP STARTTLS
+# This code is in the public domain
+
+import argparse
 
 from twisted.internet.protocol import Protocol, Factory
 from twisted.internet.endpoints import TCP4ClientEndpoint, connectProtocol
 from twisted.internet import ssl, reactor
 
-HOST = 'beta.kontalk.net'
 PORT = 5222
-INIT = '<stream:stream to="kontalk.net" xmlns="jabber:client" xmlns:stream="http://etherx.jabber.org/streams" version="1.0"><starttls xmlns="urn:ietf:params:xml:ns:xmpp-tls"/>'
+LISTEN_PORT = 5224
 
 class XMPPClient(Protocol):
 
-    def __init__(self, client):
+    INIT = '<stream:stream to="%s" xmlns="jabber:client" xmlns:stream="http://etherx.jabber.org/streams" version="1.0">' \
+        '<starttls xmlns="urn:ietf:params:xml:ns:xmpp-tls"/>'
+
+    def __init__(self, client, domain, cert_file, pkey_file):
         self.client = client
+        self.domain = domain
+        self.cert_file = cert_file
+        self.pkey_file = pkey_file
         self._buf = ''
 
     def write(self, data):
@@ -25,8 +33,9 @@ class XMPPClient(Protocol):
 
     def connectionMade(self):
         """Connected to XMPP server."""
-        print 'SEND: %s' % (INIT, )
-        self.transport.write(INIT)
+        init = self.INIT % self.domain
+        print 'SEND: %s' % (init, )
+        self.transport.write(init)
 
     def dataReceived(self, data):
         print 'RECV: %s' % (data, )
@@ -35,23 +44,28 @@ class XMPPClient(Protocol):
         elif data.endswith("<proceed xmlns='urn:ietf:params:xml:ns:xmpp-tls'/>"):
             print 'starting TLS'
 
-            with open("kontalk-login.key") as keyFile:
-                    with open("kontalk-login.crt") as certFile:
+            with open(self.pkey_file) as keyFile:
+                    with open(self.cert_file) as certFile:
                         clientCert = ssl.PrivateCertificate.loadPEM(
                             keyFile.read() + certFile.read())
 
             ctx = clientCert.options()
             self.transport.startTLS(ctx)
             if self._buf:
-                print 'SEND: %s' % (INIT, )
+                print 'SEND: %s' % (self._buf, )
                 self.transport.write(self._buf)
                 self._buf = None
 
 
 class BridgeProtocol(Protocol):
 
-    def __init__(self, addr):
+    def __init__(self, addr, domain, host, port, cert_file, pkey_file):
         self.addr = addr
+        self.domain = domain
+        self.host = host
+        self.port = port
+        self.cert_file = cert_file
+        self.pkey_file = pkey_file
         self._conn = None
         self._buf = ''
 
@@ -70,9 +84,9 @@ class BridgeProtocol(Protocol):
 
     def connectionMade(self):
         print 'got connection from %s' % (self.addr, )
-        print 'connecting to %s:%d' % (HOST, PORT)
-        point = TCP4ClientEndpoint(reactor, HOST, PORT)
-        self.client = XMPPClient(self)
+        print 'connecting to %s:%d' % (self.host, self.port)
+        point = TCP4ClientEndpoint(reactor, self.host, self.port)
+        self.client = XMPPClient(self, self.domain, self.cert_file, self.pkey_file)
         d = connectProtocol(point, self.client)
         d.addCallback(self._connected)
 
@@ -82,9 +96,36 @@ class BridgeProtocol(Protocol):
 
 class BridgeFactory(Factory):
 
+    def __init__(self, domain, host, port, cert_file, pkey_file):
+        self.domain = domain
+        self.host = host
+        self.port = port
+        self.cert_file = cert_file
+        self.pkey_file = pkey_file
+
     def buildProtocol(self, addr):
-        return BridgeProtocol(addr)
+        return BridgeProtocol(addr, self.domain, self.host, self.port,
+            self.cert_file, self.pkey_file)
 
 
-reactor.listenTCP(5224, BridgeFactory())
-reactor.run()
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(description='An XMPP bridge for clients not supporting SSL client certificate authentication.')
+    parser.add_argument('-d', '--debug', help='enable debug output', action='store_true')
+    parser.add_argument('-p', '--port', help='listen for local connections on this port (default: %d)' % LISTEN_PORT, default=LISTEN_PORT)
+    parser.add_argument('--domain', help='use this domain for stream initialization', required=True)
+    parser.add_argument('-c', '--certificate', help='X.509 certificate file', required=True)
+    parser.add_argument('-k', '--privatekey', help='X.509 private key file', required=True)
+    parser.add_argument('address', help='forward connections to this host (host:port)')
+
+    args = parser.parse_args()
+
+    if ':' in args.address:
+        host, port = args.address.split(':')
+        port = int(port)
+    else:
+        host, port = args.address, PORT
+
+    print 'listening on port %d, forwarding to %s:%d' % (args.port, host, port)
+    reactor.listenTCP(args.port, BridgeFactory(args.domain, host, port, args.certificate, args.privatekey))
+    reactor.run()
