@@ -23,7 +23,6 @@ import time
 import base64
 import traceback
 
-from twisted.python import failure
 from twisted.internet import reactor, defer
 from twisted.application import strports
 from twisted.application.internet import StreamServerEndpointService
