@@ -236,8 +236,7 @@ class RosterHandler(XMPPHandler):
                     # send vcard for this user
                     jid_from = jid.JID(presence_list[0]['from'])
                     iq = domish.Element((None, 'iq'))
-                    # FIXME is type=result right in this case?
-                    iq['type'] = 'result'
+                    iq['type'] = 'set'
                     iq['from'] = jid_from.userhost()
                     iq['to'] = stanza['from']
                     self.build_vcard(jid_from.user, iq)
