@@ -20,8 +20,12 @@
 
 import random, hashlib
 
-from twisted.internet import protocol
+from zope.interface import implements
+
+from twisted.internet import protocol, defer
 from twisted.web import client
+from twisted.web.http import PotentialDataLoss
+from twisted.web.iweb import IBodyProducer
 from twisted.words.protocols.jabber import jid
 from wokkel import generic
 
@@ -148,10 +152,27 @@ class SimpleReceiver(protocol.Protocol):
         self.buf += data
 
     def connectionLost(self, reason=protocol.connectionDone):
-        if isinstance(reason.value, client.ResponseDone):
+        if isinstance(reason.value, client.ResponseDone) or isinstance(reason.value, PotentialDataLoss):
             self.d.callback((self.code, self.buf))
         else:
             self.d.errback(reason)
+
+class StringProducer(object):
+    implements(IBodyProducer)
+
+    def __init__(self, body):
+        self.body = body
+        self.length = len(body)
+
+    def startProducing(self, consumer):
+        consumer.write(self.body)
+        return defer.succeed(None)
+
+    def pauseProducing(self):
+        pass
+
+    def stopProducing(self):
+        pass
 
 def bitlist_to_chars(bl):
     """See http://stackoverflow.com/a/10238101/1045199"""

@@ -20,10 +20,9 @@
 
 
 from twisted.internet import reactor, defer
-from twisted.web.client import Agent, FileBodyProducer
+from twisted.web.client import Agent
 from twisted.web.http_headers import Headers
 
-from StringIO import StringIO
 import urllib
 import traceback
 import log, util
@@ -49,7 +48,7 @@ class PushServer:
     def __init__(self):
         pass
 
-    def notify(self, userid):
+    def notify(self, jid, userid):
         raise NotImplementedError()
 
     def __str__(self):
@@ -68,7 +67,7 @@ class GooglePush(PushServer):
         self.token = str(config['apikey'])
         self.sender = str(config['projectid'])
 
-    def notify(self, regid):
+    def notify(self, jid, regid):
         agent = Agent(reactor)
         params = urllib.urlencode({
             'registration_id' : regid,
@@ -80,17 +79,31 @@ class GooglePush(PushServer):
             'Content-Type' : ['application/x-www-form-urlencoded;charset=UTF-8'],
         })
 
-        d = agent.request('POST', self.url, headers, FileBodyProducer(StringIO(params)))
+        d = agent.request('POST', self.url, headers, util.StringProducer(params))
 
         def _success(response):
             if response.code == 204:
                 d = defer.succeed('')
-            else:
+
+            elif response.code == 200:
                 d = defer.Deferred()
                 def _debug(data):
                     log.debug("data from gcm(%s): %s" % (data[0], data[1], ))
+                    for line in data[1].splitlines():
+                        try:
+                            # update registration id if changed
+                            unused, regid = line.split('registration_id=')
+                            self.service.update(jid, self.name, regid)
+                            break
+                        except ValueError:
+                            pass
+
                 d.addCallback(_debug)
                 response.deliverBody(util.SimpleReceiver(response.code, d))
+
+            else:
+                # TODO this will fail
+                d = defer.fail(None)
 
             return d
 
@@ -118,6 +131,9 @@ class PushManager:
             except:
                 log.warn(traceback.format_exc())
 
+    def update(self, _jid, provider, regid):
+        self.register(_jid, provider, regid)
+
     def register(self, _jid, provider, regid):
         if _jid.user not in self._cache:
             self._cache[_jid.user] = {}
@@ -131,9 +147,9 @@ class PushManager:
             if _jid.resource and _jid.resource in self._cache[_jid.user]:
                 for name, regid in self._cache[_jid.user][_jid.resource].iteritems():
                     log.debug("push notifying via %s" % (name, ))
-                    self.providers[name].notify(regid)
+                    self.providers[name].notify(_jid, regid)
             else:
                 for providers in self._cache[_jid.user].itervalues():
                     for name, regid in providers.iteritems():
                         log.debug("push notifying via %s" % (name, ))
-                        self.providers[name].notify(regid)
+                        self.providers[name].notify(_jid, regid)
