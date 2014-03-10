@@ -883,8 +883,6 @@ class JIDCache(XMPPHandler):
                 stub.update(stanza)
         except KeyError:
             # user not found in cache -- shouldn't happen!!
-            import traceback
-            traceback.print_exc()
             stub = PresenceStub.fromElement(stanza)
             self.presence_cache[ujid.user] = stub
 

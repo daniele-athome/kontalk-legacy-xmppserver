@@ -273,8 +273,8 @@ class Keyring:
 
             # import key
             result = self.ctx.import_(BytesIO(keydata))
-            for d in dir(result):
-                print d, getattr(result, d)
+            #for d in dir(result):
+            #    print d, getattr(result, d)
             fp = str(result.imports[0][0]).upper()
             key = self.ctx.get_key(fp)
 
@@ -294,7 +294,7 @@ class Keyring:
 
                     for sig in uid.signatures:
                         try:
-                            log.debug("found signature by [KEYID-%s]" % (sig.keyid, ))
+                            #log.debug("found signature by [KEYID-%s]" % (sig.keyid, ))
                             mkey = self.ctx.get_key(sig.keyid)
                             if mkey:
                                 # signer key revoked!
@@ -303,7 +303,7 @@ class Keyring:
 
                                 fpr = mkey.subkeys[0].fpr.upper()
 
-                                log.debug("found signature by %s" % (fpr, ))
+                                #log.debug("found signature by %s" % (fpr, ))
                                 if fpr == self.fingerprint.upper():
                                     self._fingerprints[userid] = fp
                                     return fp
@@ -427,8 +427,8 @@ class Keyring:
         try:
             # import key
             result = self.ctx.import_(BytesIO(keydata))
-            for d in dir(result):
-                print d, getattr(result, d)
+            #for d in dir(result):
+            #    print d, getattr(result, d)
             fp = str(result.imports[0][0])
             keyfp = self.ctx.get_key(fp)
 
