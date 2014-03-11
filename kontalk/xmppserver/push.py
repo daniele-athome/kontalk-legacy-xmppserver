@@ -137,8 +137,16 @@ class PushManager:
     def register(self, _jid, provider, regid):
         if _jid.user not in self._cache:
             self._cache[_jid.user] = {}
+        else:
+            # check for duplicate regid
+            for resource, providers in self._cache[_jid.user].items():
+                if provider in providers and regid in providers[provider]:
+                    del self._cache[_jid.user][resource]
+                    break
+
         if _jid.resource not in self._cache[_jid.user]:
             self._cache[_jid.user][_jid.resource] = {}
+
         self._cache[_jid.user][_jid.resource][provider] = regid
 
     def notify(self, _jid):
