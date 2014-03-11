@@ -26,6 +26,7 @@ from twisted.words.protocols.jabber import jid
 
 from wokkel import generic
 
+from copy import deepcopy
 import os, base64, time, datetime
 
 try:
@@ -202,14 +203,16 @@ class MySQLStanzaStorage(StanzaStorage):
         # cancel any previous delayed call
         self._cancel_pending(_id)
 
+        # WARNING using deepcopy is not safe
+
         if delayed:
             # delay our call
             self._pending_offline[_id] = (reactor.callLater(self.OFFLINE_STORE_DELAY, self._store,
-                stanza=stanza, network=network, _id=_id, expire=expire),
+                stanza=deepcopy(stanza), network=network, _id=_id, expire=expire),
                     stanza, (network, _id, expire))
             return _id
         else:
-            return self._store(stanza, network, _id, expire)
+            return self._store(deepcopy(stanza), network, _id, expire)
 
     def _store(self, stanza, network, _id, expire):
         # remove ourselves from pending
@@ -218,10 +221,6 @@ class MySQLStanzaStorage(StanzaStorage):
                 del self._pending_offline[_id]
             except:
                 pass
-
-        # WARNING using deepcopy is not safe
-        from copy import deepcopy
-        stanza = deepcopy(stanza)
 
         # if no receipt request is found, generate a unique id for the message
         receipt = xmlstream2.extract_receipt(stanza, 'request')
