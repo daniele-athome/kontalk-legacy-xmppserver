@@ -278,8 +278,8 @@ class NexmoSMSRegistrationProvider(SMSRegistrationProvider):
     def send_sms(self, number, code):
         msg = {
             'reqtype' : 'json',
-            'username' : self.config['nx.username'],
-            'password': self.config['nx.password'],
+            'api_key' : self.config['nx.username'],
+            'api_secret': self.config['nx.password'],
             'from': self.config['from'],
             'to': number,
         }
