@@ -615,7 +615,8 @@ class PresenceSubscriptionHandler(XMPPHandler):
                             log.debug("c2s manager for %s not found" % (stanza['to'], ))
                             self.parent.message_offline_store(stanza)
                             # push notify client
-                            self.parent.push_manager.notify(to)
+                            if self.parent.push_manager:
+                                self.parent.push_manager.notify(to)
 
                     else:
                         # deliver local stanza
