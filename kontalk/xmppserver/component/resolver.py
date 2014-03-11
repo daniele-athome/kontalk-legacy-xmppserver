@@ -172,10 +172,10 @@ class RosterHandler(XMPPHandler):
     def connectionInitialized(self):
         self.xmlstream.addObserver("/iq[@type='get']/query[@xmlns='%s']" % (xmlstream2.NS_IQ_ROSTER), self.roster, 100)
 
-    def build_vcard(self, userid, iq, full_key=False):
+    def build_vcard(self, userid, iq):
         """Adds a vCard to the given iq stanza."""
         fpr = self.parent.keyring.get_fingerprint(userid)
-        keydata = self.parent.keyring.get_key(userid, fpr, full_key=full_key)
+        keydata = self.parent.keyring.get_key(userid, fpr)
         # add vcard
         vcard = iq.addElement((xmlstream2.NS_XMPP_VCARD4, 'vcard'))
         vcard_key = vcard.addElement((None, 'key'))
@@ -777,7 +777,7 @@ class JIDCache(XMPPHandler):
                 raise Exception()
 
             fpr = self.parent.keyring.get_fingerprint(jid_to.user)
-            keydata = self.parent.keyring.get_key(jid_to.user, fpr, full_key=(jid_to.user==jid_from.user))
+            keydata = self.parent.keyring.get_key(jid_to.user, fpr)
 
             iq = xmlstream2.toResponse(stanza, 'result')
             # add vcard

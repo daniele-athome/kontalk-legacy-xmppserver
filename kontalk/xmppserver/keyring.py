@@ -238,23 +238,17 @@ class Keyring:
             traceback.print_exc()
             return False
 
-    def get_key(self, userid, fingerprint, full_key=False):
+    def get_key(self, userid, fingerprint):
         """
         Retrieves a user's key from the cache keyring.
-        @param full_key: if True, key will have all the signatures
         @return keydata on success, None otherwise
         """
         # retrieve the requested key
         try:
             key = self.ctx.get_key(fingerprint)
             if key:
-
                 keydata = BytesIO()
-                if full_key:
-                    mode = 0
-                else:
-                    mode = gpgme.EXPORT_MODE_MINIMAL
-                self.ctx.export(key.subkeys[0].fpr, keydata, mode)
+                self.ctx.export(key.subkeys[0].fpr, keydata)
                 return keydata.getvalue()
         except:
             import traceback

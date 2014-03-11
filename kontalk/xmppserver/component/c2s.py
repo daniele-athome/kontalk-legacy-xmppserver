@@ -361,7 +361,7 @@ class InitialPresenceHandler(XMPPHandler):
                     # add vcard
                     vcard = iq_vcard.addElement((xmlstream2.NS_XMPP_VCARD4, 'vcard'))
                     if user['fingerprint']:
-                        pub_key = self.parent.keyring.get_key(user['userid'], user['fingerprint'], full_key=True)
+                        pub_key = self.parent.keyring.get_key(user['userid'], user['fingerprint'])
                         if pub_key:
                             vcard_key = vcard.addElement((None, 'key'))
                             vcard_data = vcard_key.addElement((None, 'uri'))
