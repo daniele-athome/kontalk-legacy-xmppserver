@@ -248,7 +248,7 @@ class Keyring:
             key = self.ctx.get_key(fingerprint)
             if key:
                 keydata = BytesIO()
-                self.ctx.export(key.subkeys[0].fpr, keydata)
+                self.ctx.export(str(key.subkeys[0].fpr), keydata)
                 return keydata.getvalue()
         except:
             import traceback
