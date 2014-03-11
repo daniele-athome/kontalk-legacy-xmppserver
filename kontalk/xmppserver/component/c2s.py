@@ -794,8 +794,10 @@ class MessageHandler(XMPPHandler):
                         We are receiving a sent receipt from another server,
                         meaning that the server has now responsibility for the
                         message - we can delete it now.
+                        Special case is the sender domain being the network
+                        domain, meaning the resolver rejected the message.
                         """
-                        if sender_host != self.parent.servername:
+                        if sender_host not in (self.parent.servername, self.parent.network):
                             log.debug("remote server now has responsibility for message %s - deleting" % (r_sent['id'], ))
                             # TODO safe delete with sender/recipient
                             self.parent.message_offline_delete(r_sent['id'], stanza.name)
