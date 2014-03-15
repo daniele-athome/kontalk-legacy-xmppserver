@@ -323,6 +323,29 @@ class UploadHandler(XMPPHandler):
         return ({'node': xmlstream2.NS_MESSAGE_UPLOAD, 'items': self.services }, )
 
 
+class PrivacyListHandler(XMPPHandler):
+    """Handles IQ urn:xmpp:blocking stanzas."""
+
+    def connectionInitialized(self):
+        self.xmlstream.addObserver("/iq[@type='set']/allow[@xmlns='%s']" % (xmlstream2.NS_IQ_BLOCKING), self.forward, 100)
+        self.xmlstream.addObserver("/iq[@type='set']/unallow[@xmlns='%s']" % (xmlstream2.NS_IQ_BLOCKING), self.forward, 100)
+        self.xmlstream.addObserver("/iq[@type='set']/block[@xmlns='%s']" % (xmlstream2.NS_IQ_BLOCKING), self.forward, 100)
+        self.xmlstream.addObserver("/iq[@type='set']/unblock[@xmlns='%s']" % (xmlstream2.NS_IQ_BLOCKING), self.forward, 100)
+
+    def forward(self, stanza):
+        # enforce destination (resolver)
+        stanza['to'] = self.parent.network
+
+        # forward to resolver
+        self.parent.forward(stanza)
+
+    def features(self):
+        return (xmlstream2.NS_IQ_BLOCKING, )
+
+    def items(self):
+        pass
+
+
 class RosterHandler(XMPPHandler):
     """Handles the roster and XMPP compatibility mode."""
 
@@ -606,6 +629,7 @@ class C2SManager(xmlstream2.StreamManager):
         PushNotificationsHandler,
         UploadHandler,
         IQHandler,
+        PrivacyListHandler,
         RosterHandler,
         MessageHandler,
     )
