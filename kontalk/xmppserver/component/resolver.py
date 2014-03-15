@@ -431,12 +431,16 @@ class PrivacyListHandler(XMPPHandler):
             # FIXME shouldn't we replace instead of just adding?
             self._blacklist(jid_from, items, broadcast=False)
 
+        self.parent.result(stanza)
+
     def whitelist(self, stanza):
         jid_from = jid.JID(stanza['from'])
         items = stanza.whitelist.elements(uri=xmlstream2.NS_IQ_BLOCKING, name='item')
         if items:
             # FIXME shouldn't we replace instead of just adding?
             self._whitelist(jid_from, items, broadcast=False)
+
+        self.parent.result(stanza)
 
     def allow(self, stanza):
         jid_from = jid.JID(stanza['from'])
@@ -445,12 +449,16 @@ class PrivacyListHandler(XMPPHandler):
             # TODO c2s must reject stanzas with "origin" attribute for security reasons
             self._whitelist(jid_from, items, broadcast=(stanza.getAttribute('origin')==self.parent.network))
 
+        self.parent.result(stanza)
+
     def unallow(self, stanza):
         jid_from = jid.JID(stanza['from'])
         items = stanza.unallow.elements(uri=xmlstream2.NS_IQ_BLOCKING, name='item')
         if items:
             # TODO c2s must reject stanzas with "origin" attribute for security reasons
             self._whitelist(jid_from, items, True, broadcast=(stanza.getAttribute('origin')==self.parent.network))
+
+        self.parent.result(stanza)
 
     def block(self, stanza):
         jid_from = jid.JID(stanza['from'])
@@ -459,12 +467,16 @@ class PrivacyListHandler(XMPPHandler):
             # TODO c2s must reject stanzas with "origin" attribute for security reasons
             self._blacklist(jid_from, items, broadcast=(stanza.getAttribute('origin')==self.parent.network))
 
+        self.parent.result(stanza)
+
     def unblock(self, stanza):
         jid_from = jid.JID(stanza['from'])
         items = stanza.block.elements(uri=xmlstream2.NS_IQ_BLOCKING, name='item')
         if items:
             # TODO c2s must reject stanzas with "origin" attribute for security reasons
             self._blacklist(jid_from, items, True, broadcast=(stanza.getAttribute('origin')==self.parent.network))
+
+        self.parent.result(stanza)
 
 
 class MessageHandler(XMPPHandler):
@@ -1107,6 +1119,11 @@ class Resolver(xmlstream2.SocketComponent):
         if not stanza.consumed:
             stanza.consumed = True
             self.send(stanza, *args, **kwargs)
+
+    def result(self, stanza):
+        """Sends back a result response stanza. Used for IQ stanzas."""
+        stanza = xmlstream2.toResponse(stanza, 'result')
+        self.send(stanza)
 
     def send(self, stanza, force_delivery=False, force_bare=False):
         """
