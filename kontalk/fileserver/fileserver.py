@@ -179,7 +179,7 @@ class Fileserver(resource.Resource, service.Service):
         self.storage = klass(*self.config['storage']['params'])
 
         self.keyring = keyring.Keyring(storage.MySQLNetworkStorage(), self.config['fingerprint'], self.network, self.servername)
-        token_auth = auth.AuthKontalkChecker(self.config['fingerprint'], self.keyring, self.presencedb)
+        token_auth = auth.AuthKontalkChecker(self.config['fingerprint'], self.keyring)
 
         # upload endpoint
         portal = Portal(FileUploadRealm(self), [token_auth])

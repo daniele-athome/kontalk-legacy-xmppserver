@@ -48,7 +48,7 @@ class OpenPGPKontalkCredentials(tls.OpenPGPCredentials):
 
 class IKontalkCertificate(credentials.ICredentials):
 
-    def check(fingerprint, kr, verify_cb):
+    def check(fingerprint, kr, verify_cb=None):
         pass
 
 
@@ -58,7 +58,7 @@ class KontalkCertificate(object):
     def __init__(self, cert):
         self.cert = cert
 
-    def check(self, fingerprint, kr, verify_cb):
+    def check(self, fingerprint, kr, verify_cb=None):
         _jid = None
 
         if isinstance(self.cert, OpenPGPCertificate):
@@ -86,10 +86,13 @@ class KontalkCertificate(object):
                 return None
 
             # deferred to check fingerprint against resolver data
-            d = verify_cb(_jid, fpr)
-            d.addCallback(_continue)
-            d.addErrback(_error)
-            return d
+            if verify_cb:
+                d = verify_cb(_jid, fpr)
+                d.addCallback(_continue)
+                d.addErrback(_error)
+                return d
+            else:
+                return _jid
 
         return None
 
@@ -127,7 +130,7 @@ class AuthKontalkChecker(object):
 
     credentialInterfaces = IKontalkToken, IKontalkCertificate
 
-    def __init__(self, fingerprint, kr, verify_cb):
+    def __init__(self, fingerprint, kr, verify_cb=None):
         self.fingerprint = str(fingerprint)
         self.keyring = kr
         self.verify_cb = verify_cb
