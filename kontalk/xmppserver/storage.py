@@ -385,7 +385,7 @@ class MySQLNetworkStorage(NetworkStorage):
         out = {}
         for row in data:
             # { fingerprint: host }
-            out[str(row[0])] = str(row[1])
+            out[str(row[0]).upper()] = str(row[1])
         return out
 
 class MySQLPresenceStorage(PresenceStorage):
