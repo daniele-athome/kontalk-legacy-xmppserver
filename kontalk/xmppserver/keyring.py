@@ -120,7 +120,7 @@ class Keyring:
 
     def __init__(self, db, fingerprint, network, servername, disable_signers=False):
         self._db = db
-        self.fingerprint = str(fingerprint)
+        self.fingerprint = str(fingerprint).upper()
         self.network = network
         self.servername = servername
         self._list = {}
@@ -148,24 +148,25 @@ class Keyring:
         return self._list[fingerprint]
 
     def get_server_trust(self, fingerprint):
-        '''Returns the trust level (ie how many servers trust another) of a given server.'''
-        # TODO convert to gpgme
-        count = 0
-        ctx = core.Context()
-        ctx.set_keylist_mode(keymode.SIGS)
-        key = ctx.get_key(fingerprint, False)
+        """
+        Verifies signatures on the given server public key and returns the
+        list of servers (actually fingerprints) that has signed it.
+        """
+        trusted_by = []
+
+        key = self.ctx.get_key(fingerprint, False)
         for uid in key.uids:
             for sign in uid.signatures:
-                skey = ctx.get_key(sign.keyid, False)
-                fpr = skey.subkeys[0].fpr
+                skey = self.ctx.get_key(sign.keyid, False)
+                fpr = str(skey.subkeys[0].fpr).upper()
                 #print "found signature from %s" % fpr
-                #print str(fpr) in self._list.keys()
-                #print str(fpr) != fingerprint
-                # make sure key is actually in the keyring and the sign is self-made
-                if str(fpr) in self._list.keys() and str(fpr) != fingerprint:
-                    count += 1
+                #print fpr in self._list.keys()
+                #print fpr != fingerprint
+                # make sure key is actually in the keyring and the sign is not self-made
+                if fpr in self._list.keys() and fpr != fingerprint:
+                    trusted_by.append(fpr)
 
-        return count
+        return trusted_by
 
     def has_privilege(self, fingerprint, priv):
         #print "checking permissions for %s" % fingerprint
@@ -295,16 +296,18 @@ class Keyring:
                                 if mkey.revoked:
                                     continue
 
-                                fpr = mkey.subkeys[0].fpr.upper()
+                                fpr = str(mkey.subkeys[0].fpr).upper()
 
                                 #log.debug("found signature by %s" % (fpr, ))
-                                if fpr == self.fingerprint.upper():
+                                # signature made by us
+                                if fpr == self.fingerprint:
                                     self._fingerprints[userid] = fp
                                     return fp
 
-                                # no direct match - compare with keyring
+                                # check against keyring
                                 for rkey in self._list.iterkeys():
-                                    if fpr == rkey.upper():
+                                    # fingerprint is a match: check if server is trusted
+                                    if fpr == rkey and self.fingerprint in self.get_server_trust(rkey):
                                         self._fingerprints[userid] = fp
                                         return fp
                         except:
