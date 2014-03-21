@@ -471,7 +471,7 @@ class PrivacyListHandler(XMPPHandler):
 
     def unblock(self, stanza):
         jid_from = jid.JID(stanza['from'])
-        items = stanza.block.elements(uri=xmlstream2.NS_IQ_BLOCKING, name='item')
+        items = stanza.unblock.elements(uri=xmlstream2.NS_IQ_BLOCKING, name='item')
         if items:
             # TODO c2s must reject stanzas with "origin" attribute for security reasons
             self._blacklist(jid_from, items, True, broadcast=(stanza.getAttribute('origin')==self.parent.network))
