@@ -505,7 +505,7 @@ class MessageHandler(XMPPHandler):
                 # send to router (without implicitly consuming)
                 self.parent.send(stanza, force_delivery=True)
             else:
-                log.debug("not allowed to send messages, sending fake response to %s" % (stanza['to'], ))
+                log.debug("not allowed to send messages, sending fake response to %s" % (stanza['from'], ))
                 if stanza.getAttribute('type') == 'chat' and xmlstream2.extract_receipt(stanza, 'request'):
                     self.send_fake_receipt(stanza)
 
