@@ -838,9 +838,14 @@ class C2SManager(xmlstream2.StreamManager):
             for c in stanza.elements(name='c', uri=xmlstream2.NS_PRESENCE_PUSH):
                 stanza.children.remove(c)
                 break
+
         # origin
         if stanza.hasAttribute('origin'):
             del stanza['origin']
+
+        # destination
+        if stanza.hasAttribute('destination'):
+            del stanza['destination']
 
         # force destination address
         if self.xmlstream.otherEntity:
