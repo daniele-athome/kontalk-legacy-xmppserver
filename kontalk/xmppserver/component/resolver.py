@@ -1187,11 +1187,19 @@ class Resolver(xmlstream2.SocketComponent):
                         component.Component.send(self, stanza)
                     # deliver if resource is available
                     else:
+                        sent = False
                         for _to in jids:
                             if _to.resource == to.resource:
                                 stanza['to'] = _to.full()
                                 component.Component.send(self, stanza)
+                                sent = True
                                 break
+
+                        # if sent=False it means that the intended resource has vanished
+                        # if force delivery is enabled, deliver to the first available resource
+                        if not sent and len(jids) > 0 and force_delivery:
+                            stanza['to'] = jids[0].full()
+                            component.Component.send(self, stanza)
 
                 # destination was a bare JID
                 else:
