@@ -25,8 +25,6 @@ import oursql
 from twisted.internet import reactor
 from twisted.words.protocols.jabber import xmlstream, error
 
-from nexmomessage import NexmoMessage
-
 from kontalk.xmppserver import log, xmlstream2, util
 
 
@@ -275,15 +273,25 @@ class NexmoSMSRegistrationProvider(SMSRegistrationProvider):
     request_instructions = 'Please supply a valid phone number. A SMS will be sent to you with a verification code.'
     ack_instructions = 'A SMS containing a verification code will be sent to the phone number you provided.'
 
+    def __init__(self, component, config):
+        SMSRegistrationProvider.__init__(self, component, config)
+        # try to import nexmo
+        from nexmomessage import NexmoMessage
+
+        self.nexmo = NexmoMessage
+        self.api_key = self.config['nx.username']
+        self.api_secret = self.config['nx.password']
+        self.sender = self.config['from']
+
     def send_sms(self, number, code):
         msg = {
             'reqtype' : 'json',
-            'api_key' : self.config['nx.username'],
-            'api_secret': self.config['nx.password'],
-            'from': self.config['from'],
+            'api_key' : self.api_key,
+            'api_secret': self.api_secret,
+            'from': self.sender,
             'to': number,
         }
-        sms = NexmoMessage(msg)
+        sms = self.nexmo(msg)
         # FIXME send just the code for now
         sms.set_text_info(code)
         response = sms.send_request()
