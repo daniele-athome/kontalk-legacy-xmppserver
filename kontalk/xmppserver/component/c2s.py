@@ -841,7 +841,8 @@ class C2SComponent(xmlstream2.SocketComponent):
             if key not in router_cfg:
                 router_cfg[key] = None
 
-        xmlstream2.SocketComponent.__init__(self, router_cfg['socket'], router_cfg['host'], router_cfg['port'], router_cfg['jid'], router_cfg['secret'])
+        router_jid = '%s.%s' % (router_cfg['jid'], config['host'])
+        xmlstream2.SocketComponent.__init__(self, router_cfg['socket'], router_cfg['host'], router_cfg['port'], router_jid, router_cfg['secret'])
         self.config = config
         self.logTraffic = config['debug']
         self.network = config['network']
@@ -968,6 +969,11 @@ class C2SComponent(xmlstream2.SocketComponent):
         self.xmlstream.addObserver("/iq", self.iq, 50)
         self.xmlstream.addObserver("/iq", self.dispatch)
         # <message/> has its own handler
+
+        # bind to servername route
+        bind = domish.Element((None, 'bind'))
+        bind['name'] = self.servername
+        xs.send(bind)
 
     def _disconnected(self, reason):
         component.Component._disconnected(self, reason)

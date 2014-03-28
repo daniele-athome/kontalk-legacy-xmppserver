@@ -1054,7 +1054,8 @@ class Resolver(xmlstream2.SocketComponent):
             if key not in router_cfg:
                 router_cfg[key] = None
 
-        xmlstream2.SocketComponent.__init__(self, router_cfg['socket'], router_cfg['host'], router_cfg['port'], router_cfg['jid'], router_cfg['secret'])
+        router_jid = '%s.%s' % (router_cfg['jid'], config['host'])
+        xmlstream2.SocketComponent.__init__(self, router_cfg['socket'], router_cfg['host'], router_cfg['port'], router_jid, router_cfg['secret'])
         self.config = config
 
         self.logTraffic = config['debug']
@@ -1084,6 +1085,11 @@ class Resolver(xmlstream2.SocketComponent):
         log.debug("connected to router")
         xs.addObserver("/iq", self.iq, 500)
         xs.addObserver("/presence", self.presence, 500)
+
+        # bind to network route
+        bind = domish.Element((None, 'bind'))
+        bind['name'] = self.network
+        xs.send(bind)
 
     def _disconnected(self, reason):
         component.Component._disconnected(self, reason)
