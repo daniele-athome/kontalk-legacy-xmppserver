@@ -21,20 +21,20 @@ The prefix will always be known because it's hard-coded:
  * `resolver.prime.kontalk.net`
  * `c2s.prime.kontalk.net`
 
-Components will register with the component name (e.g. `resolver`). Router will
-add the server host name automatically (e.g. `resolver.prime.kontalk.net`).
+Components will register with the component name (e.g. `resolver`). The *router*
+will add the server host name automatically (e.g. `resolver.prime.kontalk.net`).
 Components will also bind to their specific route (like in the old way, e.g.
-`prime.kontalk.net` for c2s and `kontalk.net` for resolvers).
+`prime.kontalk.net` for *c2s* and `kontalk.net` for *resolvers*).
 
 "Internal" JIDs (e.g. `kontalk.net`) can only be used internally to a server.
 To deliver a stanza to an external component, servers must add the host name to the
-component name (those JIDs will be bound by the `net` component whenever they
-are online. See [*smart `net` component*](#smart-net-component) section).
+component name (those JIDs will be bound by the *net* component whenever they
+are online. See [smart *net* component](#smart-net-component) section).
 
 
 Envelope forwarding
 ------------------
-There might be cases when a stanza is to be delivered to a certain component, but
+There might be cases when a stanza must be delivered to a certain component,
 without touching the stanza itself. Therefore, the stanza must be wrapped inside
 an "envelope":
 
@@ -51,6 +51,10 @@ A forwarded stanza is delivered directly to the intended recipient: the destinat
 component must unwrap it before processing it.
 
 
-Smart `net` component
+Smart *net* component
 ---------------------
-TODO
+The *net* component now binds to all servers routes. This is wrong because if
+a server is not accounted for, router should bounce stanzas directed to it.  
+Therefore, *net* will register with its internal JID (i.e. `net`).
+It will then bind to remote components routes whenever it receives presence from
+them, and unbind whenever those components disappear.
