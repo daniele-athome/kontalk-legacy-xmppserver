@@ -32,9 +32,23 @@ component name (those JIDs will be bound by the `net` component whenever they
 are online. See [*smart `net` component*](#smart-net-component) section).
 
 
-Envelop forwarding
+Envelope forwarding
 ------------------
-TODO
+There might be cases when a stanza is to be delivered to a certain component, but
+without touching the stanza itself. Therefore, the stanza must be wrapped inside
+an "envelope":
+
+```xml
+<forward from='c2s.beta.kontalk.net' to='resolver.prime.kontalk.net'>
+  <presence from='user@prime.kontalk.net/resource'/>
+</forward>
+```
+
+Since this is a top-level stanza, the namespace is implicit &mdash; the stream
+namespace is used.
+
+A forwarded stanza is delivered directly to the intended recipient: the destination
+component must unwrap it before processing it.
 
 
 Smart `net` component
