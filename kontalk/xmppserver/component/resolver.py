@@ -50,33 +50,21 @@ class PresenceHandler(XMPPHandler):
         self.xmlstream.addObserver("/presence[@type='subscribed']", self.onSubscribed, 600)
 
     def onPresenceAvailable(self, stanza):
-        """Handle availability presence stanzas."""
+        """Handle available presence stanzas."""
 
         if stanza.consumed:
             return
 
         # initial presence from a remote resolver
-        if (stanza['from'] != self.parent.servername and \
-            stanza['from'] in self.parent.keyring.hostlist()):
+        try:
+            component, host = util.jid_component(stanza['from'])
 
-            if stanza.getAttribute('origin') == self.parent.network:
-                log.debug("remote resolver appeared, sending privacy lists to server %s" % (stanza['from'], ))
-                # will happen later
+            if host != self.parent.servername and host in self.parent.keyring.hostlist():
+                self.send_privacy_lists(self.parent.blacklists, stanza['from'])
+                self.send_privacy_lists(self.parent.whitelists, stanza['from'])
 
-            # FIXME hard-coded host component
-            elif stanza['from'] != ('network.' + self.parent.network):
-                log.debug("introducing ourselves to server %s" % (stanza['from'], ))
-                # introduce ourselves to remote resolver
-                p = domish.Element((None, 'presence'))
-                p['from'] = self.parent.network
-                p['to'] = stanza['from']
-                p['destination'] = self.parent.network
-                self.parent.send(p)
-
-                log.debug("sending privacy lists to server %s" % (stanza['from'], ))
-
-            self.send_privacy_lists(self.parent.blacklists, stanza['from'])
-            self.send_privacy_lists(self.parent.whitelists, stanza['from'])
+        except ValueError:
+            pass
 
         self.parent.broadcastSubscribers(stanza)
 
@@ -87,7 +75,6 @@ class PresenceHandler(XMPPHandler):
             iq['type'] = 'set'
             iq['id'] = util.rand_str(8)
             iq['to'] = addr_from
-            iq['destination'] = self.parent.network
             allow = iq.addElement(('urn:xmpp:blocking', 'whitelist'))
 
             for item in wl:
@@ -1364,8 +1351,7 @@ class Resolver(xmlstream2.SocketComponent):
 
         for server in self.keyring.hostlist():
             if server != self.servername:
-                iq['to'] = server
-                iq['destination'] = self.network
+                iq['to'] = util.component_jid(server, util.COMPONENT_RESOLVER)
                 self.send(iq)
 
     def _privacy_list_add(self, jid_to, jid_from, list_type, broadcast=True):

@@ -39,6 +39,9 @@ CHARSBOX_NUMBERS = '1234567890'
 CHARSBOX_HEX_LOWERCASE = 'abcdef1234567890'
 CHARSBOX_HEX_UPPERCASE = 'ABCDEF1234567890'
 
+COMPONENT_RESOLVER = 'resolver'
+COMPONENT_C2S = 'c2s'
+
 
 def split_userid(userid):
     return userid[:USERID_LENGTH], userid[USERID_LENGTH:]
@@ -112,6 +115,12 @@ def jid_user(jidstring):
 
 def jid_host(jidstring):
     return _jid_parse(jidstring, 1)
+
+def component_jid(host, component):
+    return component + '.' + host
+
+def jid_component(jidstring):
+    return jidstring.split('.', 1)
 
 def generate_filename(mime):
     '''Generates a random filename for the given mime type.'''
