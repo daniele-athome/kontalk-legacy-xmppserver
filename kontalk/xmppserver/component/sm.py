@@ -388,7 +388,7 @@ class IQHandler(XMPPHandler):
 
     def forward_check(self, stanza, fn, componentfn):
         if not stanza.consumed:
-            if stanza['to'] == self.parent.servername:
+            if stanza['to'] == util.component_jid(self.parent.servername, util.COMPONENT_C2S):
                 return componentfn(stanza)
             else:
                 return fn(stanza)
@@ -726,7 +726,7 @@ class C2SManager(xmlstream2.StreamManager):
                     self.forward(stanza)
 
             # stanza is not intended to component either
-            elif to.host != self.servername:
+            elif to.host != util.component_jid(self.servername, util.COMPONENT_C2S):
                 self.forward(stanza)
 
             # everything else is handled by handlers
@@ -864,12 +864,13 @@ class C2SManager(xmlstream2.StreamManager):
             self.router.send(stanza)
 
     def resolveJID(self, _jid):
-        """Transform host attribute of JID from network name to server name."""
+        """Transform host attribute of JID from network name to component name."""
+        host = util.component_jid(self.servername, util.COMPONENT_C2S)
         if isinstance(_jid, jid.JID):
-            return jid.JID(tuple=(_jid.user, self.servername, _jid.resource))
+            return jid.JID(tuple=(_jid.user, host, _jid.resource))
         else:
             _jid = jid.JID(_jid)
-            _jid.host = self.servername
+            _jid.host = host
             return _jid
 
     def link_public_key(self, publickey, userid):

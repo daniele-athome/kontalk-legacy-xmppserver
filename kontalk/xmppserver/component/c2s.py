@@ -285,7 +285,7 @@ class InitialPresenceHandler(XMPPHandler):
     """
 
     def connectionInitialized(self):
-        self.xmlstream.addObserver("/presence[not(@type)]", self.presence)
+        self.xmlstream.addObserver("/presence[not(@type)][@to='%s']" % (self.xmlstream.thisEntity.full(), ), self.presence)
 
     def send_presence(self, to):
         """
@@ -299,7 +299,7 @@ class InitialPresenceHandler(XMPPHandler):
             if type(presence) == list and len(presence) > 0:
 
                 for user in presence:
-                    response_from = util.userid_to_jid(user['userid'], self.parent.servername).full()
+                    response_from = util.userid_to_jid(user['userid'], self.parent.xmlstream.thisEntity.host).full()
 
                     num_avail = 0
                     try:
@@ -377,6 +377,8 @@ class InitialPresenceHandler(XMPPHandler):
         Here we are sending offline messages directly to the connected user.
         """
 
+        log.debug("initial presence from router by %s" % (stanza['from'], ))
+
         try:
             # receiving initial presence from remote or local resolver, send all presence data
             component, host = util.jid_component(stanza['from'], util.COMPONENT_RESOLVER)
@@ -393,10 +395,17 @@ class InitialPresenceHandler(XMPPHandler):
         # check for external conflict
         self.parent.sfactory.check_conflict(sender)
 
-        # initial presence from a client connected to another server, clear it from our presence table
-        if sender.user and sender.host != self.parent.servername and sender.host in self.parent.keyring.hostlist():
-            log.debug("deleting %s from presence table" % (sender.user, ))
-            self.parent.presencedb.delete(sender.user)
+        if sender.user:
+            try:
+                component, host = util.jid_component(sender.host, util.COMPONENT_C2S)
+
+                # initial presence from a client connected to another server, clear it from our presence table
+                if host != self.parent.servername and host in self.parent.keyring.hostlist():
+                    log.debug("deleting %s from presence table" % (sender.user, ))
+                    self.parent.presencedb.delete(sender.user)
+
+            except:
+                pass
 
         # initial presence - deliver offline storage
         def output(data, user):
@@ -411,9 +420,9 @@ class InitialPresenceHandler(XMPPHandler):
                     copy of the receipt
                     """
                     if msg['stanza'].request:
-                        msg['stanza'].request['origin'] = self.parent.servername
+                        msg['stanza'].request['from'] = self.xmlstream.thisEntity.full()
                     elif msg['stanza'].received:
-                        msg['stanza'].received['origin'] = self.parent.servername
+                        msg['stanza'].received['from'] = self.xmlstream.thisEntity.full()
 
                     # mark delayed delivery
                     if 'timestamp' in msg:
@@ -458,7 +467,7 @@ class PresenceProbeHandler(XMPPHandler):
                 for user in presence:
                     response = xmlstream2.toResponse(stanza)
                     response['id'] = util.rand_str(8, util.CHARSBOX_AZN_LOWERCASE)
-                    response_from = util.userid_to_jid(user['userid'], self.parent.servername)
+                    response_from = util.userid_to_jid(user['userid'], self.xmlstream.thisEntity.host)
                     response['from'] = response_from.full()
 
                     if user['status'] is not None:
@@ -528,6 +537,7 @@ class LastActivityHandler(XMPPHandler):
     """
     XEP-0012: Last activity
     http://xmpp.org/extensions/xep-0012.html
+    TODO this needs serious fixing
     """
     def __init__(self):
         XMPPHandler.__init__(self)
@@ -545,7 +555,7 @@ class LastActivityHandler(XMPPHandler):
                 user = presence[0]
 
                 response = xmlstream2.toResponse(stanza, 'result')
-                response_from = util.userid_to_jid(user['userid'], self.parent.servername)
+                response_from = util.userid_to_jid(user['userid'], self.xmlstream.thisEntity.host)
                 response['from'] = response_from.userhost()
 
                 query = response.addElement((xmlstream2.NS_IQ_LAST, 'query'))
@@ -642,7 +652,7 @@ class MessageHandler(XMPPHandler):
         msgId = stanza['id']
         if msgId:
             try:
-                if stanza['to'] == self.parent.servername:
+                if stanza['to'] == self.xmlstream.thisEntity.full():
                     self.parent.message_offline_delete(msgId, stanza.name)
             except:
                 traceback.print_exc()
@@ -679,7 +689,7 @@ class MessageHandler(XMPPHandler):
             if stanza.hasAttribute('to'):
                 to = jid.JID(stanza['to'])
                 # process only our JIDs
-                if util.jid_local(util.COMPONENT_C2S, self, to):
+                if util.jid_local(util.COMPONENT_C2S, self.parent, to):
                     chat_msg = (stanza.getAttribute('type') == 'chat')
                     if to.user is not None:
                         keepId = None
@@ -740,8 +750,18 @@ class MessageHandler(XMPPHandler):
                          * offline delivery (triggered by an initial presence from this server)
                         """
                         host = util.jid_host(stanza['from'])
+
                         from_storage = xmlstream2.has_element(stanza, xmlstream2.NS_XMPP_STORAGE, 'storage')
-                        if chat_msg and (not from_storage or host != self.parent.servername):
+
+                        try:
+                            log.debug("host(unparsed): %s" % (host, ))
+                            unused, host = util.jid_component(host, util.COMPONENT_C2S)
+                            log.debug("host(parsed): %s" % (host, ))
+                            from_remote = host != self.parent.servername
+                        except:
+                            from_remote = False
+
+                        if chat_msg and (not from_storage or from_remote):
 
                             # send ack only for chat messages (if requested)
                             # do not send if coming from remote storage
@@ -764,17 +784,9 @@ class MessageHandler(XMPPHandler):
                             # now send what we prepared
                             if receipt:
                                 try:
-                                    origin = receipt['origin']
-                                    if origin != self.parent.servername:
-                                        stanza['from'] = origin
-                                        try:
-                                            del stanza['origin']
-                                        except:
-                                            pass
-                                        try:
-                                            del stanza['destination']
-                                        except:
-                                            pass
+                                    from_server = receipt['from']
+                                    if util.hostjid_local(util.COMPONENT_C2S, self.parent, from_server):
+                                        stanza['from'] = from_server
                                         self.send_ack(stanza, delivery, stamp, request)
                                 except:
                                     pass
@@ -797,7 +809,8 @@ class MessageHandler(XMPPHandler):
                         Special case is the sender domain being the network
                         domain, meaning the resolver rejected the message.
                         """
-                        if sender_host not in (self.parent.servername, self.parent.network):
+                        unused, sender_host = util.jid_component(sender_host)
+                        if sender_host != self.parent.servername:
                             log.debug("remote server now has responsibility for message %s - deleting" % (r_sent['id'], ))
                             # TODO safe delete with sender/recipient
                             self.parent.message_offline_delete(r_sent['id'], stanza.name)
@@ -971,9 +984,11 @@ class C2SComponent(xmlstream2.SocketComponent):
         # <message/> has its own handler
 
         # bind to servername route
+        """
         bind = domish.Element((None, 'bind'))
         bind['name'] = self.servername
         xs.send(bind)
+        """
 
     def _disconnected(self, reason):
         component.Component._disconnected(self, reason)
@@ -1113,9 +1128,9 @@ class C2SComponent(xmlstream2.SocketComponent):
                     copy of the receipt
                     """
                     if msg['stanza'].request:
-                        msg['stanza'].request['origin'] = self.servername
+                        msg['stanza'].request['from'] = self.xmlstream.thisEntity.full()
                     elif msg['stanza'].received:
-                        msg['stanza'].received['origin'] = self.servername
+                        msg['stanza'].received['from'] = self.xmlstream.thisEntity.full()
 
                     # mark delayed delivery
                     if 'timestamp' in msg:
@@ -1220,7 +1235,7 @@ class C2SComponent(xmlstream2.SocketComponent):
         # create vcard
         iq_vcard = domish.Element((None, 'iq'))
         iq_vcard['type'] = 'set'
-        iq_vcard['from'] = util.userid_to_jid(userid, self.servername).full()
+        iq_vcard['from'] = util.userid_to_jid(userid, self.xmlstream.thisEntity.host).full()
 
         # add vcard
         vcard = iq_vcard.addElement((xmlstream2.NS_XMPP_VCARD4, 'vcard'))
@@ -1242,10 +1257,10 @@ class C2SComponent(xmlstream2.SocketComponent):
     def resolveJID(self, _jid):
         """Transform host attribute of JID from network name to server name."""
         if isinstance(_jid, jid.JID):
-            return jid.JID(tuple=(_jid.user, self.servername, _jid.resource))
+            return jid.JID(tuple=(_jid.user, self.xmlstream.thisEntity.host, _jid.resource))
         else:
             _jid = jid.JID(_jid)
-            _jid.host = self.servername
+            _jid.host = self.xmlstream.thisEntity.host
             return _jid
 
     def message_offline_delete(self, stanzaId, stanzaName, sender=None, recipient=None):

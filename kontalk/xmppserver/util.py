@@ -129,16 +129,18 @@ def jid_component(jidstring, component=None):
             return parsed
 
 def jid_local(component, component_object, _jid):
-    # depending on the component, one of network or server name must be chosen
+    return hostjid_local(component, component_object, _jid.host)
 
+def hostjid_local(component, component_object, host):
+    # depending on the component, one of network or server name must be chosen
     if component == COMPONENT_C2S:
-        check = component_object.network
-    elif component == COMPONENT_RESOLVER:
         check = component_object.servername
+    elif component == COMPONENT_RESOLVER:
+        check = component_object.network
     else:
         check = None
 
-    return _jid.host in (check, component_object.xmlstream.thisEntity.host)
+    return host in (check, component_object.xmlstream.thisEntity.host)
 
 def generate_filename(mime):
     '''Generates a random filename for the given mime type.'''

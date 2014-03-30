@@ -431,7 +431,7 @@ class PrivacyListHandler(XMPPHandler):
 
     def allow(self, stanza):
         jid_from = jid.JID(stanza['from'])
-        broadcast = (jid_from.host == self.parent.servername)
+        broadcast = (jid_from.host == util.component_jid(self.parent.servername, util.COMPONENT_C2S))
         items = stanza.allow.elements(uri=xmlstream2.NS_IQ_BLOCKING, name='item')
         if items:
             self._whitelist(jid_from, items, broadcast=broadcast)
@@ -441,7 +441,7 @@ class PrivacyListHandler(XMPPHandler):
 
     def unallow(self, stanza):
         jid_from = jid.JID(stanza['from'])
-        broadcast = (jid_from.host == self.parent.servername)
+        broadcast = (jid_from.host == util.component_jid(self.parent.servername, util.COMPONENT_C2S))
         items = stanza.unallow.elements(uri=xmlstream2.NS_IQ_BLOCKING, name='item')
         if items:
             self._whitelist(jid_from, items, True, broadcast=broadcast)
@@ -451,7 +451,7 @@ class PrivacyListHandler(XMPPHandler):
 
     def block(self, stanza):
         jid_from = jid.JID(stanza['from'])
-        broadcast = (jid_from.host == self.parent.servername)
+        broadcast = (jid_from.host == util.component_jid(self.parent.servername, util.COMPONENT_C2S))
         items = stanza.block.elements(uri=xmlstream2.NS_IQ_BLOCKING, name='item')
         if items:
             self._blacklist(jid_from, items, broadcast=broadcast)
@@ -461,7 +461,7 @@ class PrivacyListHandler(XMPPHandler):
 
     def unblock(self, stanza):
         jid_from = jid.JID(stanza['from'])
-        broadcast = (jid_from.host == self.parent.servername)
+        broadcast = (jid_from.host == util.component_jid(self.parent.servername, util.COMPONENT_C2S))
         items = stanza.unblock.elements(uri=xmlstream2.NS_IQ_BLOCKING, name='item')
         if items:
             self._blacklist(jid_from, items, True, broadcast=broadcast)
@@ -758,20 +758,27 @@ class JIDCache(XMPPHandler):
             log.debug("user unavailable from %s" % (stanza['from'], ))
 
         # local c2s or remote server has disconnected, remove presences from cache
-        if stanza['from'] in self.parent.keyring.hostlist():
-            #log.debug("PRESENCE(1): %r" % (self.presence_cache, ))
-            keys = self.presence_cache.keys()
-            for key in keys:
-                stub = self.presence_cache[key]
-                if stub.jid.host == stanza['from']:
-                    del self.presence_cache[key]
+        try:
+            unused, host = util.jid_component(stanza['from'], util.COMPONENT_C2S)
+            if host in self.parent.keyring.hostlist():
+                #log.debug("PRESENCE(1): %r" % (self.presence_cache, ))
+                keys = self.presence_cache.keys()
+                for key in keys:
+                    stub = self.presence_cache[key]
+                    if stub.jid.host == stanza['from']:
+                        del self.presence_cache[key]
 
-            #log.debug("PRESENCE(2): %r" % (self.presence_cache, ))
-        else:
-            user = jid.JID(stanza['from'])
+                #log.debug("PRESENCE(2): %r" % (self.presence_cache, ))
 
-            if user.user:
-                self.user_unavailable(stanza)
+            return
+        except:
+            return
+
+        # normal user unavailable
+        user = jid.JID(stanza['from'])
+
+        if user.user:
+            self.user_unavailable(stanza)
 
     def onVCardGet(self, stanza):
         log.debug("%s requested vCard for %s" % (stanza['from'], stanza['to']))
@@ -1310,10 +1317,17 @@ class Resolver(xmlstream2.SocketComponent):
 
         user = jid.JID(stanza['from'])
 
-        if user.host == self.servername or user.host in self.keyring.hostlist():
-            # local or network user: translate host name
-            watched = jid.JID(tuple=(user.user, self.network, user.resource))
-        else:
+        try:
+            unused, host = util.jid_component(user.host)
+
+            if host == self.servername or host in self.keyring.hostlist():
+                # local or network user: translate host name
+                watched = jid.JID(tuple=(user.user, self.network, user.resource))
+            else:
+                # other JIDs, use unchanged
+                watched = user
+
+        except ValueError:
             # other JIDs, use unchanged
             watched = user
 
@@ -1329,7 +1343,7 @@ class Resolver(xmlstream2.SocketComponent):
                     stanza['to'] = sub.userhost()
                     self.send(stanza)
                 else:
-                    log.debug("%s is not allowed to see presence")
+                    log.debug("%s is not allowed to see presence" % (sub, ))
                     removed.append(sub)
 
             # remove unauthorized users
@@ -1338,12 +1352,17 @@ class Resolver(xmlstream2.SocketComponent):
 
     def translateJID(self, _jid, resource=True):
         """
-        Translate a server JID (user@prime.kontalk.net) into a network JID
+        Translate a server JID (user@component.prime.kontalk.net) into a network JID
         (user@kontalk.net).
         """
         # TODO ehm :D
-        if _jid.host == self.servername or _jid.host in self.keyring.hostlist():
-            return jid.JID(tuple=(_jid.user, self.network, _jid.resource if resource else None))
+        try:
+            unused, host = util.jid_component(_jid.host)
+            if host in self.keyring.hostlist():
+                return jid.JID(tuple=(_jid.user, self.network, _jid.resource if resource else None))
+        except ValueError:
+            pass
+
         return _jid if resource else _jid.userhostJID()
 
     def _broadcast_privacy_list_change(self, dest, src, node):
