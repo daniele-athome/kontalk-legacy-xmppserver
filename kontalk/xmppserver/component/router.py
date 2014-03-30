@@ -158,9 +158,15 @@ class Router(component.Router):
         This alters the to attribute in outgoing stanza for each component.
         """
         from_host = util.jid_host(stanza['from'])
+
+        try:
+            sender_xs = self.routes[from_host]
+        except KeyError:
+            sender_xs = None
+
         for host, xs in self.routes.iteritems():
             # do not send to the original sender
-            if host is not None and (host != from_host or same):
+            if host is not None and ((host != from_host and sender_xs != xs) or same):
                 log.debug("sending to %s" % (host, ))
                 stanza['to'] = host
                 xs.send(stanza)
