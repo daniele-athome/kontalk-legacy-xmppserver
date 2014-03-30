@@ -55,15 +55,15 @@ class PresenceHandler(XMPPHandler):
         if stanza.consumed:
             return
 
-        # initial presence from a remote resolver
         try:
-            component, host = util.jid_component(stanza['from'])
+            # initial presence from a remote resolver
+            component, host = util.jid_component(stanza['from'], util.COMPONENT_RESOLVER)
 
             if host != self.parent.servername and host in self.parent.keyring.hostlist():
                 self.send_privacy_lists(self.parent.blacklists, stanza['from'])
                 self.send_privacy_lists(self.parent.whitelists, stanza['from'])
 
-        except ValueError:
+        except:
             pass
 
         self.parent.broadcastSubscribers(stanza)
@@ -731,8 +731,12 @@ class JIDCache(XMPPHandler):
         # presence probes MUST be handled by server so the high priority
         self.xmlstream.addObserver("/presence[@type='probe']", self.onProbe, 600)
         # vCards MUST be handled by server so the high priority
-        self.xmlstream.addObserver("/iq[@type='set']/vcard[@xmlns='%s']" % (xmlstream2.NS_XMPP_VCARD4, ), self.onVCardSet, 600)
+        # TODO is thise needed? -- self.xmlstream.addObserver("/iq[@type='set']/vcard[@xmlns='%s']" % (xmlstream2.NS_XMPP_VCARD4, ), self.onVCardSet, 600)
+        self.xmlstream.addObserver("/stanza/iq[@type='set']/vcard[@xmlns='%s']" % (xmlstream2.NS_XMPP_VCARD4, ), self.wrapped, 600, fn=self.onVCardSet)
         self.xmlstream.addObserver("/iq[@type='get']/vcard[@xmlns='%s']" % (xmlstream2.NS_XMPP_VCARD4, ), self.onVCardGet, 600)
+
+    def wrapped(self, stanza, fn):
+        fn(stanza.firstChildElement())
 
     def onPresenceAvailable(self, stanza):
         """Handle availability presence stanzas."""
@@ -821,6 +825,8 @@ class JIDCache(XMPPHandler):
                         log.debug("key cached successfully")
                     else:
                         log.warn("invalid key")
+
+        # TODO send response!!!
 
     def send_user_presence(self, gid, sender, recipient):
         stub = self.lookup(recipient)

@@ -285,15 +285,15 @@ class InitialPresenceHandler(XMPPHandler):
     """
 
     def connectionInitialized(self):
-        self.xmlstream.addObserver("/presence[not(@type)][@to='%s']" % (self.parent.servername, ), self.presence)
+        self.xmlstream.addObserver("/presence[not(@type)]", self.presence)
 
-    def send_presence(self, to, destination):
+    def send_presence(self, to):
         """
         Sends all local presence data (available and unavailable) to the given
         entity.
         """
 
-        def _db(presence, to, destination=None):
+        def _db(presence, to):
             from copy import deepcopy
             log.debug("presence: %r" % (presence, ))
             if type(presence) == list and len(presence) > 0:
@@ -309,8 +309,6 @@ class InitialPresenceHandler(XMPPHandler):
                             if presence and not presence.hasAttribute('type'):
                                 response = domish.Element((None, 'presence'))
                                 response['to'] = to
-                                if destination:
-                                    response['destination'] = destination
                                 response['from'] = presence['from']
 
                                 # copy stuff
@@ -329,8 +327,6 @@ class InitialPresenceHandler(XMPPHandler):
                     if not num_avail:
                         response = domish.Element((None, 'presence'))
                         response['to'] = to
-                        if destination:
-                            response['destination'] = destination
                         response['from'] = response_from
 
                         if user['status'] is not None:
@@ -355,8 +351,6 @@ class InitialPresenceHandler(XMPPHandler):
                     iq_vcard['type'] = 'set'
                     iq_vcard['from'] = response_from
                     iq_vcard['to'] = to
-                    # for vcards destination is resolver
-                    iq_vcard['destination'] = self.parent.network
 
                     # add vcard
                     vcard = iq_vcard.addElement((xmlstream2.NS_XMPP_VCARD4, 'vcard'))
@@ -374,7 +368,7 @@ class InitialPresenceHandler(XMPPHandler):
                         log.debug("vCard sent: %s" % (iq_vcard['from'], ))
 
         d = self.parent.presencedb.get_all()
-        d.addCallback(_db, to, destination)
+        d.addCallback(_db, to)
 
     def presence(self, stanza):
         """
@@ -383,10 +377,16 @@ class InitialPresenceHandler(XMPPHandler):
         Here we are sending offline messages directly to the connected user.
         """
 
-        # receiving initial presence from remote server or from local resolver, send all presence
-        if stanza['from'] == self.parent.network or (stanza['from'] != self.parent.servername and stanza['from'] in self.parent.keyring.hostlist()):
-            log.debug("resolver appeared, sending all local presence and vCards to %s" % (stanza['from'], ))
-            self.send_presence(stanza['from'], stanza['origin'] if stanza.hasAttribute('origin') else None)
+        try:
+            # receiving initial presence from remote or local resolver, send all presence data
+            component, host = util.jid_component(stanza['from'], util.COMPONENT_RESOLVER)
+
+            if host in self.parent.keyring.hostlist():
+                log.debug("resolver appeared, sending all local presence and vCards to %s" % (stanza['from'], ))
+                self.send_presence(stanza['from'])
+
+        except:
+            pass
 
         sender = jid.JID(stanza['from'])
 
@@ -605,7 +605,7 @@ class PresenceSubscriptionHandler(XMPPHandler):
             if stanza.hasAttribute('to'):
                 to = jid.JID(stanza['to'])
                 # process only our JIDs
-                if to.host == self.parent.servername:
+                if util.jid_local(util.COMPONENT_C2S, self, to):
                     if to.user is not None:
                         try:
                             # send stanza to sm only to non-negative resources
@@ -679,7 +679,7 @@ class MessageHandler(XMPPHandler):
             if stanza.hasAttribute('to'):
                 to = jid.JID(stanza['to'])
                 # process only our JIDs
-                if to.host == self.parent.servername:
+                if util.jid_local(util.COMPONENT_C2S, self, to):
                     chat_msg = (stanza.getAttribute('type') == 'chat')
                     if to.user is not None:
                         keepId = None
@@ -984,6 +984,18 @@ class C2SComponent(xmlstream2.SocketComponent):
         if stanza.getAttribute('from') == self.network:
             del stanza['from']
 
+    def send_wrapped(self, stanza, sender, destination=None):
+        """
+        Wraps the given stanza in a <stanza/> stanza intended to the given
+        recipient. If recipient is None, the "to" of the original stanza is used.
+        """
+
+        envelope = domish.Element((None, 'stanza'))
+        envelope['from'] = sender
+        envelope['to'] = destination if destination else stanza['to']
+        envelope.addChild(stanza)
+        self.send(envelope)
+
     def dispatch(self, stanza):
         """
         Stanzas from router must be intended to a server JID (e.g.
@@ -994,8 +1006,6 @@ class C2SComponent(xmlstream2.SocketComponent):
         """
 
         if not stanza.consumed:
-            if self.logTraffic:
-                log.debug("incoming stanza: %s" % (stanza.toXml().encode('utf-8')))
             stanza.consumed = True
 
             util.resetNamespace(stanza, component.NS_COMPONENT_ACCEPT)
@@ -1003,7 +1013,7 @@ class C2SComponent(xmlstream2.SocketComponent):
             if stanza.hasAttribute('to'):
                 to = jid.JID(stanza['to'])
                 # process only our JIDs
-                if to.host == self.servername:
+                if util.jid_local(util.COMPONENT_C2S, self, to):
                     if to.user is not None:
                         try:
                             """ TEST to store message anyway :)
@@ -1070,7 +1080,7 @@ class C2SComponent(xmlstream2.SocketComponent):
         iq = domish.Element((None, 'iq'))
         iq['id'] = stanzaId
         iq['type'] = 'get'
-        iq['from'] = self.servername
+        iq['from'] = self.xmlstream.thisEntity.full()
         iq['to'] = userjid.userhost()
         iq.addElement((xmlstream2.NS_XMPP_VCARD4, 'vcard'))
         self.send(iq)
@@ -1179,25 +1189,16 @@ class C2SComponent(xmlstream2.SocketComponent):
                             response = xmlstream.toResponse(stanza, 'result')
                             # update presencedb
                             self.presencedb.public_key(user.user, fp)
-                            # send vcard to local resolver
-                            stanza['from'] = self.resolveJID(user).full()
-                            stanza['to'] = self.network
-                            # origin is actually c2s (for errors)
-                            stanza['origin'] = self.servername
-                            self.send(stanza)
 
-                            # send vcard to remote resolvers
+                            # send vcard to resolvers
                             for server in self.keyring.hostlist():
-                                if server != self.servername:
-                                    stanza['id'] = util.rand_str(8)
-                                    # remote server
-                                    stanza['to'] = server
-                                    # actual destination is remote resolver
-                                    stanza['destination'] = self.network
-                                    # consume any response (very high priority)
-                                    self.xmlstream.addObserver("/iq[@id='%s']" % stanza['id'], self.consume, 500)
-                                    # send!
-                                    self.send(stanza)
+                                stanza['id'] = util.rand_str(8)
+                                stanza['to'] = util.component_jid(server, util.COMPONENT_RESOLVER)
+                                # consume any response (very high priority)
+                                self.xmlstream.addOnetimeObserver("/iq[@id='%s']" % stanza['id'], self.consume, 500)
+
+                                # wrap stanza in an envelope because we want errors to return to us
+                                self.send_wrapped(stanza, self.xmlstream.thisEntity.full())
 
                             # send response
                             return response
@@ -1220,7 +1221,6 @@ class C2SComponent(xmlstream2.SocketComponent):
         iq_vcard = domish.Element((None, 'iq'))
         iq_vcard['type'] = 'set'
         iq_vcard['from'] = util.userid_to_jid(userid, self.servername).full()
-        iq_vcard['to'] = self.network
 
         # add vcard
         vcard = iq_vcard.addElement((xmlstream2.NS_XMPP_VCARD4, 'vcard'))
@@ -1229,22 +1229,15 @@ class C2SComponent(xmlstream2.SocketComponent):
             vcard_data = vcard_key.addElement((None, 'uri'))
             vcard_data.addContent(xmlstream2.DATA_PGP_PREFIX + base64.b64encode(keydata))
 
-        self.send(iq_vcard)
-
-        # send the same vcard to remote resolvers
-        iq_vcard['origin'] = self.servername
+        # send vcard to resolvers
         for server in self.keyring.hostlist():
-            if server != self.servername:
-                iq_vcard['id'] = util.rand_str(8)
-                # remote server
-                iq_vcard['to'] = server
-                # actual destination is remote resolver
-                iq_vcard['destination'] = self.network
-                # consume any response (very high priority)
-                self.xmlstream.addObserver("/iq[@id='%s']" % iq_vcard['id'], self.consume, 500)
-                # send!
-                self.send(iq_vcard)
-
+            iq_vcard['id'] = util.rand_str(8)
+            # remote server
+            iq_vcard['to'] = util.component_jid(server, util.COMPONENT_RESOLVER)
+            # consume any response (very high priority)
+            self.xmlstream.addOnetimeObserver("/iq[@id='%s']" % iq_vcard['id'], self.consume, 500)
+            # send!
+            self.send_wrapped(iq_vcard, self.xmlstream.thisEntity.full())
 
     def resolveJID(self, _jid):
         """Transform host attribute of JID from network name to server name."""
