@@ -35,6 +35,21 @@ class Router(component.Router):
     def __init__(self):
         component.Router.__init__(self)
         self.logs = set()
+        # private names: binding with those names will not be advertised
+        self.private = {}
+
+    def advertise(self, host):
+        stanza = Presence()
+        stanza['from'] = host
+
+        log.info("advertising component %s" % (host, ))
+        self.broadcast(stanza)
+
+    def unadvertise(self, host):
+        stanza = UnavailablePresence()
+        stanza['from'] = host
+        log.info("unadvertising component %s" % (host,))
+        self.broadcast(stanza)
 
     def addRoute(self, destination, xs):
         """
@@ -51,11 +66,8 @@ class Router(component.Router):
         @type xs: L{EventDispatcher<utility.EventDispatcher>}.
         """
 
-        stanza = Presence()
-        stanza['from'] = destination
-
-        log.info("adversiting component %s" % (destination, ))
-        self.broadcast(stanza)
+        # advertise presence
+        self.advertise(destination)
 
         # advertise this component about the others
         stanza = Presence()
@@ -81,13 +93,16 @@ class Router(component.Router):
             if self.routes[host] == xs:
                 del self.routes[host]
 
+        # remove any private name
+        for name, stream in self.private.items():
+            if stream == xs:
+                del self.private[name]
+
         # remove log route if any
         self.logs.discard(xs)
 
-        stanza = UnavailablePresence()
-        stanza['from'] = destination
-        log.info("unadvertising component %s" % (stanza['from'],))
-        self.broadcast(stanza)
+        # unadvertise component
+        self.unadvertise(destination)
 
     def route(self, stanza, xs):
         """
@@ -184,19 +199,40 @@ class Router(component.Router):
                 xs.send(domish.Element((None, 'bind'), attribs={'error': 'bad-request'}))
                 xs.transport.loseConnection()
 
-        if route not in self.routes:
-            self.routes[route] = xs
+        if route not in self.routes and route not in self.private:
+
+            if stanza.private:
+                self.private[route] = xs
+            else:
+                self.routes[route] = xs
+
             xs.send(domish.Element((None, 'bind')))
 
             if stanza.log:
                 self.logs.add(xs)
+
+            # advertise new binding if not private
+            if not stanza.private:
+                self.advertise(route)
+
         else:
             xs.send(domish.Element((None, 'bind'), attribs={'error': 'conflict'}))
             xs.transport.loseConnection()
 
     def unbind(self, stanza, xs):
-        log.debug("unbinding component %s" % (stanza.toXml().encode('utf-8'), ))
-        # TODO
+        log.debug("unbinding component %s" % (stanza['from'], ))
+
+        if stanza['from'] in self.private:
+            del self.private[stanza['from']]
+
+        else:
+            # remove any private name
+            for name, stream in self.private.items():
+                if stream == xs:
+                    del self.private[name]
+
+            # unadvertise binding
+            self.unadvertise(stanza['from'])
 
 
 class XMPPRouterFactory(XMPPComponentServerFactory):
