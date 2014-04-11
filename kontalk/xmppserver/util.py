@@ -41,6 +41,7 @@ CHARSBOX_HEX_UPPERCASE = 'ABCDEF1234567890'
 
 COMPONENT_RESOLVER = 'resolver'
 COMPONENT_C2S = 'c2s'
+COMPONENT_NET = 'net'
 
 
 def split_userid(userid):

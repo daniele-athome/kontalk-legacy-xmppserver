@@ -283,19 +283,14 @@ class XMPPNetServerFactory(xmlstream.XmlStreamServerFactory):
 
         xs.addObserver(xmlstream.STREAM_END_EVENT, self.onConnectionLost,
                                                    0, xs)
-        xs.addObserver('/*', self.onElement, 0, xs)
+        xs.addObserver("/*", self.onElement, 0, xs)
+        xs.addObserver("/presence[not(@type)]", self.onPresenceAvailable, 100, xs)
+        xs.addObserver("/presence[@type='unavailable']", self.onPresenceUnavailable, 100, xs)
 
         if self.service.validateConnection(xs):
-            """
-            Here we introduce ourselves to remote c2s, so it will reply with
-            all presence. We are faking resolver identity using 'origin' so the
-            reply will go directly to it.
-            """
-            p = domish.Element((None, 'presence'))
-            p['from'] = self.service.defaultDomain
-            # TRANSLATED BY OBSERVER p['origin'] = self.service.network
-            p['to'] = otherHost
-            xs.send(p)
+            # bind the "net" component route of the remote server which just connected
+            name = util.component_jid(otherHost, util.COMPONENT_NET)
+            self.service.router.bind(name)
 
     def onConnectionLost(self, xs, reason):
         thisHost = xs.thisEntity.host
@@ -317,6 +312,22 @@ class XMPPNetServerFactory(xmlstream.XmlStreamServerFactory):
             return
         else:
             self.service.dispatch(xs, element)
+
+    def onPresenceAvailable(self, xs, stanza):
+        # if component (i.e. no user part of JID) bind name to router
+        stanzaFrom = jid.internJID(stanza['from'])
+        if not stanzaFrom.user and stanzaFrom.host.endswith(xs.otherEntity.full()):
+            stanza.handled = True
+            log.debug("binding name %s" % (stanzaFrom.host, ))
+            self.service.router.bind(stanzaFrom.host)
+
+    def onPresenceUnavailable(self, xs, stanza):
+        # if component (i.e. no user part of JID) unbind name from router
+        stanzaFrom = jid.internJID(stanza['from'])
+        if not stanzaFrom.user and stanzaFrom.host.endswith(xs.otherEntity.full()):
+            stanza.handled = True
+            log.debug("unbinding name %s" % (stanzaFrom.host, ))
+            self.service.router.unbind(stanzaFrom.host)
 
     def verifyPeer(self, connection, x509, errnum, errdepth, ok):
         # TODO other checks
@@ -352,7 +363,6 @@ class NetService(object):
         self.credentials = credentials
 
         self._outgoingStreams = {}
-        self._outgoingQueues = {}
         self._outgoingConnecting = set()
         self.serial = 0
 
@@ -367,22 +377,12 @@ class NetService(object):
         xs.addObserver(xmlstream.STREAM_END_EVENT,
                        lambda _: self.outgoingDisconnected(xs))
         xs.addObserver('/*', self.onElement, 0, xs)
+        xs.addObserver("/presence[not(@type)]", self.onPresenceAvailable, 100, xs)
+        xs.addObserver("/presence[@type='unavailable']", self.onPresenceUnavailable, 100, xs)
 
-        """
-        Here we introduce ourselves to remote c2s, so it will reply with
-        all presence. We are faking resolver identity using 'origin' so the
-        reply will go directly to it.
-        """
-        p = domish.Element((None, 'presence'))
-        p['from'] = self.defaultDomain
-        # TRANSLATED BY OBSERVER p['origin'] = self.network
-        p['to'] = otherHost
-        xs.send(p)
-
-        if otherHost in self._outgoingQueues:
-            for element in self._outgoingQueues[otherHost]:
-                xs.send(element)
-            del self._outgoingQueues[otherHost]
+        # bind the "net" component route of the remote server which just connected
+        name = util.component_jid(otherHost, util.COMPONENT_NET)
+        self.router.bind(name)
 
     def outgoingDisconnected(self, xs):
         thisHost = xs.thisEntity.host
@@ -411,37 +411,13 @@ class NetService(object):
 
         def bounceError(_):
             resetConnecting(None)
-            log.debug("unable to connect to remote server, bouncing error")
-            if otherHost in self._outgoingQueues:
-                for element in self._outgoingQueues[otherHost]:
-                    log.debug("ERROR pre: %s" % (element.toXml().encode('utf-8'),))
-                    # do not send routing errors for presence
-                    if element.name == 'message':
-                        e = error.StanzaError('network-server-timeout', 'wait')
-                        log.debug("ERROR back %s" % (e.toResponse(element).toXml(), ))
-                        err = e.toResponse(element)
-                        # append original stanza
-                        c = err.addElement((None, 'original'))
-                        c.addChild(element)
-                        self.router.send(err)
-                    # send back presence with type error for presence probes
-                    elif element.name == 'presence' and element.getAttribute('type') == 'probe':
-                        e = xmlstream2.toResponse(element, 'error')
-                        if e.hasAttribute('destination'):
-                            e['to'] = e['destination']
-                            del e['destination']
-
-                        gid = e.getAttribute('id')
-                        if gid:
-                            group = e.addElement((xmlstream2.NS_XMPP_STANZA_GROUP, 'group'))
-                            group['id'] = gid
-                            group['count'] = str(1)
-                        self.router.send(e)
-                del self._outgoingQueues[otherHost]
+            log.debug("unable to connect to remote server")
 
         if otherHost in self._outgoingConnecting:
+            log.debug("pending connection found to %s - aborting" % otherHost)
             return
 
+        log.debug("connecting to %s" % otherHost)
         authenticator = XMPPNetConnectAuthenticator(self.defaultDomain, otherHost, self.keyring)
         factory = server.DeferredS2SClientFactory(authenticator)
         factory.addBootstrap(xmlstream.STREAM_AUTHD_EVENT,
@@ -484,6 +460,24 @@ class NetService(object):
         else:
             self.dispatch(xs, element)
 
+    ### WARNING duplicated code ###
+
+    def onPresenceAvailable(self, xs, stanza):
+        # if component (i.e. no user part of JID) bind name to router
+        stanzaFrom = jid.internJID(stanza['from'])
+        if not stanzaFrom.user and stanzaFrom.host.endswith(xs.otherEntity.full()):
+            stanza.handled = True
+            log.debug("binding name %s" % (stanzaFrom.host, ))
+            self.router.bind(stanzaFrom.host)
+
+    def onPresenceUnavailable(self, xs, stanza):
+        # if component (i.e. no user part of JID) unbind name from router
+        stanzaFrom = jid.internJID(stanza['from'])
+        if not stanzaFrom.user and stanzaFrom.host.endswith(xs.otherEntity.full()):
+            stanza.handled = True
+            log.debug("unbinding name %s" % (stanzaFrom.host, ))
+            self.router.unbind(stanzaFrom.host)
+
     def send(self, stanza):
         """
         Send stanza to the proper XML Stream.
@@ -492,26 +486,14 @@ class NetService(object):
         to forward the stanza to.
         """
 
-        otherHost = jid.internJID(stanza["to"]).host
-        stanzaFrom = jid.JID(stanza['from'])
-
-        if stanzaFrom.host != self.defaultDomain:
-            stanzaFrom.host = self.defaultDomain
-            stanza['origin'] = stanza['from']
-            stanza['from'] = stanzaFrom.full()
+        otherHost = jid.internJID(stanza['to']).host
 
         log.debug("sending data to %s [%r]" % (otherHost, self._outgoingStreams, ))
-        if otherHost not in self._outgoingStreams:
-            # There is no connection with the destination (yet). Cache the
-            # outgoing stanza until the connection has been established.
-            # XXX: If the connection cannot be established, the queue should
-            #      be emptied at some point.
-            if otherHost not in self._outgoingQueues:
-                self._outgoingQueues[otherHost] = []
-            self._outgoingQueues[otherHost].append(stanza)
-            self.initiateOutgoingStream(otherHost)
-        else:
-            self._outgoingStreams[otherHost].send(stanza)
+        for host in self._outgoingStreams.iterkeys():
+            # FIXME bad way of checking host name
+            if otherHost.endswith('.' + host):
+                self._outgoingStreams[host].send(stanza)
+        # else: shouldn't happen because the router should bounce the stanza
 
     def dispatch(self, xs, stanza):
         """
@@ -523,7 +505,7 @@ class NetService(object):
         stanzaFrom = stanza.getAttribute('from')
         stanzaTo = stanza.getAttribute('to')
 
-        if not stanzaFrom or not stanzaTo:
+        if not stanza.bind and not stanzaFrom or not stanzaTo:
             xs.sendStreamError(error.StreamError('improper-addressing'))
         else:
             try:
@@ -533,14 +515,10 @@ class NetService(object):
                 log.debug("dropping stanza with malformed JID")
 
             log.debug("sender = %s, otherEntity = %s" % (sender.full(), xs.otherEntity.full()))
-            if sender.host != xs.otherEntity.host and sender.host != self.defaultDomain:
+            # FIXME bad host checking
+            if not sender.host.endswith('.' + xs.otherEntity.host):
                 xs.sendStreamError(error.StreamError('invalid-from'))
             else:
-                # replace to with destination
-                destination = stanza.getAttribute('destination')
-                if destination:
-                    stanza['to'] = destination
-                    del stanza['destination']
                 self.router.send(stanza)
 
 
@@ -556,7 +534,8 @@ class NetComponent(xmlstream2.SocketComponent):
             if key not in router_cfg:
                 router_cfg[key] = None
 
-        xmlstream2.SocketComponent.__init__(self, router_cfg['socket'], router_cfg['host'], router_cfg['port'], router_cfg['jid'], router_cfg['secret'])
+        router_jid = '%s.%s' % (router_cfg['jid'], config['host'])
+        xmlstream2.SocketComponent.__init__(self, router_cfg['socket'], router_cfg['host'], router_cfg['port'], router_jid, router_cfg['secret'])
         self.config = config
         self.logTraffic = config['debug']
         self.network = config['network']
@@ -593,18 +572,13 @@ class NetComponent(xmlstream2.SocketComponent):
         component.Component._authd(self, xs)
         log.debug("connected to router.")
 
-        # bind to our network host names
-        bind = domish.Element((None, 'bind'))
+        # initiate outgoing connection to servers
         for host in self.service.keyring.hostlist():
             if host != self.servername:
-                bind['name'] = host
-                self.send(bind)
                 # connect to server immediately
                 self.service.initiateOutgoingStream(host)
 
         self.xmlstream.addObserver("/bind", self.consume)
-        self.xmlstream.addObserver("/presence[@type='subscribed']", self.dispatch, 200)
-        self.xmlstream.addObserver("/presence", self.presence, 100)
         self.xmlstream.addObserver("/presence", self.dispatch)
         self.xmlstream.addObserver("/iq", self.dispatch)
         self.xmlstream.addObserver("/message", self.dispatch)
@@ -612,30 +586,6 @@ class NetComponent(xmlstream2.SocketComponent):
     def consume(self, stanza):
         stanza.consumed = True
         log.debug("consuming stanza %s" % (stanza.toXml(), ))
-
-    def presence(self, stanza):
-        """
-        Presence broadcast from local c2s (intended for remote c2s), deliver
-        also to remote resolver.
-        """
-
-        if not stanza.consumed:
-            host = util.jid_host(stanza['from'])
-            if host == self.servername:
-                """
-                Original stanza will be sent to remote c2s, which will provider
-                offline storage delivery and network conflicts.
-                """
-                self.dispatch(stanza)
-
-                """
-                Intended destination is not remote resolver, so be sure to deliver.
-                """
-                if stanza.getAttribute('destination') != self.servername:
-                    # be sure to unconsume for the next dispatch
-                    stanza.consumed = False
-                    stanza['destination'] = self.network
-                    # dispatch will handle the stanza
 
     def dispatch(self, stanza):
         """Handle incoming stanza from router to the proper server stream."""
@@ -653,3 +603,13 @@ class NetComponent(xmlstream2.SocketComponent):
     def _disconnected(self, reason):
         component.Component._disconnected(self, reason)
         log.debug("lost connection to router (%s)" % (reason, ))
+
+    def bind(self, name):
+        bind = domish.Element((None, 'bind'))
+        bind['name'] = name
+        self.send(bind)
+
+    def unbind(self, name):
+        unbind = domish.Element((None, 'unbind'))
+        unbind['name'] = name
+        self.send(unbind)
