@@ -1089,6 +1089,7 @@ class Resolver(xmlstream2.SocketComponent):
         # bind to network route
         bind = domish.Element((None, 'bind'))
         bind['name'] = self.network
+        bind.addElement((None, 'private'))
         xs.send(bind)
 
     def _disconnected(self, reason):
