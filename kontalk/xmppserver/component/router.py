@@ -38,18 +38,18 @@ class Router(component.Router):
         # private names: binding with those names will not be advertised
         self.private = {}
 
-    def advertise(self, host):
+    def advertise(self, host, xs=None):
         stanza = Presence()
         stanza['from'] = host
 
         log.info("advertising component %s" % (host, ))
-        self.broadcast(stanza)
+        self.broadcast(stanza, xs=xs)
 
-    def unadvertise(self, host):
+    def unadvertise(self, host, xs=None):
         stanza = UnavailablePresence()
         stanza['from'] = host
         log.info("unadvertising component %s" % (host,))
-        self.broadcast(stanza)
+        self.broadcast(stanza, xs=xs)
 
     def addRoute(self, destination, xs):
         """
@@ -67,7 +67,7 @@ class Router(component.Router):
         """
 
         # advertise presence
-        self.advertise(destination)
+        self.advertise(destination, xs)
 
         # advertise this component about the others
         stanza = Presence()
@@ -102,7 +102,7 @@ class Router(component.Router):
         self.logs.discard(xs)
 
         # unadvertise component
-        self.unadvertise(destination)
+        self.unadvertise(destination, xs)
 
     def route(self, stanza, xs):
         """
@@ -167,7 +167,7 @@ class Router(component.Router):
                 e = error.StanzaError('service-unavailable')
                 xs.send(xmlstream2.errorResponse(e, stanza))
 
-    def broadcast(self, stanza, same=False):
+    def broadcast(self, stanza, same=False, xs=None):
         """
         Broadcast a stanza to every component.
         This alters the to attribute in outgoing stanza for each component.
@@ -177,7 +177,7 @@ class Router(component.Router):
         try:
             sender_xs = self.routes[from_host]
         except KeyError:
-            sender_xs = None
+            sender_xs = xs
 
         for host, xs in self.routes.iteritems():
             # do not send to the original sender
@@ -187,7 +187,7 @@ class Router(component.Router):
                 xs.send(stanza)
 
     def bind(self, stanza, xs):
-        log.debug("binding component %s" % (stanza.toXml().encode('utf-8'), ))
+        log.debug("binding name %s" % (stanza['name'], ))
         stanza.consumed = True
 
         if stanza.default:
@@ -213,17 +213,20 @@ class Router(component.Router):
 
             # advertise new binding if not private
             if not stanza.private:
-                self.advertise(route)
+                self.advertise(route, xs)
 
         else:
             xs.send(domish.Element((None, 'bind'), attribs={'error': 'conflict'}))
             xs.transport.loseConnection()
 
     def unbind(self, stanza, xs):
-        log.debug("unbinding component %s" % (stanza['from'], ))
+        log.debug("unbinding name %s" % (stanza['name'], ))
+        stanza.consumed = True
 
-        if stanza['from'] in self.private:
-            del self.private[stanza['from']]
+        # TODO security checks
+
+        if stanza['name'] in self.private:
+            del self.private[stanza['name']]
 
         else:
             # remove any private name
@@ -232,7 +235,7 @@ class Router(component.Router):
                     del self.private[name]
 
             # unadvertise binding
-            self.unadvertise(stanza['from'])
+            self.unadvertise(stanza['name'], xs)
 
 
 class XMPPRouterFactory(XMPPComponentServerFactory):
