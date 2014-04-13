@@ -163,6 +163,8 @@ class Router(component.Router):
 
                 if destination_host in self.routes:
                     self.routes[destination_host].send(stanza)
+                elif destination_host in self.private:
+                    self.private[destination_host].send(stanza)
                 else:
                     self.routes[None].send(stanza)
 
