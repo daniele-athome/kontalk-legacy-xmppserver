@@ -51,6 +51,15 @@ class Router(component.Router):
         log.info("unadvertising component %s" % (host,))
         self.broadcast(stanza, xs=xs)
 
+    def send_routes(self, host, xs):
+        stanza = Presence()
+        stanza['to'] = host
+        for h, stream in self.routes.iteritems():
+            # ignore default route and do not send back to requesting stream
+            if h is not None and stream != xs:
+                stanza['from'] = h
+                xs.send(stanza)
+
     def addRoute(self, destination, xs):
         """
         Add a new route.
@@ -70,12 +79,7 @@ class Router(component.Router):
         self.advertise(destination, xs)
 
         # advertise this component about the others
-        stanza = Presence()
-        stanza['to'] = destination
-        for host in self.routes.iterkeys():
-            if host is not None:
-                stanza['from'] = host
-                xs.send(stanza)
+        self.send_routes(destination, xs)
 
         # add route and observers
         self.routes[destination] = xs
@@ -197,7 +201,7 @@ class Router(component.Router):
                 route = stanza['name']
             except:
                 xs.send(domish.Element((None, 'bind'), attribs={'error': 'bad-request'}))
-                xs.transport.loseConnection()
+                #xs.transport.loseConnection()
 
         if route not in self.routes and route not in self.private:
 
@@ -213,11 +217,14 @@ class Router(component.Router):
 
             # advertise new binding if not private
             if not stanza.private:
+                # advertise presence
                 self.advertise(route, xs)
+                # advertise this component about the others
+                self.send_routes(route, xs)
 
         else:
             xs.send(domish.Element((None, 'bind'), attribs={'error': 'conflict'}))
-            xs.transport.loseConnection()
+            #xs.transport.loseConnection()
 
     def unbind(self, stanza, xs):
         log.debug("unbinding name %s" % (stanza['name'], ))
@@ -225,8 +232,14 @@ class Router(component.Router):
 
         # TODO security checks
 
-        if stanza['name'] in self.private:
-            del self.private[stanza['name']]
+        route = stanza['name']
+
+        # remove any normal route
+        if route in self.routes:
+            del self.routes[route]
+
+        if route in self.private:
+            del self.private[route]
 
         else:
             # remove any private name
@@ -235,7 +248,7 @@ class Router(component.Router):
                     del self.private[name]
 
             # unadvertise binding
-            self.unadvertise(stanza['name'], xs)
+            self.unadvertise(route, xs)
 
 
 class XMPPRouterFactory(XMPPComponentServerFactory):
