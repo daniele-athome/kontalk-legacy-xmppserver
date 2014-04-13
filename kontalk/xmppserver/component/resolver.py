@@ -719,11 +719,11 @@ class JIDCache(XMPPHandler):
         self.presence_cache = {}
         self._last_lookup = 0
 
-        """ TEST TEST TEST
+        """ TEST TEST TEST """
         def _print_cache():
             log.debug("CACHE(%d): %r" % (len(self.presence_cache), self.presence_cache, ))
         task.LoopingCall(_print_cache).start(5)
-        """
+        """ """
 
     def connectionInitialized(self):
         self.xmlstream.addObserver("/presence[not(@type)]", self.onPresenceAvailable, 200)
@@ -731,7 +731,7 @@ class JIDCache(XMPPHandler):
         # presence probes MUST be handled by server so the high priority
         self.xmlstream.addObserver("/presence[@type='probe']", self.onProbe, 600)
         # vCards MUST be handled by server so the high priority
-        # TODO is this needed? -- self.xmlstream.addObserver("/iq[@type='set']/vcard[@xmlns='%s']" % (xmlstream2.NS_XMPP_VCARD4, ), self.onVCardSet, 600)
+        self.xmlstream.addObserver("/iq[@type='set']/vcard[@xmlns='%s']" % (xmlstream2.NS_XMPP_VCARD4, ), self.onVCardSet, 600)
         self.xmlstream.addObserver("/stanza/iq[@type='set']/vcard[@xmlns='%s']" % (xmlstream2.NS_XMPP_VCARD4, ), self.wrapped, 600, fn=self.onVCardSet)
         self.xmlstream.addObserver("/iq[@type='get']/vcard[@xmlns='%s']" % (xmlstream2.NS_XMPP_VCARD4, ), self.onVCardGet, 600)
 
@@ -1152,8 +1152,15 @@ class Resolver(xmlstream2.SocketComponent):
         stanza['original-to'] = stanza['to']
         to = jid.JID(stanza['to'])
 
+        # force host in sender
+        component_jid = util.component_jid(self.servername, util.COMPONENT_RESOLVER)
+        sender = jid.JID(stanza['from'])
+        if sender.host == self.network:
+            sender.host = component_jid
+            stanza['from'] = sender.full()
+
         # stanza is intended to the network
-        if to.full() == self.network:
+        if to.full() in (self.network, component_jid):
             # TODO
             log.debug("stanza for the network: %s" % (stanza.toXml(), ))
             return
