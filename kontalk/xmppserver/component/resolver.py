@@ -721,8 +721,8 @@ class JIDCache(XMPPHandler):
 
         """ TEST TEST TEST
         def _print_cache():
-            log.debug("CACHE: %r" % (self.presence_cache, ))
-        task.LoopingCall(_print_cache).start(5.0)
+            log.debug("CACHE(%d): %r" % (len(self.presence_cache), self.presence_cache, ))
+        task.LoopingCall(_print_cache).start(5)
         """
 
     def connectionInitialized(self):
@@ -731,7 +731,7 @@ class JIDCache(XMPPHandler):
         # presence probes MUST be handled by server so the high priority
         self.xmlstream.addObserver("/presence[@type='probe']", self.onProbe, 600)
         # vCards MUST be handled by server so the high priority
-        # TODO is thise needed? -- self.xmlstream.addObserver("/iq[@type='set']/vcard[@xmlns='%s']" % (xmlstream2.NS_XMPP_VCARD4, ), self.onVCardSet, 600)
+        # TODO is this needed? -- self.xmlstream.addObserver("/iq[@type='set']/vcard[@xmlns='%s']" % (xmlstream2.NS_XMPP_VCARD4, ), self.onVCardSet, 600)
         self.xmlstream.addObserver("/stanza/iq[@type='set']/vcard[@xmlns='%s']" % (xmlstream2.NS_XMPP_VCARD4, ), self.wrapped, 600, fn=self.onVCardSet)
         self.xmlstream.addObserver("/iq[@type='get']/vcard[@xmlns='%s']" % (xmlstream2.NS_XMPP_VCARD4, ), self.onVCardGet, 600)
 
@@ -772,7 +772,7 @@ class JIDCache(XMPPHandler):
 
             return
         except:
-            return
+            pass
 
         # normal user unavailable
         user = jid.JID(stanza['from'])
