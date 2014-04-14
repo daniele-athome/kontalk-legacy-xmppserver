@@ -132,6 +132,13 @@ def jid_component(jidstring, component=None):
 def jid_local(component, component_object, _jid):
     return hostjid_local(component, component_object, _jid.host)
 
+def hostjid_server(jidstring, servername):
+    try:
+        unused, host = jid_component(jidstring)
+        return host == servername
+    except:
+        pass
+
 def hostjid_local(component, component_object, host):
     # depending on the component, one of network or server name must be chosen
     if component == COMPONENT_C2S:

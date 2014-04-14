@@ -490,8 +490,7 @@ class NetService(object):
 
         log.debug("sending data to %s [%r]" % (otherHost, self._outgoingStreams, ))
         for host in self._outgoingStreams.iterkeys():
-            # FIXME bad way of checking host name
-            if otherHost.endswith('.' + host):
+            if util.hostjid_server(otherHost, host):
                 self._outgoingStreams[host].send(stanza)
         # else: shouldn't happen because the router should bounce the stanza
 
@@ -515,11 +514,10 @@ class NetService(object):
                 log.debug("dropping stanza with malformed JID")
 
             log.debug("sender = %s, otherEntity = %s" % (sender.full(), xs.otherEntity.full()))
-            # FIXME bad host checking
-            if not sender.host.endswith('.' + xs.otherEntity.host):
-                xs.sendStreamError(error.StreamError('invalid-from'))
-            else:
+            if util.hostjid_server(sender.host, xs.otherEntity.host):
                 self.router.send(stanza)
+            else:
+                xs.sendStreamError(error.StreamError('invalid-from'))
 
 
 class NetComponent(xmlstream2.SocketComponent):
