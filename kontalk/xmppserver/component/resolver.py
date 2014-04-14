@@ -719,11 +719,11 @@ class JIDCache(XMPPHandler):
         self.presence_cache = {}
         self._last_lookup = 0
 
-        """ TEST TEST TEST """
+        """ TEST TEST TEST
         def _print_cache():
             log.debug("CACHE(%d): %r" % (len(self.presence_cache), self.presence_cache, ))
         task.LoopingCall(_print_cache).start(5)
-        """ """
+        """
 
     def connectionInitialized(self):
         self.xmlstream.addObserver("/presence[not(@type)]", self.onPresenceAvailable, 200)
@@ -1160,7 +1160,7 @@ class Resolver(xmlstream2.SocketComponent):
             stanza['from'] = sender.full()
 
         # stanza is intended to the network
-        if to.full() in (self.network, component_jid):
+        if to.full() == self.network or to.host == component_jid:
             # TODO
             log.debug("stanza for the network: %s" % (stanza.toXml(), ))
             return
