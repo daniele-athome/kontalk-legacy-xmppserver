@@ -465,7 +465,7 @@ class PresenceProbeHandler(XMPPHandler):
                 chain['count'] = str(len(presence))
 
                 for user in presence:
-                    response = xmlstream2.toResponse(stanza)
+                    response = xmlstream.toResponse(stanza)
                     response['id'] = util.rand_str(8, util.CHARSBOX_AZN_LOWERCASE)
                     response_from = util.userid_to_jid(user['userid'], self.xmlstream.thisEntity.host)
                     response['from'] = response_from.full()
@@ -495,7 +495,7 @@ class PresenceProbeHandler(XMPPHandler):
                 chain['id'] = stanza['id']
                 chain['count'] = '1'
 
-                response = xmlstream2.toResponse(stanza)
+                response = xmlstream.toResponse(stanza)
 
                 if presence['status'] is not None:
                     response.addElement((None, 'status'), content=presence['status'])
@@ -519,7 +519,7 @@ class PresenceProbeHandler(XMPPHandler):
             else:
                 log.debug("probe: user not found")
                 # TODO return error?
-                response = xmlstream2.toResponse(stanza, 'error')
+                response = xmlstream.toResponse(stanza, 'error')
 
                 chain = domish.Element((xmlstream2.NS_XMPP_STANZA_GROUP, 'group'))
                 chain['id'] = stanza['id']
@@ -554,7 +554,7 @@ class LastActivityHandler(XMPPHandler):
             if type(presence) == list and len(presence) > 0:
                 user = presence[0]
 
-                response = xmlstream2.toResponse(stanza, 'result')
+                response = xmlstream.toResponse(stanza, 'result')
                 response_from = util.userid_to_jid(user['userid'], self.xmlstream.thisEntity.host)
                 response['from'] = response_from.userhost()
 
@@ -820,7 +820,7 @@ class MessageHandler(XMPPHandler):
 
     def send_ack(self, stanza, status, stamp=None, receipt='request'):
         request = xmlstream2.extract_receipt(stanza, receipt)
-        ack = xmlstream2.toResponse(stanza, stanza.getAttribute('type'))
+        ack = xmlstream.toResponse(stanza, stanza.getAttribute('type'))
         rec = ack.addElement((xmlstream2.NS_XMPP_SERVER_RECEIPTS, status))
         rec['id'] = request['id']
         if stamp:

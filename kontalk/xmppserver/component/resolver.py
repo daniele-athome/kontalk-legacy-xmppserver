@@ -28,7 +28,7 @@ from twisted.python import failure
 from twisted.internet import defer, reactor, task
 from twisted.words.protocols.jabber.xmlstream import XMPPHandler
 from twisted.words.xish import domish
-from twisted.words.protocols.jabber import jid, error
+from twisted.words.protocols.jabber import jid, error, xmlstream
 
 from wokkel import component
 
@@ -176,7 +176,7 @@ class RosterHandler(XMPPHandler):
         stanza.consumed = True
 
         # items present, requesting roster lookup
-        response = xmlstream2.toResponse(stanza, 'result')
+        response = xmlstream.toResponse(stanza, 'result')
         roster = response.addElement((xmlstream2.NS_IQ_ROSTER, 'query'))
 
         probes = []
@@ -282,7 +282,7 @@ class IQHandler(XMPPHandler):
             stanza.consumed = True
 
             if stanza['to'] == self.parent.network:
-                response = xmlstream2.toResponse(stanza, 'result')
+                response = xmlstream.toResponse(stanza, 'result')
                 query = domish.Element((xmlstream2.NS_IQ_VERSION, 'query'))
                 query.addElement((None, 'name'), content=version.NAME)
                 query.addElement((None, 'version'), content=version.VERSION)
@@ -299,7 +299,7 @@ class IQHandler(XMPPHandler):
             if stanza['to'] == self.parent.network:
                 # server uptime
                 seconds = self.parent.uptime()
-                response = xmlstream2.toResponse(stanza, 'result')
+                response = xmlstream.toResponse(stanza, 'result')
                 response.addChild(domish.Element((xmlstream2.NS_IQ_LAST, 'query'), attribs={'seconds': str(int(seconds))}))
                 self.send(response)
             else:
@@ -309,7 +309,7 @@ class IQHandler(XMPPHandler):
                 def found_latest(latest, stanza):
                     if latest:
                         log.debug("found latest! %r" % (latest, ))
-                        response = xmlstream2.toResponse(stanza, 'result')
+                        response = xmlstream.toResponse(stanza, 'result')
                         query = domish.Element((xmlstream2.NS_IQ_LAST, 'query'), attribs={ 'seconds' : str(latest[1]) })
                         response.addChild(query)
                         self.send(response)
@@ -502,7 +502,7 @@ class MessageHandler(XMPPHandler):
 
     def send_fake_receipt(self, stanza):
         """Sends back a fake sent receipt, while silently discard the message."""
-        msg = xmlstream2.toResponse(stanza, stanza['type'])
+        msg = xmlstream.toResponse(stanza, stanza['type'])
         r = msg.addElement((xmlstream2.NS_XMPP_SERVER_RECEIPTS, 'sent'))
         r['id'] = util.rand_str(30, util.CHARSBOX_AZN_LOWERCASE)
         self.parent.send(msg)
@@ -793,7 +793,7 @@ class JIDCache(XMPPHandler):
             fpr = self.parent.keyring.get_fingerprint(jid_to.user)
             keydata = self.parent.keyring.get_key(jid_to.user, fpr)
 
-            iq = xmlstream2.toResponse(stanza, 'result')
+            iq = xmlstream.toResponse(stanza, 'result')
             # add vcard
             vcard = iq.addElement((xmlstream2.NS_XMPP_VCARD4, 'vcard'))
             vcard_key = vcard.addElement((None, 'key'))
@@ -871,7 +871,7 @@ class JIDCache(XMPPHandler):
         if self.parent.is_presence_allowed(sender, to) == 1:
             gid = stanza.getAttribute('id')
             if not self.send_user_presence(gid, sender, to):
-                response = xmlstream2.toResponse(stanza, 'error')
+                response = xmlstream.toResponse(stanza, 'error')
                 # TODO include error cause?
                 self.send(response)
 
@@ -1133,7 +1133,7 @@ class Resolver(xmlstream2.SocketComponent):
 
     def result(self, stanza):
         """Sends back a result response stanza. Used for IQ stanzas."""
-        stanza = xmlstream2.toResponse(stanza, 'result')
+        stanza = xmlstream.toResponse(stanza, 'result')
         self.send(stanza)
 
     def send(self, stanza, force_delivery=False, force_bare=False):

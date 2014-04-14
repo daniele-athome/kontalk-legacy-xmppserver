@@ -22,7 +22,7 @@
 import base64
 
 from twisted.internet import reactor
-from twisted.words.protocols.jabber import error, jid, component
+from twisted.words.protocols.jabber import error, jid, component, xmlstream
 from twisted.words.protocols.jabber.xmlstream import XMPPHandler
 from twisted.words.xish import domish
 
@@ -177,7 +177,7 @@ class ServerListCommand():
     def execute(self, stanza):
         # TODO actually implement the command :)
         stanza.consumed = True
-        res = xmlstream2.toResponse(stanza, 'result')
+        res = xmlstream.toResponse(stanza, 'result')
         cmd = res.addElement((xmlstream2.NS_PROTO_COMMANDS, 'command'))
         cmd['node'] = stanza.command['node']
         cmd['status'] = 'completed'
@@ -396,13 +396,13 @@ class IQHandler(XMPPHandler):
     def last_activity(self, stanza):
         stanza.consumed = True
         seconds = self.parent.router.uptime()
-        response = xmlstream2.toResponse(stanza, 'result')
+        response = xmlstream.toResponse(stanza, 'result')
         response.addChild(domish.Element((xmlstream2.NS_IQ_LAST, 'query'), attribs={'seconds': str(int(seconds))}))
         self.send(response)
 
     def version(self, stanza):
         stanza.consumed = True
-        response = xmlstream2.toResponse(stanza, 'result')
+        response = xmlstream.toResponse(stanza, 'result')
         query = domish.Element((xmlstream2.NS_IQ_VERSION, 'query'))
         query.addElement((None, 'name'), content=version.NAME + '-c2s')
         query.addElement((None, 'version'), content=version.VERSION)
@@ -435,7 +435,7 @@ class IQHandler(XMPPHandler):
                 pkey = base64.b64decode(var_pkey.value.__str__().encode('utf-8'))
                 signed_pkey = self.parent.link_public_key(pkey, userid)
                 if signed_pkey:
-                    iq = xmlstream2.toResponse(stanza, 'result')
+                    iq = xmlstream.toResponse(stanza, 'result')
                     query = iq.addElement((xmlstream2.NS_IQ_REGISTER, 'query'))
 
                     form = query.addElement(('jabber:x:data', 'x'))
@@ -535,7 +535,7 @@ class MessageHandler(XMPPHandler):
         self.xmlstream.addObserver("/message/received[@xmlns='%s']" % (xmlstream2.NS_XMPP_SERVER_RECEIPTS), self.received, 600)
 
     def received(self, stanza):
-        ack = xmlstream2.toResponse(stanza, stanza['type'])
+        ack = xmlstream.toResponse(stanza, stanza['type'])
         ack.addElement((xmlstream2.NS_XMPP_SERVER_RECEIPTS, 'ack'))
         self.send(ack)
         # proceed with processing
@@ -584,7 +584,7 @@ class DiscoveryHandler(XMPPHandler):
     def onDiscoItems(self, stanza):
         if not stanza.consumed:
             stanza.consumed = True
-            response = xmlstream2.toResponse(stanza, 'result')
+            response = xmlstream.toResponse(stanza, 'result')
             query = response.addElement((xmlstream2.NS_DISCO_ITEMS, 'query'))
             node = stanza.query.getAttribute('node')
             if node:
@@ -601,7 +601,7 @@ class DiscoveryHandler(XMPPHandler):
     def onDiscoInfo(self, stanza):
         if not stanza.consumed:
             stanza.consumed = True
-            response = xmlstream2.toResponse(stanza, 'result')
+            response = xmlstream.toResponse(stanza, 'result')
             query = response.addElement((xmlstream2.NS_DISCO_INFO, 'query'))
             query.addChild(domish.Element((None, 'identity'), attribs={'category': 'server', 'type' : 'im', 'name': version.IDENTITY}))
 
@@ -778,7 +778,7 @@ class C2SManager(xmlstream2.StreamManager):
                 log.debug("bouncing %s" % (stanza.toXml(), ))
 
             stanza.consumed = True
-            self.send(xmlstream2.toResponse(stanza, 'result'))
+            self.send(xmlstream.toResponse(stanza, 'result'))
 
     def send(self, stanza, force=False):
         """Send stanza to client, setting to and id attributes if not present."""
@@ -829,10 +829,10 @@ class C2SManager(xmlstream2.StreamManager):
             if stanza.storage and stanza.storage.uri == xmlstream2.NS_XMPP_STORAGE:
                 stanza.children.remove(stanza.storage)
             # origin in receipt
-            if stanza.request and stanza.request.hasAttribute('origin'):
-                del stanza.request['origin']
-            elif stanza.received and stanza.received.hasAttribute('origin'):
-                del stanza.received['origin']
+            if stanza.request and stanza.request.hasAttribute('from'):
+                del stanza.request['from']
+            elif stanza.received and stanza.received.hasAttribute('from'):
+                del stanza.received['from']
         if stanza.name == 'presence':
             # push device id
             for c in stanza.elements(name='c', uri=xmlstream2.NS_PRESENCE_PUSH):

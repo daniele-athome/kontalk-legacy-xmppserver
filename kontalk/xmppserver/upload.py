@@ -19,6 +19,8 @@
 """
 
 
+from twisted.words.protocols.jabber import xmlstream
+
 import xmlstream2
 
 
@@ -46,7 +48,7 @@ class KontalkBoxUploadService(UploadService):
     def upload(self, stanza):
         stanza.consumed = True
         # TODO check for <media/> tag and supported MIME types
-        iq = xmlstream2.toResponse(stanza, 'result')
+        iq = xmlstream.toResponse(stanza, 'result')
         upload = iq.addElement((xmlstream2.NS_MESSAGE_UPLOAD, 'upload'))
         upload['node'] = self.name
         upload.addElement((None, 'uri'), content=self.config['uri'])

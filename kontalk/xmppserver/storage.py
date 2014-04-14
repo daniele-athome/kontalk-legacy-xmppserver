@@ -242,11 +242,6 @@ class MySQLStanzaStorage(StanzaStorage):
         jid_from.host = network
         stanza['from'] = jid_from.full()
 
-        try:
-            del stanza['origin']
-        except KeyError:
-            pass
-
         # safe uri for persistance
         stanza.uri = stanza.defaultUri = sm.C2SManager.namespace
 
