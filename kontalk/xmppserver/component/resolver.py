@@ -60,22 +60,22 @@ class PresenceHandler(XMPPHandler):
             component, host = util.jid_component(stanza['from'], util.COMPONENT_RESOLVER)
 
             if host != self.parent.servername and host in self.parent.keyring.hostlist():
-                self.send_privacy_lists(self.parent.blacklists, stanza['from'])
-                self.send_privacy_lists(self.parent.whitelists, stanza['from'])
+                self.send_privacy_lists('blocklist', self.parent.blacklists, stanza['from'])
+                self.send_privacy_lists('whitelist', self.parent.whitelists, stanza['from'])
 
         except:
             pass
 
         self.parent.broadcastSubscribers(stanza)
 
-    def send_privacy_lists(self, plist, addr_from):
+    def send_privacy_lists(self, pname, plist, addr_from):
         for user, wl in plist.iteritems():
             iq = domish.Element((None, 'iq'))
             iq['from'] = '%s@%s' % (user, self.parent.network)
             iq['type'] = 'set'
             iq['id'] = util.rand_str(8)
             iq['to'] = addr_from
-            allow = iq.addElement(('urn:xmpp:blocking', 'whitelist'))
+            allow = iq.addElement(('urn:xmpp:blocking', pname))
 
             for item in wl:
                 allow.addElement((None, 'item'), content=item)
