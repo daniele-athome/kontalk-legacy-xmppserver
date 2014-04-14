@@ -615,7 +615,7 @@ class PresenceSubscriptionHandler(XMPPHandler):
             if stanza.hasAttribute('to'):
                 to = jid.JID(stanza['to'])
                 # process only our JIDs
-                if util.jid_local(util.COMPONENT_C2S, self, to):
+                if util.jid_local(util.COMPONENT_C2S, self.parent, to):
                     if to.user is not None:
                         try:
                             # send stanza to sm only to non-negative resources
