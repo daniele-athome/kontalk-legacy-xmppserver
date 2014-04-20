@@ -102,27 +102,7 @@ class Handler:
         """Presence stanza received."""
         ptype = stanza.getAttribute('type')
         if ptype == 'subscribe':
-            # sign received public key
-            for child in stanza.pubkey.children:
-                if child.name == 'print':
-                    fpr = str(child)
-                    break
-            myfpr = str(self.config['publickey']['fingerprint'])
-
-            ctx = gpgme.Context()
-            ctx.signers = [ctx.get_key(myfpr, True)]
-            gpgme.editutil.edit_sign(ctx, ctx.get_key(fpr), check=0)
-
-            keydata = BytesIO()
-            ctx.export(fpr, keydata)
-
-            r = xmlstream.toResponse(stanza, 'subscribed')
-            pubkey = r.addElement(('urn:xmpp:pubkey:2', 'pubkey'))
-            key = pubkey.addElement((None, 'key'))
-            key.addContent(base64.b64encode(keydata.getvalue()))
-            fprint = pubkey.addElement((None, 'print'))
-            fprint.addContent(fpr)
-            self.client.send(r)
+            self.client.send(xmlstream.toResponse(stanza, 'subscribed'))
 
     def iq(self, stanza):
         """IQ stanza received."""

@@ -359,15 +359,15 @@ class Client(object):
         xs.addObserver('/presence', self.handler.presence)
         xs.addObserver('/iq', self.handler.iq)
 
-        if self.xmlstream.authenticator.token:
-            pcfg = self.config['presence']
-            p = domish.Element((None, 'presence'))
-            if pcfg['type'] != 'available':
-                p['type'] = pcfg['type']
-            p.addElement((None, 'status'), content=pcfg['status'])
-            p.addElement((None, 'priority'), content=pcfg['priority'])
-            p.addElement((None, 'show'), content=pcfg['show'])
-            xs.send(p)
+        # TODO if logged_in (was: if self.xmlstream.authenticator.token):
+        pcfg = self.config['presence']
+        p = domish.Element((None, 'presence'))
+        if pcfg['type'] != 'available':
+            p['type'] = pcfg['type']
+        p.addElement((None, 'status'), content=pcfg['status'])
+        p.addElement((None, 'priority'), content=pcfg['priority'])
+        p.addElement((None, 'show'), content=pcfg['show'])
+        xs.send(p)
 
         self.handler.ready()
 
