@@ -109,7 +109,16 @@ class PresenceHandler(XMPPHandler):
         jid_to = jid.JID(stanza['to'])
         jid_from = jid.JID(stanza['from'])
 
-        self.parent.subscribe(jid_from, jid_to, stanza.getAttribute('id'))
+        # are we subscribing to a user we have blocked?
+        if self.parent.is_presence_allowed(jid_to, jid_from) == -1:
+            log.debug("subscribing to blocked user, bouncing error")
+            e = error.StanzaError('not-acceptable', 'cancel')
+            errstanza = e.toResponse(stanza)
+            errstanza.error.addElement((xmlstream2.NS_IQ_BLOCKING_ERRORS, 'blocked'))
+            self.send(errstanza)
+
+        else:
+            self.parent.subscribe(jid_from, jid_to, stanza.getAttribute('id'))
 
     def onUnsubscribe(self, stanza):
         """Handle unsubscription requests."""
@@ -492,13 +501,24 @@ class MessageHandler(XMPPHandler):
             else:
                 jid_to = jid.JID(stanza['to'])
 
-            if self.parent.is_presence_allowed(jid_from, jid_to) == 1:
-                # send to router (without implicitly consuming)
-                self.parent.send(stanza, force_delivery=True)
+            # are we sending a message to a user we have blocked?
+            if self.parent.is_presence_allowed(jid_to, jid_from) == -1:
+                log.debug("sending message to blocked user, bouncing error")
+                e = error.StanzaError('not-acceptable', 'cancel')
+                errstanza = e.toResponse(stanza)
+                errstanza.error.addElement((xmlstream2.NS_IQ_BLOCKING_ERRORS, 'blocked'))
+                self.parent.send(errstanza)
+
             else:
-                log.debug("not allowed to send messages, sending fake response to %s" % (stanza['from'], ))
-                if stanza.getAttribute('type') == 'chat' and xmlstream2.extract_receipt(stanza, 'request'):
-                    self.send_fake_receipt(stanza)
+
+                # check for permission
+                if self.parent.is_presence_allowed(jid_from, jid_to) == 1:
+                    # send to router (without implicitly consuming)
+                    self.parent.send(stanza, force_delivery=True)
+                else:
+                    log.debug("not allowed to send messages, sending fake response to %s" % (stanza['from'], ))
+                    if stanza.getAttribute('type') == 'chat' and xmlstream2.extract_receipt(stanza, 'request'):
+                        self.send_fake_receipt(stanza)
 
     def send_fake_receipt(self, stanza):
         """Sends back a fake sent receipt, while silently discard the message."""
@@ -785,21 +805,31 @@ class JIDCache(XMPPHandler):
         jid_from = jid.JID(stanza['from'])
         jid_to = jid.JID(stanza['to'])
         try:
-            fpr = self.parent.is_presence_allowed(jid_from, jid_to)
-            log.debug("is_presence_allowed: %d" % (fpr, ))
-            if fpr != 1:
-                raise Exception()
+            # are we requesting vCard for a user we have blocked?
+            if self.parent.is_presence_allowed(jid_to, jid_from) == -1:
+                log.debug("requesting vCard for a blocked user, bouncing error")
+                e = error.StanzaError('not-acceptable', 'cancel')
+                errstanza = e.toResponse(stanza)
+                errstanza.error.addElement((xmlstream2.NS_IQ_BLOCKING_ERRORS, 'blocked'))
+                self.send(errstanza)
 
-            fpr = self.parent.keyring.get_fingerprint(jid_to.user)
-            keydata = self.parent.keyring.get_key(jid_to.user, fpr)
+            else:
+                fpr = self.parent.is_presence_allowed(jid_from, jid_to)
+                log.debug("is_presence_allowed: %d" % (fpr, ))
+                if fpr != 1:
+                    raise Exception()
 
-            iq = xmlstream.toResponse(stanza, 'result')
-            # add vcard
-            vcard = iq.addElement((xmlstream2.NS_XMPP_VCARD4, 'vcard'))
-            vcard_key = vcard.addElement((None, 'key'))
-            vcard_data = vcard_key.addElement((None, 'uri'))
-            vcard_data.addContent(xmlstream2.DATA_PGP_PREFIX + base64.b64encode(keydata))
-            self.send(iq)
+                fpr = self.parent.keyring.get_fingerprint(jid_to.user)
+                keydata = self.parent.keyring.get_key(jid_to.user, fpr)
+
+                iq = xmlstream.toResponse(stanza, 'result')
+                # add vcard
+                vcard = iq.addElement((xmlstream2.NS_XMPP_VCARD4, 'vcard'))
+                vcard_key = vcard.addElement((None, 'key'))
+                vcard_data = vcard_key.addElement((None, 'uri'))
+                vcard_data.addContent(xmlstream2.DATA_PGP_PREFIX + base64.b64encode(keydata))
+                self.send(iq)
+
         except:
             self.parent.error(stanza)
 
@@ -868,7 +898,15 @@ class JIDCache(XMPPHandler):
         to = jid.JID(stanza['to'])
         sender = jid.JID(stanza['from'])
 
-        if self.parent.is_presence_allowed(sender, to) == 1:
+        # are we probing a user we have blocked?
+        if self.parent.is_presence_allowed(to, sender) == -1:
+            log.debug("probing blocked user, bouncing error")
+            e = error.StanzaError('not-acceptable', 'cancel')
+            errstanza = e.toResponse(stanza)
+            errstanza.error.addElement((xmlstream2.NS_IQ_BLOCKING_ERRORS, 'blocked'))
+            self.send(errstanza)
+
+        elif self.parent.is_presence_allowed(sender, to) == 1:
             gid = stanza.getAttribute('id')
             if not self.send_user_presence(gid, sender, to):
                 response = xmlstream.toResponse(stanza, 'error')
