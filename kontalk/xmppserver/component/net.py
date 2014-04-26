@@ -489,9 +489,14 @@ class NetService(object):
                 log.debug("dropping stanza with malformed JID")
 
             log.debug("sender = %s, otherEntity = %s" % (sender.full(), xs.otherEntity.full()))
-            if util.hostjid_server(sender.host, xs.otherEntity.host):
-                self.router.send(stanza)
-            else:
+
+            try:
+                unused, host = util.jid_component(sender.host)
+                if host in self.keyring.hostlist():
+                    self.router.send(stanza)
+                else:
+                    raise Exception()
+            except:
                 xs.sendStreamError(error.StreamError('invalid-from'))
 
 
