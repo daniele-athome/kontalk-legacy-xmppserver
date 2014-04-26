@@ -24,7 +24,7 @@ class TestResolverSubscriptions(unittest.TestCase):
 
     def loadConfiguration(self, filename):
         # load configuration
-        fp = open('../resolver.conf', 'r')
+        fp = open(filename, 'r')
         self.config = demjson.decode(fp.read(), allow_comments=True)
         fp.close()
 
