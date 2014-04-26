@@ -37,6 +37,18 @@ class Router(component.Router):
         self.logs = set()
         # private names: binding with those names will not be advertised
         self.private = {}
+        """
+        # TEST TEST TEST
+        from twisted.internet.task import LoopingCall
+        def _print_routes():
+            log.debug("ROUTES:")
+            for host in self.routes.iterkeys():
+                log.debug("\t%s" % (host, ))
+            log.debug("PRIVATE:")
+            for host in self.private.iterkeys():
+                log.debug("\t%s" % (host, ))
+        LoopingCall(_print_routes).start(5)
+        """
 
     def advertise(self, host, xs=None):
         stanza = Presence()
@@ -205,6 +217,11 @@ class Router(component.Router):
                 xs.send(domish.Element((None, 'bind'), attribs={'error': 'bad-request'}))
                 #xs.transport.loseConnection()
 
+        response = domish.Element((None, 'bind'))
+        stanzaId = stanza.getAttribute('id')
+        if stanzaId:
+            response['id'] = stanzaId
+
         if route not in self.routes and route not in self.private:
 
             if stanza.private:
@@ -212,7 +229,7 @@ class Router(component.Router):
             else:
                 self.routes[route] = xs
 
-            xs.send(domish.Element((None, 'bind')))
+            xs.send(response)
 
             if stanza.log:
                 self.logs.add(xs)
@@ -225,7 +242,8 @@ class Router(component.Router):
                 self.send_routes(route, xs)
 
         else:
-            xs.send(domish.Element((None, 'bind'), attribs={'error': 'conflict'}))
+            response['error'] = 'conflict'
+            xs.send(response)
             #xs.transport.loseConnection()
 
     def unbind(self, stanza, xs):
