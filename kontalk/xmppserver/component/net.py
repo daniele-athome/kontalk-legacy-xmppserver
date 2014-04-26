@@ -284,13 +284,12 @@ class XMPPNetServerFactory(xmlstream.XmlStreamServerFactory):
         xs.addObserver(xmlstream.STREAM_END_EVENT, self.onConnectionLost,
                                                    0, xs)
         xs.addObserver("/*", self.onElement, 0, xs)
-        xs.addObserver("/presence[not(@type)]", self.onPresenceAvailable, 100, xs)
-        xs.addObserver("/presence[@type='unavailable']", self.onPresenceUnavailable, 100, xs)
+        xs.addObserver("/presence[not(@type)]", self.service.onPresenceAvailable, 100, xs)
+        xs.addObserver("/presence[@type='unavailable']", self.service.onPresenceUnavailable, 100, xs)
 
         if self.service.validateConnection(xs):
             # bind the "net" component route of the remote server which just connected
-            name = util.component_jid(otherHost, util.COMPONENT_NET)
-            self.service.router.bind(name)
+            self.service.bindNetRoute(otherHost)
 
     def onConnectionLost(self, xs, reason):
         thisHost = xs.thisEntity.host
@@ -312,22 +311,6 @@ class XMPPNetServerFactory(xmlstream.XmlStreamServerFactory):
             return
         else:
             self.service.dispatch(xs, element)
-
-    def onPresenceAvailable(self, xs, stanza):
-        # if component (i.e. no user part of JID) bind name to router
-        stanzaFrom = jid.internJID(stanza['from'])
-        if not stanzaFrom.user and stanzaFrom.host.endswith(xs.otherEntity.full()):
-            stanza.handled = True
-            log.debug("binding name %s" % (stanzaFrom.host, ))
-            self.service.router.bind(stanzaFrom.host)
-
-    def onPresenceUnavailable(self, xs, stanza):
-        # if component (i.e. no user part of JID) unbind name from router
-        stanzaFrom = jid.internJID(stanza['from'])
-        if not stanzaFrom.user and stanzaFrom.host.endswith(xs.otherEntity.full()):
-            stanza.handled = True
-            log.debug("unbinding name %s" % (stanzaFrom.host, ))
-            self.service.router.unbind(stanzaFrom.host)
 
     def verifyPeer(self, connection, x509, errnum, errdepth, ok):
         # TODO other checks
@@ -366,6 +349,10 @@ class NetService(object):
         self._outgoingConnecting = set()
         self.serial = 0
 
+    def bindNetRoute(self, host):
+        name = util.component_jid(host, util.COMPONENT_NET)
+        self.router.bind(name)
+
     def outgoingInitialized(self, xs):
         thisHost = xs.thisEntity.host
         otherHost = xs.otherEntity.host
@@ -381,8 +368,7 @@ class NetService(object):
         xs.addObserver("/presence[@type='unavailable']", self.onPresenceUnavailable, 100, xs)
 
         # bind the "net" component route of the remote server which just connected
-        name = util.component_jid(otherHost, util.COMPONENT_NET)
-        self.router.bind(name)
+        self.bindNetRoute(otherHost)
 
     def outgoingDisconnected(self, xs):
         thisHost = xs.thisEntity.host
@@ -391,14 +377,10 @@ class NetService(object):
         log.debug("Outgoing connection %d from %s to %s disconnected" %
                 (xs.serial, thisHost, otherHost))
 
+        # TODO this actually does the same as invalidateConnection
         del self._outgoingStreams[otherHost]
 
-        # broadcast unavailable presence
-        p = domish.Element((None, 'presence'))
-        p['type'] = 'unavailable'
-        p['from'] = otherHost
-        p['to'] = self.network
-        self.router.send(p)
+        self.router.serverDisconnected(otherHost)
 
 
     def initiateOutgoingStream(self, otherHost):
@@ -444,12 +426,7 @@ class NetService(object):
         if otherHost in self._outgoingStreams:
             del self._outgoingStreams[otherHost]
 
-        # broadcast unavailable presence
-        p = domish.Element((None, 'presence'))
-        p['type'] = 'unavailable'
-        p['from'] = otherHost
-        p['to'] = self.network
-        self.router.send(p)
+        self.router.serverDisconnected(otherHost)
 
     def onElement(self, xs, element):
         """
@@ -459,8 +436,6 @@ class NetService(object):
             return
         else:
             self.dispatch(xs, element)
-
-    ### WARNING duplicated code ###
 
     def onPresenceAvailable(self, xs, stanza):
         # if component (i.e. no user part of JID) bind name to router
@@ -539,6 +514,14 @@ class NetComponent(xmlstream2.SocketComponent):
         self.network = config['network']
         self.servername = config['host']
 
+        """
+        This dict will hold the registered routes. This will be used when a
+        connection to a server suddendly interrupts so we can unbind the
+        registered names accordingly.
+        Keys: server host name, values: list of names
+        """
+        self.routes = {}
+
     def setup(self):
         storage.init(self.config['database'])
 
@@ -602,12 +585,54 @@ class NetComponent(xmlstream2.SocketComponent):
         component.Component._disconnected(self, reason)
         log.debug("lost connection to router (%s)" % (reason, ))
 
+    def serverDisconnected(self, host):
+        # unbind all routes from this server
+        if host in self.routes:
+            for name in list(self.routes[host]):
+                self.unbind(name)
+
+        # broadcast unavailable presence
+        p = domish.Element((None, 'presence'))
+        p['type'] = 'unavailable'
+        p['from'] = host
+        self.send(p)
+
     def bind(self, name):
+        stanzaId = util.rand_str(8)
+
+        # register for response
+        def _bind(stanza, name):
+            if not stanza.hasAttribute('error'):
+                # no errors, register route
+                unused, host = util.jid_component(name)
+
+                if host not in self.routes:
+                    self.routes[host] = []
+
+                self.routes[host].append(name)
+                log.debug("ROUTES: %s" % (self.routes, ))
+
+        self.xmlstream.addOnetimeObserver("/bind[@id='%s']" % (stanzaId, ), _bind, name=name)
+
         bind = domish.Element((None, 'bind'))
+        bind['id'] = stanzaId
         bind['name'] = name
         self.send(bind)
 
     def unbind(self, name):
+        # send unbind command to router
         unbind = domish.Element((None, 'unbind'))
         unbind['name'] = name
         self.send(unbind)
+
+        # unregister route
+        unused, host = util.jid_component(name)
+        if host in self.routes:
+            self.routes[host].remove(name)
+
+            if len(self.routes[host]) == 0:
+                del self.routes[host]
+
+        else:
+            # this is an error, it shouldn't happen
+            log.warn("unbinding non-registered route: %s" % (name, ))
