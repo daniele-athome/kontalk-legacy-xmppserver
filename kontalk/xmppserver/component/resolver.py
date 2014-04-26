@@ -118,7 +118,8 @@ class PresenceHandler(XMPPHandler):
             self.send(errstanza)
 
         else:
-            self.parent.subscribe(jid_from, jid_to, stanza.getAttribute('id'))
+            self.parent.subscribe(self.parent.translateJID(jid_from),
+                self.parent.translateJID(jid_to), stanza.getAttribute('id'))
 
     def onUnsubscribe(self, stanza):
         """Handle unsubscription requests."""
@@ -131,11 +132,12 @@ class PresenceHandler(XMPPHandler):
         else:
             log.debug("unsubscription request to %s from %s" % (stanza['to'], stanza['from']))
 
-        # extract jid the user wants to subscribe to
+        # extract jid the user wants to unsubscribe from
         jid_to = jid.JID(stanza['to'])
         jid_from = jid.JID(stanza['from'])
 
-        self.parent.unsubscribe(jid_to, jid_from)
+        self.parent.unsubscribe(self.parent.translateJID(jid_to),
+            self.parent.translateJID(jid_from))
 
     def onSubscribed(self, stanza):
         if stanza.consumed:
@@ -1355,6 +1357,10 @@ class Resolver(xmlstream2.SocketComponent):
         """Unsubscribe a given user from events from another one."""
         try:
             self.subscriptions[to].remove(subscriber)
+
+            # clean up
+            if len(self.subscriptions[to]) == 0:
+                del self.subscriptions[to]
         except:
             pass
 
@@ -1366,6 +1372,7 @@ class Resolver(xmlstream2.SocketComponent):
         try:
             unused, host = util.jid_component(user.host)
 
+            # FIXME wrong host check (this is a one of the causes of the invalid-from bug)
             if host == self.servername or host in self.keyring.hostlist():
                 # local or network user: translate host name
                 watched = jid.JID(tuple=(user.user, self.network, user.resource))
