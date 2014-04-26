@@ -783,6 +783,7 @@ class JIDCache(XMPPHandler):
         try:
             unused, host = util.jid_component(stanza['from'], util.COMPONENT_C2S)
             if host in self.parent.keyring.hostlist():
+                log.debug("server %s is disconnecting, removing data from presence cache" % (host, ))
                 #log.debug("PRESENCE(1): %r" % (self.presence_cache, ))
                 keys = self.presence_cache.keys()
                 for key in keys:
