@@ -107,9 +107,11 @@ class PingHandler(XMPPHandler):
         # stop pinger
         if self.pinger:
             self.pinger.cancel()
+            self.pinger = None
         # stop ping timeout
         if self.ping_timeout:
             self.ping_timeout.cancel()
+            self.ping_timeout = None
 
     def _ping(self):
         """Sends a ping request to client."""
@@ -167,6 +169,9 @@ class ServerListCommand():
     def __init__(self, handler):
         self.handler = handler
 
+    def connectionLost(self, reason):
+        self.handler = None
+
     def commands(self):
         return ({
             'jid': self.handler.parent.network,
@@ -207,6 +212,12 @@ class PushNotificationsHandler(XMPPHandler):
             self.handler_items.extend(nodes)
             for c in nodes:
                 self.push_handlers[c['node']] = inst
+
+    def connectionLost(self, reason):
+        XMPPHandler.connectionLost(self, reason)
+
+        # cleanup
+        self.push_handlers = None
 
     def push_regid(self, stanza):
         for child in stanza.children:
@@ -250,6 +261,14 @@ class CommandsHandler(XMPPHandler):
             self.commands.extend(cmdlist)
             for c in cmdlist:
                 self.cmd_handlers[c['node']] = cmd
+
+    def connectionLost(self, reason):
+        XMPPHandler.connectionLost(self, reason)
+
+        # cleanup
+        for c in self.cmd_handlers.itervalues():
+            c.connectionLost(reason)
+        self.cmd_handlers = None
 
     def command(self, stanza):
         node = stanza.command.getAttribute('node')
@@ -303,6 +322,12 @@ class UploadHandler(XMPPHandler):
         # add observer only if at least one service is enabled
         if len(self.services):
             self.xmlstream.addObserver("/iq[@type='get'][@to='%s']/upload[@xmlns='%s']" % (self.parent.network, xmlstream2.NS_MESSAGE_UPLOAD), self.upload, 100)
+
+    def connectionLost(self, reason):
+        XMPPHandler.connectionLost(self, reason)
+
+        # cleanup
+        self.serv_handlers = None
 
     def upload(self, stanza):
         node = stanza.upload.getAttribute('node')
@@ -581,6 +606,12 @@ class DiscoveryHandler(XMPPHandler):
                         self.items[node] = []
                     self.items[node].extend(i['items'])
 
+    def connectionLost(self, reason):
+        XMPPHandler.connectionLost(self, reason)
+
+        # cleanup
+        self.post_handlers = None
+
     def onDiscoItems(self, stanza):
         if not stanza.consumed:
             stanza.consumed = True
@@ -760,6 +791,14 @@ class C2SManager(xmlstream2.StreamManager):
     def _disconnected(self, reason):
         self.factory.connectionLost(self.xmlstream, reason)
         xmlstream2.StreamManager._disconnected(self, reason)
+
+        # disown handlers
+        for h in list(self):
+            h.disownHandlerParent(self)
+
+        # cleanup
+        self.factory = None
+        self.router = None
 
     def error(self, stanza, condition='service-unavailable', errtype='cancel', text=None):
         if not stanza.consumed:
