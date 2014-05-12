@@ -302,6 +302,24 @@ class Handler:
         iq.addElement((xmlstream2.NS_XMPP_VCARD4, 'vcard'))
         iq.send(peer)
 
+    def blockUser(self, peer, delay=0):
+        def _execute():
+            iq = client.IQ(self.client.xmlstream, 'set')
+            block = iq.addElement((xmlstream2.NS_IQ_BLOCKING, 'block'))
+            item = block.addElement((None, 'item'))
+            item['jid'] = peer
+            iq.send()
+
+        reactor.callLater(delay, _execute)
+
+    def requestBlocklist(self, delay=0):
+        def _execute():
+            iq = client.IQ(self.client.xmlstream, 'get')
+            iq.addElement((xmlstream2.NS_IQ_BLOCKING, 'blocklist'))
+            iq.send()
+
+        reactor.callLater(delay, _execute)
+
     def quit(self):
         self.client.xmlstream.sendFooter()
 
