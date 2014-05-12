@@ -75,10 +75,11 @@ class PresenceHandler(XMPPHandler):
             iq['type'] = 'set'
             iq['id'] = util.rand_str(8)
             iq['to'] = addr_from
-            allow = iq.addElement(('urn:xmpp:blocking', pname))
+            allow = iq.addElement((xmlstream2.NS_IQ_BLOCKING, pname))
 
             for item in wl:
-                allow.addElement((None, 'item'), content=item)
+                elem = allow.addElement((None, 'item'))
+                elem['jid'] = item
 
             self.parent.send(iq)
 
@@ -401,6 +402,20 @@ class PrivacyListHandler(XMPPHandler):
         self.xmlstream.addObserver("/iq[@type='set']/unallow[@xmlns='%s']" % (xmlstream2.NS_IQ_BLOCKING), self.unallow, 100)
         self.xmlstream.addObserver("/iq[@type='set']/block[@xmlns='%s']" % (xmlstream2.NS_IQ_BLOCKING), self.block, 100)
         self.xmlstream.addObserver("/iq[@type='set']/unblock[@xmlns='%s']" % (xmlstream2.NS_IQ_BLOCKING), self.unblock, 100)
+        self.xmlstream.addObserver("/iq[@type='get']/blocklist[@xmlns='%s']" % (xmlstream2.NS_IQ_BLOCKING), self.get_blacklist, 100)
+
+    def get_blacklist(self, stanza):
+        iq = xmlstream.toResponse(stanza, 'result')
+        iq['to'] = stanza['from']
+        blocklist = iq.addElement((xmlstream2.NS_IQ_BLOCKING, 'blocklist'))
+
+        wl = self.parent.get_blacklist(jid.JID(stanza['from']))
+        if wl:
+            for item in wl:
+                elem = blocklist.addElement((None, 'item'))
+                elem['jid'] = item
+
+        self.send(iq)
 
     def _blacklist(self, jid_from, items, remove=False, broadcast=True):
         if remove:
@@ -409,7 +424,7 @@ class PrivacyListHandler(XMPPHandler):
             fn = self.parent.add_blacklist
 
         for it in items:
-            jid_to = jid.JID(str(it))
+            jid_to = jid.JID(it['jid'])
             fn(jid_from, jid_to, broadcast)
 
     def _whitelist(self, jid_from, items, remove=False, broadcast=True):
@@ -419,7 +434,7 @@ class PrivacyListHandler(XMPPHandler):
             fn = self.parent.add_whitelist
 
         for it in items:
-            jid_to = jid.JID(str(it))
+            jid_to = jid.JID(it['jid'])
             fn(jid_from, jid_to, broadcast)
 
     def blacklist(self, stanza):
@@ -1425,8 +1440,9 @@ class Resolver(xmlstream2.SocketComponent):
         iq['from'] = dest
         iq['type'] = 'set'
         iq['id'] = util.rand_str(8)
-        nodeElement = iq.addElement(('urn:xmpp:blocking', node))
-        nodeElement.addElement((None, 'item'), content=src)
+        nodeElement = iq.addElement((xmlstream2.NS_IQ_BLOCKING, node))
+        elem = nodeElement.addElement((None, 'item'))
+        elem['jid'] = src
 
         for server in self.keyring.hostlist():
             if server != self.servername:
@@ -1493,6 +1509,12 @@ class Resolver(xmlstream2.SocketComponent):
     def get_whitelist(self, _jid):
         try:
             return self.whitelists[_jid.user]
+        except KeyError:
+            return None
+
+    def get_blacklist(self, _jid):
+        try:
+            return self.blacklists[_jid.user]
         except KeyError:
             return None
 
