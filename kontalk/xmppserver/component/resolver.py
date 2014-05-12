@@ -91,7 +91,7 @@ class PresenceHandler(XMPPHandler):
 
         user = jid.JID(stanza['from'])
         # forget any subscription requested by this user
-        self.parent.cancelSubscriptions(user)
+        self.parent.cancelSubscriptions(self.parent.translateJID(user))
         # broadcast presence
         self.parent.broadcastSubscribers(stanza)
 
@@ -1290,7 +1290,7 @@ class Resolver(xmlstream2.SocketComponent):
     def cancelSubscriptions(self, user):
         """Cancel all subscriptions requested by the given user."""
         for rlist in self.subscriptions.itervalues():
-            for sub in rlist:
+            for sub in list(rlist):
                 if sub == user:
                     rlist.remove(sub)
 

@@ -33,25 +33,34 @@ class TestResolverSubscriptions(unittest.TestCase):
 
 
     def testSubscribe(self):
-        jid_from = jid.JID('user1@c2s.prime.kontalk.net')
+        jid_from = jid.JID('user1@c2s.prime.kontalk.net/TEST001')
         jid_to = jid.JID('user2@kontalk.net')
         gid = util.rand_str(8)
         self.resolver.subscribe(self.resolver.translateJID(jid_from),
             self.resolver.translateJID(jid_to), gid, False)
 
-        subscriptions = { jid.JID('user2@kontalk.net') : [ jid.JID('user1@kontalk.net') ] }
+        subscriptions = { jid.JID('user2@kontalk.net') : [ jid.JID('user1@kontalk.net/TEST001') ] }
         self.assertDictEqual(self.resolver.subscriptions, subscriptions, 'Subscriptions not maching.')
 
     def testUnsubscribe(self):
         # execute subscription first
         self.testSubscribe()
 
-        jid_from = jid.JID('user1@c2s.prime.kontalk.net')
+        jid_from = jid.JID('user1@c2s.prime.kontalk.net/TEST001')
         jid_to = jid.JID('user2@kontalk.net')
         self.resolver.unsubscribe(self.resolver.translateJID(jid_to),
             self.resolver.translateJID(jid_from))
 
         self.assertEqual(len(self.resolver.subscriptions), 0, 'Subscriptions not maching.')
+
+    def testCancelSubscriptions(self):
+        # execute subscription first
+        self.testSubscribe()
+
+        jid_from = jid.JID('user1@c2s.prime.kontalk.net/TEST001')
+        jid_to = jid.JID('user2@kontalk.net')
+        self.resolver.cancelSubscriptions(self.resolver.translateJID(jid_from))
+        self.assertEqual(len(self.resolver.subscriptions[jid_to]), 0, 'Subscriptions not maching.')
 
 
 if __name__ == "__main__":
