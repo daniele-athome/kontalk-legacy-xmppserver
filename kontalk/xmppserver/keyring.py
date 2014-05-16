@@ -118,14 +118,19 @@ class Keyring:
         'messages' : (0, 100)
     }
 
-    def __init__(self, db, fingerprint, network, servername, disable_signers=False):
+    def __init__(self, db, fingerprint, network, servername, disable_signers=False, disable_cache=False):
         self._db = db
         self.fingerprint = str(fingerprint).upper()
         self.network = network
         self.servername = servername
         self._list = {}
+
         # cache of locally discovered fingerprints (userid: fingerprint)
-        self._fingerprints = {}
+        # TODO find a more efficient way
+        if not disable_cache:
+            self._fingerprints = {}
+        else:
+            self._fingerprints = None
 
         # gpgme context
         self.ctx = gpgme.Context()
@@ -222,6 +227,11 @@ class Keyring:
 
     def get_fingerprint(self, userid):
         """Used only by the resolver."""
+        # TODO find a more efficient way
+
+        if self._fingerprints == None:
+            raise AttributeError("fingerprint cache is disabled")
+
         try:
             return self._fingerprints[userid]
         except KeyError:
@@ -301,14 +311,16 @@ class Keyring:
                                 #log.debug("found signature by %s" % (fpr, ))
                                 # signature made by us
                                 if fpr == self.fingerprint:
-                                    self._fingerprints[userid] = fp
+                                    if self._fingerprints != None:
+                                        self._fingerprints[userid] = fp
                                     return fp
 
                                 # check against keyring
                                 for rkey in self._list.iterkeys():
                                     # fingerprint is a match: check if server is trusted
                                     if fpr == rkey and self.fingerprint in self.get_server_trust(rkey):
-                                        self._fingerprints[userid] = fp
+                                        if self._fingerprints != None:
+                                            self._fingerprints[userid] = fp
                                         return fp
                         except:
                             pass

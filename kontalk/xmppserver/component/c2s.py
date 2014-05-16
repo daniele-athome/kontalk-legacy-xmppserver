@@ -882,7 +882,7 @@ class C2SComponent(xmlstream2.SocketComponent):
 
         self.validationdb = storage.MySQLUserValidationStorage(validation_expire)
 
-        self.keyring = keyring.Keyring(storage.MySQLNetworkStorage(), self.config['fingerprint'], self.network, self.servername)
+        self.keyring = keyring.Keyring(storage.MySQLNetworkStorage(), self.config['fingerprint'], self.network, self.servername, disable_cache=True)
         authrealm = auth.SASLRealm("Kontalk")
         authportal = portal.Portal(authrealm, [auth.AuthKontalkChecker(self.config['fingerprint'], self.keyring, self._verify_fingerprint)])
 

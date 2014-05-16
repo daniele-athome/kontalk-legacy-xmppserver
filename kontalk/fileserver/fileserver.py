@@ -178,7 +178,7 @@ class Fileserver(resource.Resource, service.Service):
         klass = getattr(storage, stor_class)
         self.storage = klass(*self.config['storage']['params'])
 
-        self.keyring = keyring.Keyring(storage.MySQLNetworkStorage(), self.config['fingerprint'], self.network, self.servername)
+        self.keyring = keyring.Keyring(storage.MySQLNetworkStorage(), self.config['fingerprint'], self.network, self.servername, disable_cache=True)
         token_auth = auth.AuthKontalkChecker(self.config['fingerprint'], self.keyring)
 
         # upload endpoint

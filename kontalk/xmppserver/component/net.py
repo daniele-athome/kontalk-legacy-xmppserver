@@ -536,7 +536,7 @@ class NetComponent(xmlstream2.SocketComponent):
         cred = auth.OpenPGPKontalkCredentials(cert, key, str(self.config['pgp_keyring']))
         cred.verify_peer = True
 
-        ring = keyring.Keyring(storage.MySQLNetworkStorage(), self.config['fingerprint'], self.network, self.servername)
+        ring = keyring.Keyring(storage.MySQLNetworkStorage(), self.config['fingerprint'], self.network, self.servername, disable_cache=True)
         self.service = NetService(self.config, self, ring, cred)
         self.service.logTraffic = self.logTraffic
         self.sfactory = XMPPNetServerFactory(self.service)
