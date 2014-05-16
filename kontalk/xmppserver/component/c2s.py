@@ -996,6 +996,11 @@ class C2SComponent(xmlstream2.SocketComponent):
 
     def iq(self, stanza):
         """Removes from attribute if it's from network name."""
+        """
+        TODO this was actually done to "fake" IQ stanzas coming from the
+        resolver that should appear to the client as coming from nowhere. So
+        this should probably also take the resolver JID into consideration.
+        """
         if stanza.getAttribute('from') == self.network:
             del stanza['from']
 
