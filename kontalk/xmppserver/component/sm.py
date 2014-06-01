@@ -46,7 +46,7 @@ class PresenceHandler(XMPPHandler):
         self.xmlstream.addObserver("/presence[@type='unavailable']", self.unavailablePresence)
 
     def connectionLost(self, reason):
-        if self.xmlstream and self.xmlstream.otherEntity is not None:
+        if self.xmlstream and self.xmlstream.otherEntity is not None and self.parent._presence is not None:
             stanza = xmppim.UnavailablePresence()
             stanza['from'] = self.xmlstream.otherEntity.full()
             self.parent.forward(stanza, True)
