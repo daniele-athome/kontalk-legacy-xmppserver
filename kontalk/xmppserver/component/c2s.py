@@ -995,14 +995,19 @@ class C2SComponent(xmlstream2.SocketComponent):
         log.debug("lost connection to router (%s)" % (reason, ))
 
     def iq(self, stanza):
-        """Removes from attribute if it's from network name."""
         """
-        TODO this was actually done to "fake" IQ stanzas coming from the
-        resolver that should appear to the client as coming from nowhere. So
-        this should probably also take the resolver JID into consideration.
+        Removes the from attribute if it matches the resolver JID.
+        This was actually done to "fake" IQ stanzas coming from the
+        resolver that should appear to the client as coming from nowhere.
         """
-        if stanza.getAttribute('from') == self.network:
-            del stanza['from']
+
+        sender = stanza.getAttribute('from')
+        if sender and not ('@' in sender):
+            # receiving iq from remote or local resolver, remove from attribute
+            unused, host = util.jid_component(sender, util.COMPONENT_RESOLVER)
+
+            if host in self.keyring.hostlist():
+                del stanza['from']
 
     def send_wrapped(self, stanza, sender, destination=None):
         """
