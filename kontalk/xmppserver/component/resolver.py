@@ -219,7 +219,10 @@ class RosterHandler(XMPPHandler):
 
             # simulate a presence probe and send vcards
             # we'll use one group ID so the client knows when to stop waiting
-            gid = util.rand_str(8, util.CHARSBOX_AZN_LOWERCASE)
+            gid = stanza.getAttribute('id')
+            if not gid:
+                gid = util.rand_str(8, util.CHARSBOX_AZN_LOWERCASE)
+
             i = sum([len(x) for x in probes])
             for presence_list in probes:
                 for presence in presence_list:
