@@ -218,28 +218,27 @@ class RosterHandler(XMPPHandler):
             self.send(response)
 
             # simulate a presence probe and send vcards
+            # we'll use one group ID so the client knows when to stop waiting
+            gid = util.rand_str(8, util.CHARSBOX_AZN_LOWERCASE)
+            i = sum([len(x) for x in probes])
             for presence_list in probes:
-                gid = util.rand_str(8, util.CHARSBOX_AZN_LOWERCASE)
-                i = len(presence_list)
+                for presence in presence_list:
+                    presence = deepcopy(presence)
+                    presence['to'] = stanza['from']
+                    group = presence.addElement((xmlstream2.NS_XMPP_STANZA_GROUP, 'group'))
+                    group['id'] = gid
+                    group['count'] = str(i)
+                    i -= 1
+                    self.send(presence)
 
-                if i > 0:
-                    for presence in presence_list:
-                        presence = deepcopy(presence)
-                        presence['to'] = stanza['from']
-                        group = presence.addElement((xmlstream2.NS_XMPP_STANZA_GROUP, 'group'))
-                        group['id'] = gid
-                        group['count'] = str(i)
-                        i -= 1
-                        self.send(presence)
-
-                    # send vcard for this user
-                    jid_from = jid.JID(presence_list[0]['from'])
-                    iq = domish.Element((None, 'iq'))
-                    iq['type'] = 'set'
-                    iq['from'] = jid_from.userhost()
-                    iq['to'] = stanza['from']
-                    self.build_vcard(jid_from.user, iq)
-                    self.send(iq)
+                # send vcard for this user
+                jid_from = jid.JID(presence_list[0]['from'])
+                iq = domish.Element((None, 'iq'))
+                iq['type'] = 'set'
+                iq['from'] = jid_from.userhost()
+                iq['to'] = stanza['from']
+                self.build_vcard(jid_from.user, iq)
+                self.send(iq)
 
         # no roster lookup, XMPP standard roster instead
         else:
