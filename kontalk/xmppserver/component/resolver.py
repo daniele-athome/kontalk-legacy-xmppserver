@@ -1490,7 +1490,8 @@ class Resolver(xmlstream2.SocketComponent):
             wl.discard(dest)
 
             # broadcast to all resolvers
-            self._broadcast_privacy_list_change(dest, src, node)
+            if broadcast:
+                self._broadcast_privacy_list_change(dest, src, node)
 
     def add_blacklist(self, jid_to, jid_from, broadcast=True):
         """Adds jid_from to jid_to's blacklist."""
