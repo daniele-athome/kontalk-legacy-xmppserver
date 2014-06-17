@@ -375,12 +375,12 @@ class MySQLNetworkStorage(NetworkStorage):
         global dbpool
         conn = dbpool.connectionFactory(dbpool)
         tx = dbpool.transactionFactory(dbpool, conn)
-        tx.execute('SELECT fingerprint, host FROM servers')
+        tx.execute('SELECT fingerprint, host, enabled FROM servers')
         data = tx.fetchall()
         out = {}
         for row in data:
-            # { fingerprint: host }
-            out[str(row[0]).upper()] = str(row[1])
+            # { fingerprint: {host, enabled} }
+            out[str(row[0]).upper()] = { 'host' : str(row[1]), 'enabled' : int(row[2]) }
         return out
 
 class MySQLPresenceStorage(PresenceStorage):

@@ -124,6 +124,7 @@ class Keyring:
         self.network = network
         self.servername = servername
         self._list = {}
+        self._enabled = []
 
         # cache of locally discovered fingerprints (userid: fingerprint)
         # TODO find a more efficient way
@@ -147,7 +148,11 @@ class Keyring:
         return self._list.itervalues()
 
     def _reload(self):
-        self._list = self._db.get_list()
+        slist = self._db.get_list()
+        for fpr, data in slist.iteritems():
+            self._list[fpr] = data['host']
+            if data['enabled']:
+                self._enabled.append(fpr)
 
     def host(self, fingerprint):
         return self._list[fingerprint]
@@ -217,6 +222,9 @@ class Keyring:
     def __len__(self):
         return len(self._list)
 
+    def __getitem__(self, key):
+        return self._list[key]
+
     def __iter__(self):
         '''Wrapper for keyring iterator.'''
         return self._list.iterkeys()
@@ -224,6 +232,9 @@ class Keyring:
     def hostlist(self):
         """List of host servers."""
         return self._list.values()
+
+    def is_enabled(self, fingerprint):
+        return fingerprint in self._enabled
 
     def get_fingerprint(self, userid):
         """Used only by the resolver."""

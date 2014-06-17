@@ -559,8 +559,9 @@ class NetComponent(xmlstream2.SocketComponent):
         log.debug("connected to router.")
 
         # initiate outgoing connection to servers
-        for host in self.service.keyring.hostlist():
-            if host != self.servername:
+        for fpr in iter(self.service.keyring):
+            host = self.service.keyring[fpr]
+            if host != self.servername and self.service.keyring.is_enabled(fpr):
                 # connect to server immediately
                 self.service.initiateOutgoingStream(host)
 
