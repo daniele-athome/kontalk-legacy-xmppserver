@@ -20,6 +20,7 @@
 
 
 from twisted.internet import defer, interfaces
+from twisted.internet.interfaces import ISSLTransport
 
 from zope.interface import implements
 
@@ -28,7 +29,8 @@ from gnutls.interfaces import twisted
 
 
 def isTLS(xmlstream):
-    return isinstance(xmlstream.transport, twisted.TLSMixin)
+    return ISSLTransport.providedBy(xmlstream.transport) or \
+        isinstance(xmlstream.transport, twisted.TLSMixin)
 
 
 class OpenPGPCredentials(_OpenPGPCredentials):

@@ -211,14 +211,17 @@ class TLSReceivingInitializer(BaseFeatureReceivingInitializer):
     """
 
     def feature(self):
-        if self.xmlstream.factory.tls_ctx is None:
-            print "TLS not supported"
-            return
+        if self.xmlstream.factory.getSSLContext() is None:
+            log.warn("TLS not supported")
+            return None
 
-        feature = domish.Element((xmlstream.NS_XMPP_TLS, 'starttls'), defaultUri=xmlstream.NS_XMPP_TLS)
-        if self.required:
-            feature.addElement((xmlstream.NS_XMPP_TLS, 'required'))
-        return feature
+        if not tls.isTLS(self.xmlstream):
+            feature = domish.Element((xmlstream.NS_XMPP_TLS, 'starttls'), defaultUri=xmlstream.NS_XMPP_TLS)
+            if self.required:
+                feature.addElement((xmlstream.NS_XMPP_TLS, 'required'))
+            return feature
+
+        return None
 
     def initialize(self):
         self.xmlstream.addOnetimeObserver('/starttls', self.onStartTLS)
@@ -227,15 +230,17 @@ class TLSReceivingInitializer(BaseFeatureReceivingInitializer):
         self.xmlstream.removeObserver('/starttls', self.onStartTLS)
 
     def onStartTLS(self, element):
-        if self.xmlstream.factory.tls_ctx is None:
+        # TLS not supported or already negotiated
+        if self.xmlstream.factory.getSSLContext() is None or tls.isTLS(self.xmlstream):
             failure = domish.Element((sasl.NS_XMPP_SASL, 'failure'), defaultUri=xmlstream.NS_XMPP_TLS)
             self.xmlstream.send(failure)
             self.xmlstream.sendFooter()
+            self.xmlstream.transport.loseConnection()
 
-        if self.canInitialize(self):
+        elif self.canInitialize(self):
             self.xmlstream.dispatch(self, INIT_SUCCESS_EVENT)
             self.xmlstream.send(domish.Element((xmlstream.NS_XMPP_TLS, 'proceed')))
-            self.xmlstream.transport.startTLS(self.xmlstream.factory.tls_ctx)
+            self.xmlstream.transport.startTLS(self.xmlstream.factory.getSSLContext())
             self.xmlstream.reset()
 
 
@@ -497,7 +502,7 @@ class SASLReceivingInitializer(BaseFeatureReceivingInitializer):
     external = False
 
     def feature(self):
-        self.external = hasattr(self.xmlstream.transport, 'getPeerCertificate') or tls.isTLS(self.xmlstream)
+        self.external = tls.isTLS(self.xmlstream)
 
         feature = domish.Element((sasl.NS_XMPP_SASL, 'mechanisms'), defaultUri=sasl.NS_XMPP_SASL)
         if self.external:

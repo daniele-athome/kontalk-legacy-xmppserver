@@ -24,7 +24,7 @@ import base64
 import traceback
 
 from twisted.internet import reactor, defer
-from twisted.application import strports
+from twisted.application import strports, internet
 from twisted.application.internet import StreamServerEndpointService
 from twisted.cred import portal
 from twisted.internet.protocol import ServerFactory
@@ -72,6 +72,9 @@ class XMPPServerFactory(xish_xmlstream.XmlStreamFactoryMixin, ServerFactory):
             raise xmlstream.TLSNotSupported()
 
         self.tls_ctx = xmlstream2.MyOpenSSLCertificateOptions(keyfile, certfile, self._sslVerify)
+
+    def getSSLContext(self):
+        return self.tls_ctx
 
     def _sslVerify(self, conn, cert, errno, depth, preverify_ok):
         # TODO is this safe?
@@ -221,11 +224,6 @@ class XMPPListenAuthenticator(xmlstream.ListenAuthenticator):
 
             required = False
             for initializer in self.xmlstream.initializers:
-                # already on TLS
-                if tls.isTLS(self.xmlstream) and isinstance(initializer, xmlstream2.TLSReceivingInitializer):
-                    log.debug("already on TLS, skipping %r" % (initializer, ))
-                    continue
-
                 if required and (not hasattr(initializer, 'exclusive') or not initializer.exclusive):
                     log.debug("skipping %r" % (initializer, ))
                     continue
@@ -897,6 +895,14 @@ class C2SComponent(xmlstream2.SocketComponent):
             plain_svc = strports.service('tcp:' + str(self.config['bind']['plain'][1]) +
                 ':interface=' + str(self.config['bind']['plain'][0]), self.sfactory)
             services.append(plain_svc)
+
+        if 'ssl' in self.config['bind']:
+            ssl_svc = internet.SSLServer(port=int(self.config['bind']['ssl'][1]),
+                    interface=str(self.config['bind']['ssl'][0]),
+                    factory=self.sfactory,
+                    contextFactory=self.sfactory.getSSLContext())
+
+            services.append(ssl_svc)
 
         if 'tls' in self.config['bind']:
             cert = OpenPGPCertificate(open(self.config['pgp_cert']).read())
