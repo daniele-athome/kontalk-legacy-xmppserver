@@ -482,7 +482,8 @@ class IQHandler(XMPPHandler):
 
                 else:
                     # key not signed or verified
-                    self.parent.error(stanza, 'forbidden', 'Invalid public key.')
+                    stanza.consumed = False
+                    self.parent.error(stanza, 'forbidden', text='Invalid public key.')
 
             def _continue(presence, userid, var_pkey, var_revoked, stanza):
                 if presence and presence['fingerprint']:
@@ -502,12 +503,14 @@ class IQHandler(XMPPHandler):
                         else:
                             # key not valid or not revoked
                             log.debug("old key is not revoked, refusing to proceed")
-                            self.parent.error(stanza, 'forbidden', 'Old key has not been revoked.')
+                            stanza.consumed = False
+                            self.parent.error(stanza, 'forbidden', text='Old key has not been revoked.')
 
                     else:
                         # old key fingerprint not matching
                         log.debug("old key does not match current fingerprint, refusing to proceed")
-                        self.parent.error(stanza, 'forbidden', 'Revoked key does not match.')
+                        stanza.consumed = False
+                        self.parent.error(stanza, 'forbidden', text='Revoked key does not match.')
 
                 else:
                     # user has no key, accept it
@@ -522,6 +525,7 @@ class IQHandler(XMPPHandler):
 
         else:
             # bad request
+            stanza.consumed = False
             self.parent.error(stanza, 'bad-request')
 
     def vcard_set(self, stanza):
@@ -924,7 +928,13 @@ class C2SManager(xmlstream2.StreamManager):
         fp = self.router.keyring.check_user_key(publickey, userid)
         if not fp:
             # import public key and sign it
-            fp, keydata = self.router.keyring.sign_public_key(publickey, userid)
+            try:
+                fp, keydata = self.router.keyring.sign_public_key(publickey, userid)
+            except:
+                import traceback
+                traceback.print_exc()
+                return None
+
         else:
             # use given key
             keydata = publickey
