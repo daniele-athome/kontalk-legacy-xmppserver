@@ -919,8 +919,15 @@ class C2SManager(xmlstream2.StreamManager):
         @param publickey: public key in DER format
         @return: the signed public key, in DER binary format.
         """
-        # import public key and sign it
-        fp, keydata = self.router.keyring.sign_public_key(publickey, userid)
+
+        # check if key is already valid
+        fp = self.router.keyring.check_user_key(publickey, userid)
+        if not fp:
+            # import public key and sign it
+            fp, keydata = self.router.keyring.sign_public_key(publickey, userid)
+        else:
+            # use given key
+            keydata = publickey
 
         if fp and keydata:
             # signed public key to presence table
