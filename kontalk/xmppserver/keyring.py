@@ -124,7 +124,7 @@ class Keyring:
         self.network = network
         self.servername = servername
         self._list = {}
-        self._enabled = []
+        self._enabled = {}
 
         # cache of locally discovered fingerprints (userid: fingerprint)
         # TODO find a more efficient way
@@ -152,7 +152,7 @@ class Keyring:
         for fpr, data in slist.iteritems():
             self._list[fpr] = data['host']
             if data['enabled']:
-                self._enabled.append(fpr)
+                self._enabled[fpr] = data['host']
 
     def host(self, fingerprint):
         return self._list[fingerprint]
@@ -229,9 +229,12 @@ class Keyring:
         '''Wrapper for keyring iterator.'''
         return self._list.iterkeys()
 
-    def hostlist(self):
+    def hostlist(self, full=False):
         """List of host servers."""
-        return self._list.values()
+        if full:
+            return self._list.values()
+        else:
+            return self._enabled.values()
 
     def is_enabled(self, fingerprint):
         return fingerprint in self._enabled
