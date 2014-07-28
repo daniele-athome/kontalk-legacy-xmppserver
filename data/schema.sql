@@ -45,6 +45,7 @@ CREATE TABLE `presence` (
 CREATE TABLE `servers` (
   `fingerprint` char(40) NOT NULL COMMENT 'Server key fingerprint',
   `host` varchar(100) NOT NULL COMMENT 'Server address',
+  `enabled` BOOLEAN NOT NULL DEFAULT TRUE COMMENT 'Server enabled in the network',
   PRIMARY KEY (`fingerprint`)
 ) ENGINE=MyISAM DEFAULT CHARSET=ascii COMMENT='Servers';
 
