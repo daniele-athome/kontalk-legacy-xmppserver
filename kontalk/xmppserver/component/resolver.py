@@ -1491,7 +1491,7 @@ class Resolver(xmlstream2.SocketComponent):
 
             # broadcast to all resolvers
             if broadcast:
-                self._broadcast_privacy_list_change(dest, src, node)
+                self._broadcast_privacy_list_change(src, dest, node)
 
     def add_blacklist(self, jid_to, jid_from, broadcast=True):
         """Adds jid_from to jid_to's blacklist."""
