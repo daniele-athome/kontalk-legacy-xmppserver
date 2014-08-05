@@ -463,7 +463,8 @@ class NetService(object):
 
         otherHost = jid.internJID(stanza['to']).host
 
-        log.debug("sending data to %s [%r]" % (otherHost, self._outgoingStreams, ))
+        if self.logTraffic:
+          log.debug("sending data to %s [%r]" % (otherHost, self._outgoingStreams, ))
         for host in self._outgoingStreams.iterkeys():
             if util.hostjid_server(otherHost, host):
                 self._outgoingStreams[host].send(stanza)
@@ -474,7 +475,8 @@ class NetService(object):
         Send a stanza to the router, checking some stuff first.
         """
 
-        log.debug("stanza from %s: %s" % (xs.otherEntity.full(), stanza.toXml()))
+        if self.logTraffic:
+            log.debug("stanza from %s: %s" % (xs.otherEntity.full(), stanza.toXml()))
         util.resetNamespace(stanza, xs.namespace)
         stanzaFrom = stanza.getAttribute('from')
         stanzaTo = stanza.getAttribute('to')
@@ -572,13 +574,15 @@ class NetComponent(xmlstream2.SocketComponent):
 
     def consume(self, stanza):
         stanza.consumed = True
-        log.debug("consuming stanza %s" % (stanza.toXml(), ))
+        if self.logTraffic:
+            log.debug("consuming stanza %s" % (stanza.toXml(), ))
 
     def dispatch(self, stanza):
         """Handle incoming stanza from router to the proper server stream."""
         if not stanza.consumed:
             stanza.consumed = True
-            log.debug("incoming stanza from router %s" % (stanza.toXml().encode('utf-8'), ))
+            if self.logTraffic:
+                log.debug("incoming stanza from router %s" % (stanza.toXml().encode('utf-8'), ))
             to = stanza.getAttribute('to')
 
             if to is not None:
@@ -616,7 +620,8 @@ class NetComponent(xmlstream2.SocketComponent):
                     self.routes[host] = []
 
                 self.routes[host].append(name)
-                log.debug("ROUTES: %s" % (self.routes, ))
+                if self.logTraffic:
+                    log.debug("ROUTES: %s" % (self.routes, ))
 
         self.xmlstream.addOnetimeObserver("/bind[@id='%s']" % (stanzaId, ), _bind, name=name)
 
