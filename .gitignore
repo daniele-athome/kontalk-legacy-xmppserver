@@ -13,3 +13,4 @@ dropin.cache
 /server-pgp.beta.key
 /*.log
 /*.log.*
+/.idea
