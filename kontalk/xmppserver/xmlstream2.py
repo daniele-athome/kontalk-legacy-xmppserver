@@ -299,8 +299,10 @@ class SessionInitializer(BaseFeatureReceivingInitializer):
     """
 
     def feature(self):
+        feature = domish.Element((client.NS_XMPP_SESSION, 'session'))
         if self.required:
-            return domish.Element((client.NS_XMPP_SESSION, 'session'))
+            feature.addElement((client.NS_XMPP_SESSION, 'required'))
+        return feature
 
     def initialize(self):
         self.xmlstream.addOnetimeObserver('/iq/session', self.onSession, 100)
@@ -316,7 +318,9 @@ class SessionInitializer(BaseFeatureReceivingInitializer):
         iq = xmlstream.toResponse(stanza, 'result')
         iq.addElement((client.NS_XMPP_SESSION, 'session'))
         self.xmlstream.send(iq)
-        self.xmlstream.dispatch(self, INIT_SUCCESS_EVENT)
+
+        if self.required:
+            self.xmlstream.dispatch(self, INIT_SUCCESS_EVENT)
 
 
 class RegistrationInitializer(BaseFeatureReceivingInitializer):

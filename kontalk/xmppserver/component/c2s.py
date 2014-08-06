@@ -195,7 +195,7 @@ class XMPPListenAuthenticator(xmlstream.ListenAuthenticator):
             (xmlstream2.RegistrationInitializer, True, True),
             # doesn't work yet -- (compression.CompressReceivingInitializer, False, False),
             (xmlstream2.BindInitializer, True, False),
-            (xmlstream2.SessionInitializer, True, False),
+            (xmlstream2.SessionInitializer, False, False),
         )
         for initClass, required, exclusive in inits:
             init = initClass(xs, self.canInitialize)

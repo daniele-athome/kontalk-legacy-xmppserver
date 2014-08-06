@@ -285,7 +285,7 @@ class KontalkXMPPAuthenticator(xmlstream.ConnectAuthenticator):
                 (TLSInitiatingInitializer, False),
                 (KontalkSASLInitiatingInitializer, True),
                 (BindInitializer, True),
-                (SessionInitializer, True),
+                (SessionInitializer, False),
             ]
 
             for initClass, required in inits:
