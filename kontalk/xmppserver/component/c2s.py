@@ -861,6 +861,11 @@ class C2SComponent(xmlstream2.SocketComponent):
         self.start_time = time.time()
         self.registration = None
         self.push_manager = None
+        self.stanzadb = None
+        self.presencedb = None
+        self.validationdb = None
+        self.keyring = None
+        self.sfactory = None
 
         # protocol handlers here!!
         for handler in self.protocolHandlers:
@@ -898,9 +903,9 @@ class C2SComponent(xmlstream2.SocketComponent):
 
         if 'ssl' in self.config['bind']:
             ssl_svc = internet.SSLServer(port=int(self.config['bind']['ssl'][1]),
-                    interface=str(self.config['bind']['ssl'][0]),
-                    factory=self.sfactory,
-                    contextFactory=self.sfactory.getSSLContext())
+                interface=str(self.config['bind']['ssl'][0]),
+                factory=self.sfactory,
+                contextFactory=self.sfactory.getSSLContext())
 
             services.append(ssl_svc)
 
