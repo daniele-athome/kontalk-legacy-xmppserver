@@ -883,6 +883,14 @@ class JIDCache(XMPPHandler):
             for x in data:
                 presence = deepcopy(x)
                 presence['to'] = sender.full()
+
+                # add fingerprint
+                fpr = self.parent.keyring.get_fingerprint(sender.user)
+                if fpr:
+                    pubkey = presence.addElement(('urn:xmpp:pubkey:2', 'pubkey'))
+                    fprint = pubkey.addElement((None, 'print'))
+                    fprint.addContent(fpr)
+
                 if gid:
                     # FIXME this will duplicate group elements - actually in storage there should be no group element!!!
                     group = presence.addElement((xmlstream2.NS_XMPP_STANZA_GROUP, 'group'))
