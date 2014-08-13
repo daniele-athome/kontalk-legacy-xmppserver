@@ -171,17 +171,6 @@ class RosterHandler(XMPPHandler):
     def connectionInitialized(self):
         self.xmlstream.addObserver("/iq[@type='get']/query[@xmlns='%s']" % (xmlstream2.NS_IQ_ROSTER), self.roster, 100)
 
-    def build_vcard(self, userid, iq):
-        """Adds a vCard to the given iq stanza."""
-        fpr = self.parent.keyring.get_fingerprint(userid)
-        keydata = self.parent.keyring.get_key(userid, fpr)
-        # add vcard
-        vcard = iq.addElement((xmlstream2.NS_XMPP_VCARD4, 'vcard'))
-        vcard_key = vcard.addElement((None, 'key'))
-        vcard_data = vcard_key.addElement((None, 'uri'))
-        vcard_data.addContent(xmlstream2.DATA_PGP_PREFIX + base64.b64encode(keydata))
-        return iq
-
     def roster(self, stanza):
         _items = stanza.query.elements(uri=xmlstream2.NS_IQ_ROSTER, name='item')
         requester = jid.JID(stanza['from'])
@@ -240,7 +229,7 @@ class RosterHandler(XMPPHandler):
                 iq['type'] = 'set'
                 iq['from'] = jid_from.userhost()
                 iq['to'] = stanza['from']
-                self.build_vcard(jid_from.user, iq)
+                self.parent.build_vcard(jid_from.user, iq)
                 self.send(iq)
 
         # no roster lookup, XMPP standard roster instead
@@ -1435,6 +1424,17 @@ class Resolver(xmlstream2.SocketComponent):
             pass
 
         return _jid if resource else _jid.userhostJID()
+
+    def build_vcard(self, userid, iq):
+        """Adds a vCard to the given iq stanza."""
+        fpr = self.keyring.get_fingerprint(userid)
+        keydata = self.keyring.get_key(userid, fpr)
+        # add vcard
+        vcard = iq.addElement((xmlstream2.NS_XMPP_VCARD4, 'vcard'))
+        vcard_key = vcard.addElement((None, 'key'))
+        vcard_data = vcard_key.addElement((None, 'uri'))
+        vcard_data.addContent(xmlstream2.DATA_PGP_PREFIX + base64.b64encode(keydata))
+        return iq
 
     def _broadcast_privacy_list_change(self, dest, src, node):
         # broadcast to all resolvers
