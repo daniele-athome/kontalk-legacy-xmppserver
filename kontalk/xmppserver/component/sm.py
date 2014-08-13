@@ -455,78 +455,77 @@ class IQHandler(XMPPHandler):
         # FIXME maybe some stuff here should go to c2s?
 
         if var_pkey:
-
-            def _send_signed(userid, var_pkey):
-                # verify and link key
-                pkey = base64.b64decode(var_pkey.value.__str__().encode('utf-8'))
-                signed_pkey = self.parent.link_public_key(pkey, userid)
-                if signed_pkey:
-                    iq = xmlstream.toResponse(stanza, 'result')
-                    query = iq.addElement((xmlstream2.NS_IQ_REGISTER, 'query'))
-
-                    form = query.addElement(('jabber:x:data', 'x'))
-                    form['type'] = 'form'
-
-                    hidden = form.addElement((None, 'field'))
-                    hidden['type'] = 'hidden'
-                    hidden['var'] = 'FORM_TYPE'
-                    hidden.addElement((None, 'value'), content='http://kontalk.org/protocol/register#key')
-
-                    signed = form.addElement((None, 'field'))
-                    signed['type'] = 'text-single'
-                    signed['label'] = 'Signed public key'
-                    signed['var'] = 'publickey'
-                    signed.addElement((None, 'value'), content=base64.b64encode(signed_pkey))
-
-                    self.parent.send(iq, True)
-
-                else:
-                    # key not signed or verified
-                    stanza.consumed = False
-                    self.parent.error(stanza, 'forbidden', text='Invalid public key.')
-
-            def _continue(presence, userid, var_pkey, var_revoked, stanza):
-                if presence and presence['fingerprint']:
-                    # user already has a key, check if fingerprint matches and
-                    # check the revocation certificate
-                    rkeydata = base64.b64decode(var_revoked.value.__str__().encode('utf-8'))
-                    # import key and verify revocation certificate
-                    rkey_fpr, rkey = self.parent.router.keyring.import_key(rkeydata)
-
-                    if rkey_fpr == presence['fingerprint']:
-
-                        if rkey and rkey.revoked:
-                            log.debug("old key has been revoked, accepting new key")
-                            # old key has been revoked, ok to accept new one
-                            _send_signed(userid, var_pkey)
-
-                        else:
-                            # key not valid or not revoked
-                            log.debug("old key is not revoked, refusing to proceed")
-                            stanza.consumed = False
-                            self.parent.error(stanza, 'forbidden', text='Old key has not been revoked.')
-
-                    else:
-                        # old key fingerprint not matching
-                        log.debug("old key does not match current fingerprint, refusing to proceed")
-                        stanza.consumed = False
-                        self.parent.error(stanza, 'forbidden', text='Revoked key does not match.')
-
-                else:
-                    # user has no key, accept it
-                    _send_signed(userid, var_pkey)
-
             userid = self.parent.xmlstream.otherEntity.user
 
             # check if user has already a key
             # this is used for users coming from version 2.x (no key back then)
             d = self.parent.router.presencedb.get(userid)
-            d.addCallback(_continue, userid, var_pkey, var_revoked, stanza)
+            d.addCallback(self._register_continue, userid, var_pkey, var_revoked, stanza)
 
         else:
             # bad request
             stanza.consumed = False
             self.parent.error(stanza, 'bad-request')
+
+    def _register_success(self, userid, var_pkey, stanza):
+        # verify and link key
+        pkey = base64.b64decode(var_pkey.value.__str__().encode('utf-8'))
+        signed_pkey = self.parent.link_public_key(pkey, userid)
+        if signed_pkey:
+            iq = xmlstream.toResponse(stanza, 'result')
+            query = iq.addElement((xmlstream2.NS_IQ_REGISTER, 'query'))
+
+            form = query.addElement(('jabber:x:data', 'x'))
+            form['type'] = 'form'
+
+            hidden = form.addElement((None, 'field'))
+            hidden['type'] = 'hidden'
+            hidden['var'] = 'FORM_TYPE'
+            hidden.addElement((None, 'value'), content='http://kontalk.org/protocol/register#key')
+
+            signed = form.addElement((None, 'field'))
+            signed['type'] = 'text-single'
+            signed['label'] = 'Signed public key'
+            signed['var'] = 'publickey'
+            signed.addElement((None, 'value'), content=base64.b64encode(signed_pkey))
+
+            self.parent.send(iq, True)
+
+        else:
+            # key not signed or verified
+            stanza.consumed = False
+            self.parent.error(stanza, 'forbidden', text='Invalid public key.')
+
+    def _register_continue(self, presence, userid, var_pkey, var_revoked, stanza):
+        if presence and presence['fingerprint']:
+            # user already has a key, check if fingerprint matches and
+            # check the revocation certificate
+            rkeydata = base64.b64decode(var_revoked.value.__str__().encode('utf-8'))
+            # import key and verify revocation certificate
+            rkey_fpr, rkey = self.parent.router.keyring.import_key(rkeydata)
+
+            if rkey_fpr == presence['fingerprint']:
+
+                if rkey and rkey.revoked:
+                    log.debug("old key has been revoked, accepting new key")
+                    # old key has been revoked, ok to accept new one
+                    self._register_success(userid, var_pkey, stanza)
+
+                else:
+                    # key not valid or not revoked
+                    log.debug("old key is not revoked, refusing to proceed")
+                    stanza.consumed = False
+                    self.parent.error(stanza, 'forbidden', text='Old key has not been revoked.')
+
+            else:
+                # old key fingerprint not matching
+                log.debug("old key does not match current fingerprint, refusing to proceed")
+                stanza.consumed = False
+                self.parent.error(stanza, 'forbidden', text='Revoked key does not match.')
+
+        else:
+            # user has no key, accept it
+            self._register_success(userid, var_pkey, stanza)
 
     def vcard_set(self, stanza):
         # let c2s handle this
