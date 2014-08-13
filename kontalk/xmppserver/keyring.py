@@ -325,7 +325,7 @@ class Keyring:
                                 #log.debug("found signature by %s" % (fpr, ))
                                 # signature made by us
                                 if fpr == self.fingerprint:
-                                    if self._fingerprints != None:
+                                    if self._fingerprints is not None:
                                         self._fingerprints[userid] = fp
                                     return fp
 
@@ -333,7 +333,7 @@ class Keyring:
                                 for rkey in self._list.iterkeys():
                                     # fingerprint is a match: check if server is trusted
                                     if fpr == rkey and self.fingerprint in self.get_server_trust(rkey):
-                                        if self._fingerprints != None:
+                                        if self._fingerprints is not None:
                                             self._fingerprints[userid] = fp
                                         return fp
                         except:
