@@ -235,60 +235,18 @@ class PushNotificationsHandler(XMPPHandler):
         return ({'node': xmlstream2.NS_PRESENCE_PUSH, 'items': self.handler_items }, )
 
 
-class CommandsHandler(XMPPHandler):
-    """
-    XEP-0050: Ad-Hoc Commands
-    http://xmpp.org/extensions/xep-0050.html
-    """
+class CommandsHandler(xmlstream2.CommandsHandler):
+    """Ad-Hoc Commands for clients."""
 
     commandHandlers = (
         ServerListCommand,
     )
 
     def __init__(self):
-        XMPPHandler.__init__(self)
-        # command list for quick access
-        self.commands = []
-        # command handlers for execution
-        self.cmd_handlers = {}
+        xmlstream2.CommandsHandler.__init__(self, self.commandHandlers)
 
-    def connectionInitialized(self):
-        self.xmlstream.addObserver("/iq[@type='set'][@to='%s']/command[@xmlns='%s']" % (self.parent.network, xmlstream2.NS_PROTO_COMMANDS), self.command, 100)
-
-        for h in self.commandHandlers:
-            cmd = h(self)
-            cmdlist = cmd.commands()
-            self.commands.extend(cmdlist)
-            for c in cmdlist:
-                self.cmd_handlers[c['node']] = cmd
-
-    def connectionLost(self, reason):
-        XMPPHandler.connectionLost(self, reason)
-
-        # cleanup
-        for c in self.cmd_handlers.itervalues():
-            c.connectionLost(reason)
-        self.cmd_handlers = None
-
-    def command(self, stanza):
-        node = stanza.command.getAttribute('node')
-        action = stanza.command.getAttribute('action')
-        log.debug("command received: %s/%s" % (node, action))
-        if action and node and node in self.cmd_handlers:
-            try:
-                func = getattr(self.cmd_handlers[node], action)
-                log.debug("found command handler %s" % (func, ))
-                func(stanza)
-            except:
-                self.parent.error(stanza)
-        else:
-            self.parent.error(stanza)
-
-    def features(self):
-        return (xmlstream2.NS_PROTO_COMMANDS, )
-
-    def items(self):
-        return ({'node': xmlstream2.NS_PROTO_COMMANDS, 'items': self.commands }, )
+    def setHandlerParent(self, parent):
+        xmlstream2.CommandsHandler.setHandlerParent(self, parent, parent.network)
 
 
 class UploadHandler(XMPPHandler):

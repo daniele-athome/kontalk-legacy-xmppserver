@@ -750,3 +750,60 @@ class SocketComponent(component.Component):
             return reactor.connectUNIX(self.socket, self.factory)
         else:
             return reactor.connectTCP(self.host, self.port, self.factory)
+
+
+class CommandsHandler(xmlstream.XMPPHandler):
+    """
+    XEP-0050: Ad-Hoc Commands
+    http://xmpp.org/extensions/xep-0050.html
+    """
+
+    def __init__(self, handlers):
+        xmlstream.XMPPHandler.__init__(self)
+        self._init_handlers = handlers
+        self._component_name = None
+        # command list for quick access
+        self.commands = []
+        # command handlers for execution
+        self.cmd_handlers = {}
+
+    def setHandlerParent(self, parent, component_name):
+        self._component_name = component_name
+
+    def connectionInitialized(self):
+        self.xmlstream.addObserver("/iq[@type='set'][@to='%s']/command[@xmlns='%s']" % (self._component_name, NS_PROTO_COMMANDS), self.command, 100)
+
+        for h in self.commandHandlers:
+            cmd = h(self)
+            cmdlist = cmd.commands()
+            self.commands.extend(cmdlist)
+            for c in cmdlist:
+                self.cmd_handlers[c['node']] = cmd
+
+    def connectionLost(self, reason):
+        xmlstream.XMPPHandler.connectionLost(self, reason)
+
+        # cleanup
+        for c in self.cmd_handlers.itervalues():
+            c.connectionLost(reason)
+        self.cmd_handlers = None
+
+    def command(self, stanza):
+        node = stanza.command.getAttribute('node')
+        action = stanza.command.getAttribute('action')
+        log.debug("command received: %s/%s" % (node, action))
+        if action and node and node in self.cmd_handlers:
+            try:
+                func = getattr(self.cmd_handlers[node], action)
+                log.debug("found command handler %s" % (func, ))
+                func(stanza)
+            except:
+                self.parent.error(stanza)
+        else:
+            self.parent.error(stanza)
+
+    def features(self):
+        return (NS_PROTO_COMMANDS, )
+
+    def items(self):
+        return ({'node': NS_PROTO_COMMANDS, 'items': self.commands }, )
