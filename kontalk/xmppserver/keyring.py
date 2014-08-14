@@ -243,7 +243,7 @@ class Keyring:
         """Used only by the resolver."""
         # TODO find a more efficient way
 
-        if self._fingerprints == None:
+        if self._fingerprints is None:
             raise AttributeError("fingerprint cache is disabled")
 
         try:

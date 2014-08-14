@@ -139,7 +139,7 @@ class UsercacheDb(MessengerDb):
             ts_str = 'sysdate()'
 
         def add_field(args, cols, data, name):
-            if data != None and len(data) == 0:
+            if data is not None and len(data) == 0:
                 data = None
             args.append(data)
             cols.append(name)
