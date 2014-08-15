@@ -768,12 +768,13 @@ class CommandsHandler(xmlstream.XMPPHandler):
         self.cmd_handlers = {}
 
     def setHandlerParent(self, parent, component_name):
+        xmlstream.XMPPHandler.setHandlerParent(self, parent)
         self._component_name = component_name
 
     def connectionInitialized(self):
         self.xmlstream.addObserver("/iq[@type='set'][@to='%s']/command[@xmlns='%s']" % (self._component_name, NS_PROTO_COMMANDS), self.command, 100)
 
-        for h in self.commandHandlers:
+        for h in self._init_handlers:
             cmd = h(self)
             cmdlist = cmd.commands()
             self.commands.extend(cmdlist)
@@ -795,8 +796,9 @@ class CommandsHandler(xmlstream.XMPPHandler):
         if action and node and node in self.cmd_handlers:
             try:
                 func = getattr(self.cmd_handlers[node], action)
-                log.debug("found command handler %s" % (func, ))
-                func(stanza)
+                response = func(stanza)
+                if response:
+                    self.send(response)
             except:
                 self.parent.error(stanza)
         else:

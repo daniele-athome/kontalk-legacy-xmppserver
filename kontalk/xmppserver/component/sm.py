@@ -187,11 +187,11 @@ class ServerListCommand():
         cmd['status'] = 'completed'
 
         slist = cmd.addElement(('http://kontalk.org/extensions/serverlist', 'serverlist'))
-        for host in self.handler.parent.keyring.hostlist():
+        for host in self.handler.parent.router.keyring.hostlist():
             item = slist.addElement((None, 'item'))
             item['node'] = host
 
-        self.handler.send(res)
+        return res
 
 
 class PushNotificationsHandler(XMPPHandler):
