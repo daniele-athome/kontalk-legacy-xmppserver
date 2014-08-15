@@ -320,6 +320,16 @@ class Handler:
 
         reactor.callLater(delay, _execute)
 
+    def serverlist(self, delay=0):
+        def _execute():
+            iq = client.IQ(self.client.xmlstream, 'set')
+            cmd = iq.addElement((xmlstream2.NS_PROTO_COMMANDS, 'command'))
+            cmd['node'] = 'serverlist'
+            cmd['action'] = 'execute'
+            iq.send()
+
+        reactor.callLater(delay, _execute)
+
     def quit(self):
         self.client.xmlstream.sendFooter()
 
