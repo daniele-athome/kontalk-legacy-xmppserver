@@ -180,12 +180,17 @@ class ServerListCommand():
         }, )
 
     def execute(self, stanza):
-        # TODO actually implement the command :)
         stanza.consumed = True
         res = xmlstream.toResponse(stanza, 'result')
         cmd = res.addElement((xmlstream2.NS_PROTO_COMMANDS, 'command'))
         cmd['node'] = stanza.command['node']
         cmd['status'] = 'completed'
+
+        slist = cmd.addElement(('http://kontalk.org/extensions/serverlist', 'serverlist'))
+        for host in self.handler.parent.keyring.hostlist():
+            item = slist.addElement((None, 'item'))
+            item['node'] = host
+
         self.handler.send(res)
 
 
