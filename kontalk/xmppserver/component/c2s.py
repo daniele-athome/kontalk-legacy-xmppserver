@@ -875,14 +875,18 @@ class C2SComponent(xmlstream2.SocketComponent):
         # initialize storage
         # doing it here because it's needed by the c2s server factory
         storage.init(self.config['database'])
-        self.stanzadb = storage.MySQLStanzaStorage()
         self.presencedb = storage.MySQLPresenceStorage()
 
         try:
-            validation_expire = self.config['registration']['expire']
-        except:
-            validation_expire = 0
+            stanza_expire = self.config['stanza_expire']
+        except KeyError:
+            stanza_expire = 0
+        self.stanzadb = storage.MySQLStanzaStorage(stanza_expire)
 
+        try:
+            validation_expire = self.config['registration']['expire']
+        except KeyError:
+            validation_expire = 0
         self.validationdb = storage.MySQLUserValidationStorage(validation_expire)
 
         self.keyring = keyring.Keyring(storage.MySQLNetworkStorage(), self.config['fingerprint'], self.network, self.servername, disable_cache=True)

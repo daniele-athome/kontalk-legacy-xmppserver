@@ -51,6 +51,23 @@ def init(config):
 class StanzaStorage:
     """Stanza storage system."""
 
+    """Expired timeout call in seconds."""
+    EXPIRED_TIMEOUT = 60
+
+    def __init__(self, expire_time=0):
+        """
+        Creates a new validation storage.
+        @var expire_time: expire time in seconds, 0 to disable it
+        """
+        # register a timeout for expired codes check
+        if expire_time > 0:
+            self.expire_time = expire_time
+            LoopingCall(self.expired).start(self.EXPIRED_TIMEOUT, now=True)
+
+    def expired(self):
+        """Called every EXPIRED_TIMEOUT seconds to purge expired entries."""
+        pass
+
     def store(self, stanza, network, delayed=False, reuseId=False):
         """Store a stanza."""
         pass
@@ -168,7 +185,8 @@ class MySQLStanzaStorage(StanzaStorage):
     OFFLINE_STORE_DELAY = 10
     tables = ('presence', 'message', 'iq')
 
-    def __init__(self):
+    def __init__(self, expire_time=0):
+        StanzaStorage.__init__(self, expire_time)
         """
         This dictionary keeps track of messages currently pending for offline
         storage. Keys are message IDs, values are (L{IDelayedCall}, stanza)
@@ -189,6 +207,11 @@ class MySQLStanzaStorage(StanzaStorage):
                 d = self._store(stanza, *args)
                 dlist.append(d)
         return defer.gatherResults(dlist)
+
+    def expired(self):
+        for t in ('stanzas_iq', 'stanzas_message', 'stanzas_presence'):
+            dbpool.runOperation('DELETE FROM %s WHERE UNIX_TIMESTAMP() > (UNIX_TIMESTAMP(timestamp) + %d)' %
+                (t, self.expire_time, ))
 
     def store(self, stanza, network, delayed=False, reuseId=None, expire=None):
         receipt = xmlstream2.extract_receipt(stanza, 'request')
