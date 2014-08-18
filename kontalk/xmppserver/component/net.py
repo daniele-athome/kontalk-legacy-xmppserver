@@ -476,7 +476,7 @@ class NetService(object):
         """
 
         if self.logTraffic:
-            log.debug("stanza from %s: %s" % (xs.otherEntity.full(), stanza.toXml()))
+            log.debug("stanza from %s: %s" % (xs.otherEntity.full(), stanza.toXml().encode('utf-8')))
         util.resetNamespace(stanza, xs.namespace)
         stanzaFrom = stanza.getAttribute('from')
         stanzaTo = stanza.getAttribute('to')
@@ -575,7 +575,7 @@ class NetComponent(xmlstream2.SocketComponent):
     def consume(self, stanza):
         stanza.consumed = True
         if self.logTraffic:
-            log.debug("consuming stanza %s" % (stanza.toXml(), ))
+            log.debug("consuming stanza %s" % (stanza.toXml().encode('utf-8'), ))
 
     def dispatch(self, stanza):
         """Handle incoming stanza from router to the proper server stream."""
