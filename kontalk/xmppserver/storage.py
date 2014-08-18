@@ -304,7 +304,7 @@ class MySQLStanzaStorage(StanzaStorage):
         # TODO
         #global dbpool
         #return dbpool.runQuery('SELECT id, recipient, content, timestamp FROM stanzas WHERE sender = ?', sender)
-        pass
+        raise NotImplementedError()
 
     def get_by_recipient(self, recipient):
         global dbpool
