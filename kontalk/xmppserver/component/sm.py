@@ -61,7 +61,10 @@ class PresenceHandler(XMPPHandler):
         # notify c2s about unavailable presence
         if not stanza.hasAttribute('to'):
             self.parent.router.local_presence(self.xmlstream.otherEntity, stanza)
-            # TODO disconnection should be triggered immediately
+            # void the current presence
+            self.presence(None)
+            # set the initial presence listener again
+            self.xmlstream.addOnetimeObserver("/presence[not(@type)]", self.initialPresence)
 
     def presence(self, stanza):
         # store presence stanza in the stream manager

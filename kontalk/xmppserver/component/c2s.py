@@ -1127,10 +1127,52 @@ class C2SComponent(xmlstream2.SocketComponent):
 
         return d
 
+    def _local_presence_output(self, data, user):
+        log.debug("data: %r" % (data, ))
+        # this will be used to set a safe recipient
+        # WARNING this will create a JID anyway :(
+        to = self.resolveJID(user).full()
+        for msg in data:
+            log.debug("msg[%s]=%s" % (msg['id'], msg['stanza'].toXml().encode('utf-8'), ))
+            try:
+                """
+                Mark the stanza with our server name, so we'll receive a
+                copy of the receipt
+                """
+                if msg['stanza'].request:
+                    msg['stanza'].request['from'] = self.xmlstream.thisEntity.full()
+                elif msg['stanza'].received:
+                    msg['stanza'].received['from'] = self.xmlstream.thisEntity.full()
+
+                # mark delayed delivery
+                if 'timestamp' in msg:
+                    delay = msg['stanza'].addElement((xmlstream2.NS_XMPP_DELAY, 'delay'))
+                    delay['stamp'] = msg['timestamp'].strftime(xmlstream2.XMPP_STAMP_FORMAT)
+
+                """
+                We use direct delivery here: it's faster and does not
+                involve JID resolution
+                """
+                msg['stanza']['to'] = to
+                self.dispatch(msg['stanza'])
+
+                """
+                If a receipt is requested, we won't delete the message from
+                storage now; we must be sure client has received it.
+                Otherwise just delete the message immediately.
+                """
+                if not xmlstream2.extract_receipt(msg['stanza'], 'request'):
+                    self.message_offline_delete(msg['id'], msg['stanza'].name)
+            except:
+                log.debug("offline message delivery failed (%s)" % (msg['id'], ))
+                traceback.print_exc()
+
     def local_presence(self, user, stanza):
         """
-        Called by sm after receiving a local initial presence.
+        Called by sm after receiving a local presence.
         """
+
+        available = not stanza.hasAttribute('type')
 
         # send presence to storage
         if user.user:
@@ -1139,49 +1181,10 @@ class C2SComponent(xmlstream2.SocketComponent):
             else:
                 self.presencedb.presence(stanza)
 
-        # initial presence - deliver offline storage
-        def output(data, user):
-            log.debug("data: %r" % (data, ))
-            # this will be used to set a safe recipient
-            # WARNING this will create a JID anyway :(
-            to = self.resolveJID(user).full()
-            for msg in data:
-                log.debug("msg[%s]=%s" % (msg['id'], msg['stanza'].toXml().encode('utf-8'), ))
-                try:
-                    """
-                    Mark the stanza with our server name, so we'll receive a
-                    copy of the receipt
-                    """
-                    if msg['stanza'].request:
-                        msg['stanza'].request['from'] = self.xmlstream.thisEntity.full()
-                    elif msg['stanza'].received:
-                        msg['stanza'].received['from'] = self.xmlstream.thisEntity.full()
-
-                    # mark delayed delivery
-                    if 'timestamp' in msg:
-                        delay = msg['stanza'].addElement((xmlstream2.NS_XMPP_DELAY, 'delay'))
-                        delay['stamp'] = msg['timestamp'].strftime(xmlstream2.XMPP_STAMP_FORMAT)
-
-                    """
-                    We use direct delivery here: it's faster and does not
-                    involve JID resolution
-                    """
-                    msg['stanza']['to'] = to
-                    self.dispatch(msg['stanza'])
-
-                    """
-                    If a receipt is requested, we won't delete the message from
-                    storage now; we must be sure client has received it.
-                    Otherwise just delete the message immediately.
-                    """
-                    if not xmlstream2.extract_receipt(msg['stanza'], 'request'):
-                        self.message_offline_delete(msg['id'], msg['stanza'].name)
-                except:
-                    log.debug("offline message delivery failed (%s)" % (msg['id'], ))
-                    traceback.print_exc()
-
-        d = self.stanzadb.get_by_recipient(user)
-        d.addCallback(output, user)
+        if available:
+            # initial presence - deliver offline storage
+            d = self.stanzadb.get_by_recipient(user)
+            d.addCallback(self._local_presence_output, user)
 
     def local_vcard(self, user, stanza):
         """

@@ -330,6 +330,19 @@ class Handler:
 
         reactor.callLater(delay, _execute)
 
+    def unavailable(self, delay=0):
+        def _execute():
+            p = domish.Element((None, 'presence'))
+            p['type'] = 'unavailable'
+            self.client.send(p)
+        reactor.callLater(delay, _execute)
+
+    def available(self, delay=0):
+        def _execute():
+            p = domish.Element((None, 'presence'))
+            self.client.send(p)
+        reactor.callLater(delay, _execute)
+
     def quit(self):
         self.client.xmlstream.sendFooter()
 
