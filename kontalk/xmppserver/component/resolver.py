@@ -885,7 +885,7 @@ class JIDCache(XMPPHandler):
                 presence['to'] = sender.full()
 
                 # add fingerprint
-                fpr = self.parent.keyring.get_fingerprint(sender.user)
+                fpr = self.parent.keyring.get_fingerprint(recipient.user)
                 if fpr:
                     pubkey = presence.addElement(('urn:xmpp:pubkey:2', 'pubkey'))
                     fprint = pubkey.addElement((None, 'print'))
