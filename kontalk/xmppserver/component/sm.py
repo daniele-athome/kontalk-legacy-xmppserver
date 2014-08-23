@@ -403,9 +403,6 @@ class IQHandler(XMPPHandler):
 
     def register(self, stanza):
         """This is actually used for key regeneration."""
-        if not self.parent.router.registration:
-            return self.parent.error(stanza, text='Registration not available.')
-
         log.debug("client requested key regeneration: %s" % (stanza.toXml(), ))
         stanza.consumed = True
         fields = stanza.query.x.elements(uri='jabber:x:data', name='field')
