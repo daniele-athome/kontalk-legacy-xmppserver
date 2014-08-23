@@ -210,8 +210,8 @@ class MySQLStanzaStorage(StanzaStorage):
 
     def expired(self):
         for t in ('stanzas_iq', 'stanzas_message', 'stanzas_presence'):
-            dbpool.runOperation('DELETE FROM %s WHERE UNIX_TIMESTAMP() > (UNIX_TIMESTAMP(timestamp) + %d)' %
-                (t, self.expire_time, ))
+            dbpool.runOperation('DELETE FROM %s WHERE (UNIX_TIMESTAMP()*1000) > (timestamp + %d)' %
+                (t, self.expire_time*1000, ))
 
     def store(self, stanza, network, delayed=False, reuseId=None, expire=None):
         receipt = xmlstream2.extract_receipt(stanza, 'request')
