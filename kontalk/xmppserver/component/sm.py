@@ -30,7 +30,7 @@ from wokkel import xmppim
 
 from gnutls.constants import OPENPGP_FMT_RAW, OPENPGP_FMT_BASE64
 
-from kontalk.xmppserver import log, xmlstream2, version, util, push, upload, keyring
+from kontalk.xmppserver import log, xmlstream2, version, util, push, upload, keyring, tls
 
 
 class PresenceHandler(XMPPHandler):
@@ -460,7 +460,9 @@ class IQHandler(XMPPHandler):
             self.parent.error(stanza, 'forbidden', text='Invalid public key.')
 
     def _register_continue(self, presence, userid, var_pkey, var_revoked, stanza):
-        if presence and presence['fingerprint']:
+        # we also check if user has logged in through a certificate
+        allowed_ssl = tls.isTLS(self.xmlstream) and self.xmlstream.transport.getPeerCertificate()
+        if allowed_ssl and presence and presence['fingerprint']:
             # user already has a key, check if fingerprint matches and
             # check the revocation certificate
             rkeydata = base64.b64decode(var_revoked.value.__str__().encode('utf-8'))
