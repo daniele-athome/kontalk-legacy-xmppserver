@@ -1346,8 +1346,6 @@ class Resolver(xmlstream2.SocketComponent):
             pres['to'] = subscriber.full()
             pres['from'] = to.userhost()
             pres['type'] = 'subscribed'
-            # consume stanza immediately
-            pres.consumed = True
             self.send(pres)
 
         if not response_only:
