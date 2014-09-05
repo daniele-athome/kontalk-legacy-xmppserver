@@ -119,8 +119,10 @@ class PresenceHandler(XMPPHandler):
             self.send(errstanza)
 
         else:
-            self.parent.subscribe(self.parent.translateJID(jid_from),
-                self.parent.translateJID(jid_to), stanza.getAttribute('id'))
+            if not self.parent.subscribe(self.parent.translateJID(jid_from),
+                    self.parent.translateJID(jid_to), stanza.getAttribute('id')):
+                e = error.StanzaError('item-not-found')
+                self.send(e.toResponse(stanza))
 
     def onUnsubscribe(self, stanza):
         """Handle unsubscription requests."""
@@ -1294,6 +1296,11 @@ class Resolver(xmlstream2.SocketComponent):
                     rlist.remove(sub)
 
     def subscribe(self, jid_from, jid_to, gid=None, send_subscribed=True):
+        if jid_to.host == self.network and not self.cache.lookup(jid_to):
+            log.debug("user %s not found, rejecting subscription request" % (jid_to, ))
+            # no point in proceeding if user does not exists
+            return False
+
         allowed = self.is_presence_allowed(jid_from, jid_to)
 
         if allowed == 1:
@@ -1324,6 +1331,9 @@ class Resolver(xmlstream2.SocketComponent):
             except:
                 import traceback
                 traceback.print_exc()
+                return False
+
+        return True
 
 
     def doSubscribe(self, to, subscriber, gid=None, response_only=False, send_subscribed=True):
