@@ -639,7 +639,10 @@ class NetComponent(xmlstream2.SocketComponent):
         # unregister route
         unused, host = util.jid_component(name)
         if host in self.routes:
-            self.routes[host].remove(name)
+            try:
+                self.routes[host].remove(name)
+            except ValueError:
+                pass
 
             if len(self.routes[host]) == 0:
                 del self.routes[host]
