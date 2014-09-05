@@ -430,9 +430,12 @@ class InitialPresenceHandler(XMPPHandler):
                     msg['to'] = to
                     self.send(msg['stanza'])
                     """
-                    We don't delete the message from storage now; we must be
-                    sure remote sm has received it.
+                    If a receipt is requested, we won't delete the message from
+                    storage now; we must be sure client has received it.
+                    Otherwise just delete the message immediately.
                     """
+                    if not xmlstream2.extract_receipt(msg['stanza'], 'request'):
+                        self.message_offline_delete(msg['id'], msg['stanza'].name)
                 except:
                     log.debug("offline message delivery failed (%s)" % (msg['id'], ))
                     traceback.print_exc()
