@@ -886,12 +886,15 @@ class JIDCache(XMPPHandler):
                 presence = deepcopy(x)
                 presence['to'] = sender.full()
 
-                # add fingerprint
-                fpr = self.parent.keyring.get_fingerprint(recipient.user)
-                if fpr:
-                    pubkey = presence.addElement(('urn:xmpp:pubkey:2', 'pubkey'))
-                    fprint = pubkey.addElement((None, 'print'))
-                    fprint.addContent(fpr)
+                try:
+                    # add fingerprint
+                    fpr = self.parent.keyring.get_fingerprint(recipient.user)
+                    if fpr:
+                        pubkey = presence.addElement(('urn:xmpp:pubkey:2', 'pubkey'))
+                        fprint = pubkey.addElement((None, 'print'))
+                        fprint.addContent(fpr)
+                except keyring.KeyNotFoundException:
+                    log.warn("key not found for user %s" % (recipient, ))
 
                 if gid:
                     # FIXME this will duplicate group elements - actually in storage there should be no group element!!!
