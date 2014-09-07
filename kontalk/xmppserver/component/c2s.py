@@ -766,7 +766,7 @@ class MessageHandler(XMPPHandler):
 
                             # send ack only for chat messages (if requested)
                             # do not send if coming from remote storage
-                            if chat_msg and receipt and not from_storage:
+                            if receipt and not from_storage:
                                 self.send_ack(stanza, 'sent', stamp)
 
                             # send receipt to originating server, if requested
@@ -786,10 +786,10 @@ class MessageHandler(XMPPHandler):
                             if receipt:
                                 try:
                                     from_server = receipt['from']
-                                    if util.hostjid_local(util.COMPONENT_C2S, self.parent, from_server):
+                                    if not util.hostjid_local(util.COMPONENT_C2S, self.parent, from_server):
                                         stanza['from'] = from_server
                                         self.send_ack(stanza, delivery, stamp, request)
-                                except:
+                                except KeyError:
                                     pass
 
                     else:
