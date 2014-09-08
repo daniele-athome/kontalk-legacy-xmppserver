@@ -571,6 +571,7 @@ class NetComponent(xmlstream2.SocketComponent):
         self.xmlstream.addObserver("/presence", self.dispatch)
         self.xmlstream.addObserver("/iq", self.dispatch)
         self.xmlstream.addObserver("/message", self.dispatch)
+        self.xmlstream.addObserver("/stanza", self.dispatch)
 
     def consume(self, stanza):
         stanza.consumed = True
