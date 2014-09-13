@@ -790,16 +790,46 @@ class JIDCache(XMPPHandler):
         # local c2s or remote server has disconnected, remove presences from cache
         try:
             unused, host = util.jid_component(stanza['from'], util.COMPONENT_C2S)
-            if host in self.parent.keyring.hostlist():
-                log.debug("server %s is disconnecting, removing data from presence cache" % (host, ))
-                #log.debug("PRESENCE(1): %r" % (self.presence_cache, ))
+            if host == self.parent.servername:
+                log.debug("local c2s disconnecting, removing data from presence cache" % (host, ))
                 keys = self.presence_cache.keys()
                 for key in keys:
                     stub = self.presence_cache[key]
                     if stub.jid.host == stanza['from']:
                         del self.presence_cache[key]
 
-                #log.debug("PRESENCE(2): %r" % (self.presence_cache, ))
+            elif host in self.parent.keyring.hostlist():
+                log.debug("server %s is disconnecting, taking over presence data" % (host, ))
+                ordered_presence = []
+                keys = self.presence_cache.keys()
+                for key in keys:
+                    stub = self.presence_cache[key]
+                    if stub.jid.host == stanza['from']:
+                        ordered_presence.append(stub)
+
+                # TEST TEST TEST
+                from operator import attrgetter
+                ordered_presence.sort(key=attrgetter('jid'))
+                # take the N-th part
+                index = 1
+                for s in self.parent.keyring.hostlist():
+                    if s == self.parent.servername:
+                        break
+                    index += 1
+
+                if index >= len(self.parent.keyring.hostlist()):
+                    log.warn("we can't find ourselves on the servers table! WTF!?!?")
+
+                else:
+                    network_len = len(self.parent.keyring.hostlist())
+                    presence_len = len(ordered_presence)
+                    slice_start = presence_len / network_len * index
+                    slice_end = presence_len / network_len * (index+1)
+                    for i in range(slice_start, slice_end):
+                        e = ordered_presence[i]
+                        # TODO simulate local presence so c2s will insert it into the database while we accept
+                        # the new presence as local
+                        pass
 
             return
         except:
