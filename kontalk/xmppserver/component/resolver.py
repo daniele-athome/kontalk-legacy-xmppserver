@@ -683,7 +683,7 @@ class PresenceStub(object):
         return '<PresenceStub jid=%s, avail=%r>' % (self.jid.full(), self._avail)
 
     @classmethod
-    def fromElement(klass, e):
+    def fromElement(klass, e, from_host=None):
         p_type = e.getAttribute('type')
         if e.show:
             show = str(e.show)
@@ -703,7 +703,11 @@ class PresenceStub(object):
         except:
             delay = None
 
-        p = klass(jid.JID(e['from']).userhostJID())
+        sender = jid.JID(e['from']).userhostJID()
+        if from_host is not None:
+            sender.host = from_host
+
+        p = klass(sender)
         p.__set__('type', p_type)
         p.__set__('show', show)
         p.__set__('status', status)
@@ -801,39 +805,63 @@ class JIDCache(XMPPHandler):
             elif host in self.parent.keyring.hostlist():
                 log.debug("server %s is disconnecting, taking over presence data" % (host, ))
                 ordered_presence = []
-                keys = self.presence_cache.keys()
-                for key in keys:
-                    stub = self.presence_cache[key]
+                for stub in self.presence_cache.itervalues():
                     if stub.jid.host == stanza['from']:
                         ordered_presence.append(stub)
 
                 # TEST TEST TEST
+                # TODO this needs serious re-design from scratch (I mean the whole presence sharing architecture)
                 from operator import attrgetter
                 ordered_presence.sort(key=attrgetter('jid'))
                 # take the N-th part
                 index = 1
                 for s in self.parent.keyring.hostlist():
+                    # skip missing server
+                    if s == host:
+                        continue
+                    # we found ourselves
                     if s == self.parent.servername:
                         break
                     index += 1
 
-                if index >= len(self.parent.keyring.hostlist()):
+                if index > len(self.parent.keyring.hostlist()):
                     log.warn("we can't find ourselves on the servers table! WTF!?!?")
 
                 else:
                     network_len = len(self.parent.keyring.hostlist())
                     presence_len = len(ordered_presence)
-                    slice_start = presence_len / network_len * index
-                    slice_end = presence_len / network_len * (index+1)
+                    slice_start = presence_len / (network_len-1) * (index - 1)
+                    slice_end = presence_len / (network_len-1) * ((index+1) - 1)
+                    log.debug("slice_start = %d, slice_end = %d" % (slice_start, slice_end))
                     for i in range(slice_start, slice_end):
                         e = ordered_presence[i]
-                        # TODO simulate local presence so c2s will insert it into the database while we accept
-                        # the new presence as local
-                        pass
+                        rewrite = None
+                        presence = e.presence()
+                        for p in presence:
+                            # do not consider available presence stanzas
+                            if p['type'] == 'unavailable':
+                                rewrite = PresenceStub.fromElement(p, util
+                                    .component_jid(self.parent.servername, util.COMPONENT_C2S))
+                                self.presence_cache[e.jid.user] = rewrite
+                                break
 
+                        # simulate presence broadcast so resolvers will insert it into their cache
+                        if rewrite:
+                            p = rewrite.presence()
+                            try:
+                                fpr = self.parent.keyring.get_fingerprint(e.jid.user)
+                                self.parent.presencedb.presence(p[0])
+                                self.parent.presencedb.public_key(e.jid.user, fpr)
+                            except keyring.KeyNotFoundException:
+                                pass
+                            self.send(p[0].toXml().encode('utf-8'))
             return
-        except:
+
+        except TypeError:
             pass
+        except:
+            import traceback
+            traceback.print_exc()
 
         # normal user unavailable
         user = jid.JID(stanza['from'])
@@ -1155,6 +1183,7 @@ class Resolver(xmlstream2.SocketComponent):
 
         storage.init(config['database'])
         self.keyring = keyring.Keyring(storage.MySQLNetworkStorage(), config['fingerprint'], self.network, self.servername, True)
+        self.presencedb = storage.MySQLPresenceStorage()
 
         self.subscriptions = {}
         self.whitelists = {}
