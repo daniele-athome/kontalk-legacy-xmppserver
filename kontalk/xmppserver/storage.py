@@ -398,7 +398,7 @@ class MySQLNetworkStorage(NetworkStorage):
         global dbpool
         conn = dbpool.connectionFactory(dbpool)
         tx = dbpool.transactionFactory(dbpool, conn)
-        tx.execute('SELECT fingerprint, host, enabled FROM servers')
+        tx.execute('SELECT fingerprint, host, enabled FROM servers ORDER BY fingerprint')
         data = tx.fetchall()
         out = {}
         for row in data:
