@@ -395,7 +395,7 @@ class InitialPresenceHandler(XMPPHandler):
 
         if sender.user:
             try:
-                component, host = util.jid_component(sender.host, util.COMPONENT_C2S)
+                unused, host = util.jid_component(sender.host, util.COMPONENT_C2S)
 
                 # initial presence from a client connected to another server, clear it from our presence table
                 if host != self.parent.servername and host in self.parent.keyring.hostlist():
