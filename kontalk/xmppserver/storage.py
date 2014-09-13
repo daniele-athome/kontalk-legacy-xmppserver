@@ -400,7 +400,7 @@ class MySQLNetworkStorage(NetworkStorage):
         tx = dbpool.transactionFactory(dbpool, conn)
         tx.execute('SELECT fingerprint, host, enabled FROM servers ORDER BY fingerprint')
         data = tx.fetchall()
-        out = {}
+        out = OrderedDict()
         for row in data:
             # { fingerprint: {host, enabled} }
             out[str(row[0]).upper()] = { 'host' : str(row[1]), 'enabled' : int(row[2]) }
