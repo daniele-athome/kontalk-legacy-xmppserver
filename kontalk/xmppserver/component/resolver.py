@@ -25,7 +25,7 @@ from datetime import datetime
 from copy import deepcopy
 
 from twisted.python import failure
-from twisted.internet import defer, reactor, task
+from twisted.internet import defer, reactor, task, threads
 from twisted.words.protocols.jabber.xmlstream import XMPPHandler
 from twisted.words.xish import domish
 from twisted.words.protocols.jabber import jid, error, xmlstream
@@ -926,13 +926,16 @@ class JIDCache(XMPPHandler):
                     keydata = base64.b64decode(keydata[len(xmlstream2.DATA_PGP_PREFIX):])
                     # import into cache keyring
                     userid = util.jid_user(stanza['from'])
-                    fpr = self.parent.keyring.check_user_key(keydata, userid)
-                    if fpr:
-                        log.debug("key cached successfully")
-                    else:
-                        log.warn("invalid key")
+                    # this chould take a lot of time (up to 500ms) so defer to a thread
+                    checkDef = threads.deferToThread(self.parent.keyring.check_user_key, keydata, userid)
+                    def _cached(fpr):
+                        if fpr:
+                            log.debug("key cached successfully")
+                        else:
+                            log.warn("invalid key")
+                        # TODO send response!!!
 
-        # TODO send response!!!
+                    checkDef.addCallback(_cached)
 
     def send_user_presence(self, gid, sender, recipient):
         stub = self.lookup(recipient)
