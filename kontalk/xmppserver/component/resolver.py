@@ -1179,6 +1179,9 @@ class Resolver(xmlstream2.SocketComponent):
         xmlstream2.SocketComponent.__init__(self, router_cfg['socket'], router_cfg['host'], router_cfg['port'], router_jid, router_cfg['secret'])
         self.config = config
 
+        # this is for queueing keyring thread requests
+        reactor.suggestThreadPoolSize(1)
+
         self.logTraffic = config['debug']
         self.network = config['network']
         self.servername = config['host']
