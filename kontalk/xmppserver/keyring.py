@@ -240,7 +240,6 @@ class Keyring:
         return fingerprint in self._enabled
 
     def get_fingerprint(self, userid):
-        """Used only by the resolver."""
         # TODO find a more efficient way
 
         if self._fingerprints is None:

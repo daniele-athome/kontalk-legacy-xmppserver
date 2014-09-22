@@ -134,11 +134,11 @@ class InitialPresenceHandler(XMPPHandler):
         log.debug("initial presence from router by %s" % (stanza['from'], ))
 
         try:
-            # receiving initial presence from remote or local resolver, send all presence data
-            component, host = util.jid_component(stanza['from'], util.COMPONENT_RESOLVER)
+            # receiving initial presence from remote c2s, send all presence data
+            unused, host = util.jid_component(stanza['from'], util.COMPONENT_C2S)
 
-            if host in self.parent.keyring.hostlist():
-                log.debug("resolver appeared, sending all local presence and vCards to %s" % (stanza['from'], ))
+            if host != self.parent.servername and host in self.parent.keyring.hostlist():
+                log.debug("remote c2s appeared, sending all local presence and vCards to %s" % (stanza['from'], ))
                 self.send_presence(stanza['from'])
 
         except:
@@ -428,13 +428,7 @@ class MessageHandler(XMPPHandler):
             self.send_ack(message, 'sent')
 
     def dispatch(self, stanza):
-        """
-        Incoming message from router.
-        A message may come from any party:
-        1. local resolver
-        2. remote c2s
-        3. remote resolver
-        """
+        """Incoming message from router."""
         if not stanza.consumed:
             if self.parent.logTraffic:
                 log.debug("incoming message: %s" % (stanza.toXml().encode('utf-8')))

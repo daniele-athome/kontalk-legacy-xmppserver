@@ -339,7 +339,7 @@ class C2SComponent(xmlstream2.SocketComponent):
             validation_expire = 0
         self.validationdb = storage.MySQLUserValidationStorage(validation_expire)
 
-        self.keyring = keyring.Keyring(storage.MySQLNetworkStorage(), self.config['fingerprint'], self.network, self.servername, disable_cache=True)
+        self.keyring = keyring.Keyring(storage.MySQLNetworkStorage(), self.config['fingerprint'], self.network, self.servername)
         authrealm = auth.SASLRealm("Kontalk")
         authportal = portal.Portal(authrealm, [auth.AuthKontalkChecker(self.config['fingerprint'], self.keyring, self._verify_fingerprint)])
 
@@ -461,15 +461,15 @@ class C2SComponent(xmlstream2.SocketComponent):
 
     def iq(self, stanza):
         """
-        Removes the from attribute if it matches the resolver JID.
-        This was actually done to "fake" IQ stanzas coming from the
-        resolver that should appear to the client as coming from nowhere.
+        Removes the from attribute if it matches the c2s JID.
+        This was actually done to "fake" IQ stanzas coming from
+        remote c2s that should appear to the client as coming from nowhere.
         """
 
         sender = stanza.getAttribute('from')
         if sender and not ('@' in sender):
-            # receiving iq from remote or local resolver, remove from attribute
-            unused, host = util.jid_component(sender, util.COMPONENT_RESOLVER)
+            # receiving iq from remote c2s, remove from attribute
+            unused, host = util.jid_component(sender, util.COMPONENT_C2S)
 
             if host in self.keyring.hostlist():
                 del stanza['from']
@@ -486,14 +486,12 @@ class C2SComponent(xmlstream2.SocketComponent):
         envelope.addChild(stanza)
         self.send(envelope)
 
+    def send(self, stanza):
+        # TODO
+        pass
+
     def dispatch(self, stanza):
-        """
-        Stanzas from router must be intended to a server JID (e.g.
-        prime.kontalk.net), since the resolver should already have resolved it.
-        Otherwise it is an error.
-        Sender host has already been translated to network JID by the resolver
-        at this point - if it's from our network.
-        """
+        """Dispatches stanzas from the router."""
 
         if not stanza.consumed:
             stanza.consumed = True
@@ -520,6 +518,8 @@ class C2SComponent(xmlstream2.SocketComponent):
                 else:
                     log.debug("stanza is not our concern or is an error")
 
+                # TODO stanzas from s2s will be network domain!! They must be resolved!
+
     def local(self, stanza):
         """Handle stanzas delivered to this component."""
         # nothing here yet...
@@ -534,48 +534,11 @@ class C2SComponent(xmlstream2.SocketComponent):
         stanza.consumed = True
 
     def _verify_fingerprint(self, userjid, fingerprint):
-        """Requests a vCard to the resolver for fingerprint matching on login."""
-
-        def _response(d, fingerprint, stanza):
-            stanza.consumed = True
-            # TODO ugly stuff
-
-            if stanza.vcard:
-                # error (TODO check if is actually vcard not found)
-                if stanza.error:
-                    d.callback(userjid)
-
-                # got vcard, check if fingerprint matches
-                elif stanza.vcard.key:
-                    # extract key data from vcard and retrieve fingerprint
-                    # we do this because of the uri member in domish.Element
-                    keydata = stanza.vcard.key.firstChildElement()
-                    if keydata.name == 'uri':
-                        keydata = str(keydata)
-
-                        if keydata.startswith(xmlstream2.DATA_PGP_PREFIX):
-                            keydata = base64.b64decode(keydata[len(xmlstream2.DATA_PGP_PREFIX):])
-                            # import into keyring
-                            fpr, unused = self.keyring.import_key(keydata)
-                            if fpr == fingerprint:
-                                d.callback(userjid)
-                            else:
-                                d.errback(Exception())
-
-        # request vcard to the resolver for fingerprint matching
-        stanzaId = util.rand_str(10)
-        d = defer.Deferred()
-        self.xmlstream.addOnetimeObserver("/iq[@id='%s']" % (stanzaId, ), _response, 0, d, fingerprint)
-
-        iq = domish.Element((None, 'iq'))
-        iq['id'] = stanzaId
-        iq['type'] = 'get'
-        iq['from'] = self.xmlstream.thisEntity.full()
-        iq['to'] = userjid.userhost()
-        iq.addElement((xmlstream2.NS_XMPP_VCARD4, 'vcard'))
-        self.send(iq)
-
-        return d
+        """Check if the given fingerprint matches with the currently cached one."""
+        if self.keyring.get_fingerprint(userjid.user) == fingerprint:
+            return defer.succeed(userjid)
+        else:
+            return defer.fail(Exception())
 
     def _local_presence_output(self, data, user):
         log.debug("data: %r" % (data, ))
@@ -640,7 +603,7 @@ class C2SComponent(xmlstream2.SocketComponent):
         """
         Called by SM when receiving a vCard from a local client.
         It checks vcard info (including public key) and if positive, sends the
-        vCard to all resolvers.
+        vCard to all remote c2s.
         @return: iq result or error stanza for the client
         """
         if self.logTraffic:
@@ -683,15 +646,16 @@ class C2SComponent(xmlstream2.SocketComponent):
                             # update presencedb
                             self.presencedb.public_key(user.user, fp)
 
-                            # send vcard to resolvers
+                            # send vcard to all remote c2s
                             for server in self.keyring.hostlist():
-                                stanza['id'] = util.rand_str(8)
-                                stanza['to'] = util.component_jid(server, util.COMPONENT_RESOLVER)
-                                # consume any response (very high priority)
-                                self.xmlstream.addOnetimeObserver("/iq[@id='%s']" % stanza['id'], self.consume, 500)
+                                if server != self.servername:
+                                    stanza['id'] = util.rand_str(8)
+                                    stanza['to'] = util.component_jid(server, util.COMPONENT_C2S)
+                                    # consume any response (very high priority)
+                                    self.xmlstream.addOnetimeObserver("/iq[@id='%s']" % stanza['id'], self.consume, 500)
 
-                                # wrap stanza in an envelope because we want errors to return to us
-                                self.send_wrapped(stanza, self.xmlstream.thisEntity.full())
+                                    # wrap stanza in an envelope because we want errors to return to us
+                                    self.send_wrapped(stanza, self.xmlstream.thisEntity.full())
 
                             # send response
                             return response
@@ -709,7 +673,7 @@ class C2SComponent(xmlstream2.SocketComponent):
             return iq
 
     def broadcast_public_key(self, userid, keydata):
-        """Broadcasts to all resolvers the given public key."""
+        """Broadcasts to all remote c2s the given public key."""
         # create vcard
         iq_vcard = domish.Element((None, 'iq'))
         iq_vcard['type'] = 'set'
@@ -722,15 +686,16 @@ class C2SComponent(xmlstream2.SocketComponent):
             vcard_data = vcard_key.addElement((None, 'uri'))
             vcard_data.addContent(xmlstream2.DATA_PGP_PREFIX + base64.b64encode(keydata))
 
-        # send vcard to resolvers
+        # send vcard to remote c2s
         for server in self.keyring.hostlist():
-            iq_vcard['id'] = util.rand_str(8)
-            # remote server
-            iq_vcard['to'] = util.component_jid(server, util.COMPONENT_RESOLVER)
-            # consume any response (very high priority)
-            self.xmlstream.addOnetimeObserver("/iq[@id='%s']" % iq_vcard['id'], self.consume, 500)
-            # send!
-            self.send_wrapped(iq_vcard, self.xmlstream.thisEntity.full())
+            if server != self.servername:
+                iq_vcard['id'] = util.rand_str(8)
+                # remote server
+                iq_vcard['to'] = util.component_jid(server, util.COMPONENT_C2S)
+                # consume any response (very high priority)
+                self.xmlstream.addOnetimeObserver("/iq[@id='%s']" % iq_vcard['id'], self.consume, 500)
+                # send!
+                self.send_wrapped(iq_vcard, self.xmlstream.thisEntity.full())
 
     def resolveJID(self, _jid):
         """Transform host attribute of JID from network name to server name."""
