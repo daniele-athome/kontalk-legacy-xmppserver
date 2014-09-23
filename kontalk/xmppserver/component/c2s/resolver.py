@@ -251,11 +251,10 @@ class JIDCache(XMPPHandler):
         self.presence_cache = {}
         self._last_lookup = 0
 
-        """ TEST TEST TEST
+        # TEST TEST TEST
         def _print_cache():
             log.debug("CACHE(%d): %r" % (len(self.presence_cache), self.presence_cache, ))
         task.LoopingCall(_print_cache).start(5)
-        """
 
     def connectionInitialized(self):
         self.xmlstream.addObserver("/presence[not(@type)]", self.onPresenceAvailable, 200)
@@ -1202,14 +1201,13 @@ class ResolverMixIn():
         return 0
 
     def local_presence(self, user, stanza):
-        user = jid.JID(stanza['from'])
         if user.user:
             if stanza.getAttribute('type') == 'unavailable':
                 self.cache.user_unavailable(stanza)
                 # forget any subscription requested by this user
-                self.parent.cancelSubscriptions(self.translateJID(user))
+                self.cancelSubscriptions(self.translateJID(user))
                 # broadcast presence
-                self.parent.broadcastSubscribers(stanza)
+                self.broadcastSubscribers(stanza)
             else:
                 self.cache.user_available(stanza)
                 self.broadcastSubscribers(stanza)

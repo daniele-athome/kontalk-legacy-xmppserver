@@ -45,9 +45,14 @@ class PresenceHandler(XMPPHandler):
 
     def connectionLost(self, reason):
         if self.xmlstream and self.xmlstream.otherEntity is not None and self.parent._presence is not None:
+            # void the current presence
+            self.presence(None)
+            # send unavailable presence
             stanza = xmppim.UnavailablePresence()
             stanza['from'] = self.xmlstream.otherEntity.full()
             self.parent.forward(stanza, True)
+            # notify c2s
+            self.parent.router.local_presence(self.xmlstream.otherEntity, stanza)
 
     def features(self):
         pass

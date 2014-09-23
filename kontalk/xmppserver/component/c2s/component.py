@@ -412,6 +412,53 @@ class C2SComponent(xmlstream2.SocketComponent, resolver.ResolverMixIn):
         else:
             log.info("disabling push notifictions")
 
+        # load local presence data
+        d = self.presencedb.get_all()
+        d.addCallback(self._presence_data)
+
+    def _presence_data(self, presence):
+        log.debug("presence: %r" % (presence, ))
+        if type(presence) == list and len(presence) > 0:
+
+            for user in presence:
+                host = util.component_jid(self.servername, util.COMPONENT_C2S)
+                response_from = jid.JID(tuple=(user['userid'], host, None)).full()
+
+                num_avail = 0
+                try:
+                    streams = self.sfactory.streams[user['userid']]
+                    for x in streams.itervalues():
+                        presence = x._presence
+                        if presence and not presence.hasAttribute('type'):
+                            self.cache.user_available(presence)
+                            num_avail += 1
+                except KeyError:
+                    pass
+
+                # no available resources - send unavailable presence
+                if not num_avail:
+                    response = domish.Element((None, 'presence'))
+                    response['from'] = response_from
+
+                    if user['status'] is not None:
+                        response.addElement((None, 'status'), content=user['status'])
+                    if user['show'] is not None:
+                        response.addElement((None, 'show'), content=user['show'])
+
+                    response['type'] = 'unavailable'
+                    delay = domish.Element(('urn:xmpp:delay', 'delay'))
+                    delay['stamp'] = user['timestamp'].strftime(xmlstream2.XMPP_STAMP_FORMAT)
+                    response.addChild(delay)
+
+                    self.cache.user_unavailable(response)
+
+                if self.logTraffic:
+                    log.debug("local presence: %s" % (response.toXml().encode('utf-8'), ))
+                else:
+                    log.debug("local presence: %s" % (response['from'], ))
+
+
+
     def uptime(self):
         return time.time() - self.start_time
 
