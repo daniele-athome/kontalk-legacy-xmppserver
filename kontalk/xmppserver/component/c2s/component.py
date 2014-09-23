@@ -46,7 +46,7 @@ from wokkel import component
 
 from kontalk.xmppserver import log, auth, keyring, util, storage, xmlstream2, tls
 from kontalk.xmppserver.component.sm import component as sm
-import handlers
+import handlers, resolver
 
 
 class XMPPServerFactory(xish_xmlstream.XmlStreamFactoryMixin, ServerFactory):
@@ -276,7 +276,7 @@ class XMPPListenAuthenticator(xmlstream.ListenAuthenticator):
             self.xmlstream.dispatch(self.xmlstream, xmlstream.STREAM_AUTHD_EVENT)
 
 
-class C2SComponent(xmlstream2.SocketComponent):
+class C2SComponent(xmlstream2.SocketComponent, resolver.ResolverMixIn):
     """
     Kontalk c2s component.
     L{StreamManager} is for the connection with the router.
@@ -304,6 +304,9 @@ class C2SComponent(xmlstream2.SocketComponent):
 
         router_jid = '%s.%s' % (router_cfg['jid'], config['host'])
         xmlstream2.SocketComponent.__init__(self, router_cfg['socket'], router_cfg['host'], router_cfg['port'], router_jid, router_cfg['secret'])
+
+        resolver.ResolverMixIn.__init__(self)
+
         self.config = config
         self.logTraffic = config['debug']
         self.network = config['network']
@@ -448,12 +451,8 @@ class C2SComponent(xmlstream2.SocketComponent):
         self.xmlstream.addObserver("/iq", self.dispatch)
         # <message/> has its own handler
 
-        # bind to servername route
-        """
-        bind = domish.Element((None, 'bind'))
-        bind['name'] = self.servername
-        xs.send(bind)
-        """
+        # resolver stuff
+        resolver.ResolverMixIn._authd(self, xs)
 
     def _disconnected(self, reason):
         component.Component._disconnected(self, reason)
@@ -486,9 +485,105 @@ class C2SComponent(xmlstream2.SocketComponent):
         envelope.addChild(stanza)
         self.send(envelope)
 
-    def send(self, stanza):
-        # TODO
-        pass
+    def send(self, stanza, force_delivery=False, force_bare=False):
+        """
+        Resolves stanza recipient and send the stanza to the router.
+        @todo document parameters
+        """
+
+        # send raw xml if you really know what you are doing
+        if not domish.IElement.providedBy(stanza):
+            return component.Component.send(self, stanza)
+
+        util.resetNamespace(stanza, component.NS_COMPONENT_ACCEPT)
+
+        # force host in sender
+        component_jid = util.component_jid(self.servername, util.COMPONENT_C2S)
+        sender = jid.JID(stanza['from'])
+        if sender.host == self.network:
+            sender.host = component_jid
+            stanza['from'] = sender.full()
+
+        if not stanza.hasAttribute('to'):
+            # no destination - send to router
+            component.Component.send(self, stanza)
+            return
+
+        # save original recipient for later
+        stanza['original-to'] = stanza['to']
+        to = jid.JID(stanza['to'])
+
+        # stanza is intended to the network
+        if to.full() == self.network or to.host == component_jid:
+            # TODO
+            log.debug("stanza for the network: %s" % (stanza.toXml(), ))
+            return
+
+        # network JID - resolve and send to router
+        elif to.host == self.network:
+            rcpts = self.cache.lookup(to)
+            log.debug("rcpts = %r" % (rcpts, ))
+
+            if not rcpts:
+                if not stanza.consumed:
+                    stanza.consumed = True
+                    log.debug("JID %s not found" % (to.full(), ))
+                    e = error.StanzaError('item-not-found', 'cancel')
+                    component.Component.send(self, e.toResponse(stanza))
+                else:
+                    log.debug("JID %s not found (stanza has been consumed)" % (to.full(), ))
+                    return
+            else:
+                """
+                Stanza delivery rules
+                1. deliver to all available resources
+                2. destination was a bare JID
+                  a. if all resources are unavailable, deliver to the first network bare JID (then return)
+                3. destination was a full JID:
+                  a. deliver to full JID
+                """
+                log.debug("JID found: %r" % (rcpts, ))
+                stanza.consumed = True
+
+                jids = rcpts.jids()
+
+                # destination was a full JID
+                if to.resource and not force_bare:
+                    # no available resources, deliver to bare JID if force delivery
+                    if len(jids) == 0 and force_delivery:
+                        stanza['to'] = rcpts.jid.userhost()
+                        component.Component.send(self, stanza)
+                    # deliver if resource is available
+                    else:
+                        sent = False
+                        for _to in jids:
+                            if _to.resource == to.resource:
+                                stanza['to'] = _to.full()
+                                component.Component.send(self, stanza)
+                                sent = True
+                                break
+
+                        # if sent=False it means that the intended resource has vanished
+                        # if force delivery is enabled, deliver to the first available resource
+                        if not sent and len(jids) > 0 and force_delivery:
+                            stanza['to'] = jids[0].full()
+                            component.Component.send(self, stanza)
+
+                # destination was a bare JID
+                else:
+                    log.debug("destination was a bare JID (force_bare=%s)" % (force_bare, ))
+                    # no available resources, send to first network bare JID
+                    if len(jids) == 0 or force_bare:
+                        stanza['to'] = rcpts.jid.userhost()
+                        component.Component.send(self, stanza)
+                    else:
+                        for _to in jids:
+                            stanza['to'] = _to.full()
+                            component.Component.send(self, stanza)
+
+        # otherwise send to router
+        else:
+            component.Component.send(self, stanza)
 
     def dispatch(self, stanza):
         """Dispatches stanzas from the router."""
@@ -598,6 +693,9 @@ class C2SComponent(xmlstream2.SocketComponent):
             # initial presence - deliver offline storage
             d = self.stanzadb.get_by_recipient(user)
             d.addCallback(self._local_presence_output, user)
+
+        # send to resolver and cache
+        resolver.ResolverMixIn.local_presence(self, user, stanza)
 
     def local_vcard(self, user, stanza):
         """

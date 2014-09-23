@@ -268,7 +268,8 @@ class JIDCache(XMPPHandler):
         self.xmlstream.addObserver("/iq[@type='get']/vcard[@xmlns='%s']" % (xmlstream2.NS_XMPP_VCARD4, ), self.onVCardGet, 600)
 
     def wrapped(self, stanza, fn):
-        fn(stanza.firstChildElement())
+        if stanza.getAttribute('type') != 'error':
+            fn(stanza.firstChildElement())
 
     def onPresenceAvailable(self, stanza):
         """Handle availability presence stanzas."""
@@ -633,3 +634,582 @@ class JIDCache(XMPPHandler):
             return self.presence_cache[_jid.user]
         except:
             pass
+
+
+class PrivacyListHandler(XMPPHandler):
+    """
+    Handle IQ urn:xmpp:blocking stanzas.
+    @type parent: L{Resolver}
+    """
+
+    """
+    TODO this needs some versioning or timestamping. When receiving a new privacy
+    list, it will have a timestamp to indicate its versioning. The most recent
+    will take precedence.
+    """
+
+    def connectionInitialized(self):
+        self.xmlstream.addObserver("/iq[@type='set']/blocklist[@xmlns='%s']" % (xmlstream2.NS_IQ_BLOCKING), self.blacklist, 100)
+        self.xmlstream.addObserver("/iq[@type='set']/whitelist[@xmlns='%s']" % (xmlstream2.NS_IQ_BLOCKING), self.whitelist, 100)
+        self.xmlstream.addObserver("/iq[@type='set']/allow[@xmlns='%s']" % (xmlstream2.NS_IQ_BLOCKING), self.allow, 100)
+        self.xmlstream.addObserver("/iq[@type='set']/unallow[@xmlns='%s']" % (xmlstream2.NS_IQ_BLOCKING), self.unallow, 100)
+        self.xmlstream.addObserver("/iq[@type='set']/block[@xmlns='%s']" % (xmlstream2.NS_IQ_BLOCKING), self.block, 100)
+        self.xmlstream.addObserver("/iq[@type='set']/unblock[@xmlns='%s']" % (xmlstream2.NS_IQ_BLOCKING), self.unblock, 100)
+        self.xmlstream.addObserver("/iq[@type='get']/blocklist[@xmlns='%s']" % (xmlstream2.NS_IQ_BLOCKING), self.get_blacklist, 100)
+
+    def get_blacklist(self, stanza):
+        iq = xmlstream.toResponse(stanza, 'result')
+        iq['to'] = stanza['from']
+        blocklist = iq.addElement((xmlstream2.NS_IQ_BLOCKING, 'blocklist'))
+
+        wl = self.parent.get_blacklist(jid.JID(stanza['from']))
+        if wl:
+            for item in wl:
+                elem = blocklist.addElement((None, 'item'))
+                elem['jid'] = item
+
+        self.send(iq)
+
+    def _blacklist(self, jid_from, items, remove=False, broadcast=True):
+        if remove:
+            fn = self.parent.remove_blacklist
+        else:
+            fn = self.parent.add_blacklist
+
+        for it in items:
+            jid_to = jid.JID(it['jid'])
+            fn(jid_from, jid_to, broadcast)
+
+    def _whitelist(self, jid_from, items, remove=False, broadcast=True):
+        if remove:
+            fn = self.parent.remove_whitelist
+        else:
+            fn = self.parent.add_whitelist
+
+        for it in items:
+            jid_to = jid.JID(it['jid'])
+            fn(jid_from, jid_to, broadcast)
+
+    def blacklist(self, stanza):
+        jid_from = jid.JID(stanza['from'])
+        items = stanza.blocklist.elements(uri=xmlstream2.NS_IQ_BLOCKING, name='item')
+        if items:
+            # FIXME shouldn't we replace instead of just adding?
+            self._blacklist(jid_from, items, broadcast=False)
+
+        self.parent.result(stanza)
+
+    def whitelist(self, stanza):
+        jid_from = jid.JID(stanza['from'])
+        items = stanza.whitelist.elements(uri=xmlstream2.NS_IQ_BLOCKING, name='item')
+        if items:
+            # FIXME shouldn't we replace instead of just adding?
+            self._whitelist(jid_from, items, broadcast=False)
+
+        self.parent.result(stanza)
+
+    def allow(self, stanza):
+        jid_from = jid.JID(stanza['from'])
+        broadcast = (jid_from.host == util.component_jid(self.parent.servername, util.COMPONENT_C2S))
+        items = stanza.allow.elements(uri=xmlstream2.NS_IQ_BLOCKING, name='item')
+        if items:
+            self._whitelist(jid_from, items, broadcast=broadcast)
+
+        if broadcast:
+            self.parent.result(stanza)
+
+    def unallow(self, stanza):
+        jid_from = jid.JID(stanza['from'])
+        broadcast = (jid_from.host == util.component_jid(self.parent.servername, util.COMPONENT_C2S))
+        items = stanza.unallow.elements(uri=xmlstream2.NS_IQ_BLOCKING, name='item')
+        if items:
+            self._whitelist(jid_from, items, True, broadcast=broadcast)
+
+        if broadcast:
+            self.parent.result(stanza)
+
+    def block(self, stanza):
+        jid_from = jid.JID(stanza['from'])
+        broadcast = (jid_from.host == util.component_jid(self.parent.servername, util.COMPONENT_C2S))
+        items = stanza.block.elements(uri=xmlstream2.NS_IQ_BLOCKING, name='item')
+        if items:
+            self._blacklist(jid_from, items, broadcast=broadcast)
+
+        if broadcast:
+            self.parent.result(stanza)
+
+    def unblock(self, stanza):
+        jid_from = jid.JID(stanza['from'])
+        broadcast = (jid_from.host == util.component_jid(self.parent.servername, util.COMPONENT_C2S))
+        items = stanza.unblock.elements(uri=xmlstream2.NS_IQ_BLOCKING, name='item')
+        if items:
+            self._blacklist(jid_from, items, True, broadcast=broadcast)
+
+        if broadcast:
+            self.parent.result(stanza)
+
+
+class PresenceHandler(XMPPHandler):
+    """
+    Handle presence stanzas.
+    @ivar parent: resolver instance
+    @type parent: L{Resolver}
+    """
+
+    def connectionInitialized(self):
+        self.xmlstream.addObserver("/presence[not(@type)]", self.onPresenceAvailable, 100)
+        self.xmlstream.addObserver("/presence[@type='unavailable']", self.onPresenceUnavailable, 100)
+        self.xmlstream.addObserver("/presence[@type='subscribe']", self.onSubscribe, 100)
+        self.xmlstream.addObserver("/presence[@type='unsubscribe']", self.onUnsubscribe, 100)
+        self.xmlstream.addObserver("/presence[@type='subscribed']", self.onSubscribed, 600)
+
+    def onPresenceAvailable(self, stanza):
+        """Handle available presence stanzas."""
+
+        if stanza.consumed:
+            return
+
+        try:
+            # initial presence from a remote resolver
+            component, host = util.jid_component(stanza['from'], util.COMPONENT_C2S)
+
+            if host != self.parent.servername and host in self.parent.keyring.hostlist():
+                self.send_privacy_lists('blocklist', self.parent.blacklists, stanza['from'])
+                self.send_privacy_lists('whitelist', self.parent.whitelists, stanza['from'])
+
+        except:
+            pass
+
+        self.parent.broadcastSubscribers(stanza)
+
+    def send_privacy_lists(self, pname, plist, addr_from):
+        for user, wl in plist.iteritems():
+            iq = domish.Element((None, 'iq'))
+            iq['from'] = '%s@%s' % (user, self.parent.network)
+            iq['type'] = 'set'
+            iq['id'] = util.rand_str(8)
+            iq['to'] = addr_from
+            allow = iq.addElement((xmlstream2.NS_IQ_BLOCKING, pname))
+
+            for item in wl:
+                elem = allow.addElement((None, 'item'))
+                elem['jid'] = item
+
+            self.parent.send(iq)
+
+    def onPresenceUnavailable(self, stanza):
+        """Handle unavailable presence stanzas."""
+
+        if stanza.consumed:
+            return
+
+        user = jid.JID(stanza['from'])
+        # forget any subscription requested by this user
+        self.parent.cancelSubscriptions(self.parent.translateJID(user))
+        # broadcast presence
+        self.parent.broadcastSubscribers(stanza)
+
+    def onSubscribe(self, stanza):
+        """Handle subscription requests."""
+
+        if stanza.consumed:
+            return
+
+        if self.parent.logTraffic:
+            log.debug("subscription request: %s" % (stanza.toXml(), ))
+        else:
+            log.debug("subscription request to %s from %s" % (stanza['to'], stanza['from']))
+
+        # extract jid the user wants to subscribe to
+        jid_to = jid.JID(stanza['to'])
+        jid_from = jid.JID(stanza['from'])
+
+        # are we subscribing to a user we have blocked?
+        if self.parent.is_presence_allowed(jid_to, jid_from) == -1:
+            log.debug("subscribing to blocked user, bouncing error")
+            e = error.StanzaError('not-acceptable', 'cancel')
+            errstanza = e.toResponse(stanza)
+            errstanza.error.addElement((xmlstream2.NS_IQ_BLOCKING_ERRORS, 'blocked'))
+            self.send(errstanza)
+
+        else:
+            if not self.parent.subscribe(self.parent.translateJID(jid_from),
+                    self.parent.translateJID(jid_to), stanza.getAttribute('id')):
+                e = error.StanzaError('item-not-found')
+                self.send(e.toResponse(stanza))
+
+    def onUnsubscribe(self, stanza):
+        """Handle unsubscription requests."""
+
+        if stanza.consumed:
+            return
+
+        if self.parent.logTraffic:
+            log.debug("unsubscription request: %s" % (stanza.toXml(), ))
+        else:
+            log.debug("unsubscription request to %s from %s" % (stanza['to'], stanza['from']))
+
+        # extract jid the user wants to unsubscribe from
+        jid_to = jid.JID(stanza['to'])
+        jid_from = jid.JID(stanza['from'])
+
+        self.parent.unsubscribe(self.parent.translateJID(jid_to),
+            self.parent.translateJID(jid_from))
+
+    def onSubscribed(self, stanza):
+        if stanza.consumed:
+            return
+
+        log.debug("user %s accepted subscription by %s" % (stanza['from'], stanza['to']))
+        stanza.consumed = True
+        jid_to = jid.JID(stanza['to'])
+
+        jid_from = jid.JID(stanza['from'])
+
+        # add "to" user to whitelist of "from" user
+        self.parent.add_whitelist(jid_from, jid_to)
+
+        log.debug("SUBSCRIPTION SUCCESSFUL")
+
+        if self.parent.cache.jid_available(jid_from):
+            # send subscription accepted immediately and subscribe
+            # TODO this is wrong, but do it for the moment until we find a way to handle this case
+            self.parent.doSubscribe(jid_from, jid_to, stanza.getAttribute('id'), response_only=False)
+
+
+class ResolverMixIn():
+
+    _protocolHandlers = (
+        JIDCache,
+        PrivacyListHandler,
+        PresenceHandler,
+    )
+    """
+    RosterHandler,
+    IQHandler,
+    MessageHandler,
+    """
+
+    WHITELIST = 1
+    BLACKLIST = 2
+
+    def __init__(self):
+        self.servername = None
+        self.network = None
+        self.keyring = None
+        self.cache = None
+
+        # active subscriptions
+        self.subscriptions = {}
+        # whitelists
+        self.whitelists = {}
+        # blacklists
+        self.blacklists = {}
+
+        # resolver handlers
+        for handler in self._protocolHandlers:
+            inst = handler()
+            if handler == JIDCache:
+                self.cache = inst
+            inst.setHandlerParent(self)
+
+    def _authd(self, xs):
+        # bind to network route
+        bind = domish.Element((None, 'bind'))
+        bind['name'] = self.network
+        bind.addElement((None, 'private'))
+        xs.send(bind)
+
+    def translateJID(self, _jid, resource=True):
+        """
+        Translate a server JID (user@component.prime.kontalk.net) into a network JID
+        (user@kontalk.net).
+        """
+        # TODO ehm :D
+        try:
+            unused, host = util.jid_component(_jid.host)
+            if host in self.keyring.hostlist():
+                return jid.JID(tuple=(_jid.user, self.network, _jid.resource if resource else None))
+        except ValueError:
+            pass
+
+        return _jid if resource else _jid.userhostJID()
+
+    def cancelSubscriptions(self, user):
+        """Cancel all subscriptions requested by the given user."""
+        for rlist in self.subscriptions.itervalues():
+            for sub in list(rlist):
+                if sub == user:
+                    rlist.remove(sub)
+
+    def subscribe(self, jid_from, jid_to, gid=None, send_subscribed=True):
+        if jid_to.host == self.network and not self.cache.lookup(jid_to):
+            log.debug("user %s not found, rejecting subscription request" % (jid_to, ))
+            # no point in proceeding if user does not exists
+            return False
+
+        allowed = self.is_presence_allowed(jid_from, jid_to)
+
+        if allowed == 1:
+            self.doSubscribe(jid_to, jid_from, gid, send_subscribed=send_subscribed)
+        elif allowed == -1:
+            log.debug("user is blacklisted, ignoring request")
+        else:
+            log.debug("not authorized to subscribe to user's presence, sending request")
+            try:
+                stanza = domish.Element((None, 'presence'))
+                stanza['type'] = 'subscribe'
+                stanza['from'] = jid_from.full()
+                stanza['to'] = jid_to.full()
+
+                fpr = self.keyring.get_fingerprint(jid_from.user)
+                keydata = self.keyring.get_key(jid_from.user, fpr)
+                pubkey = stanza.addElement(('urn:xmpp:pubkey:2', 'pubkey'))
+
+                # key data
+                key = pubkey.addElement((None, 'key'))
+                key.addContent(base64.b64encode(keydata))
+
+                # fingerprint
+                fprint = pubkey.addElement((None, 'print'))
+                fprint.addContent(fpr)
+
+                self.send(stanza)
+            except:
+                import traceback
+                traceback.print_exc()
+                return False
+
+        return True
+
+    def doSubscribe(self, to, subscriber, gid=None, response_only=False, send_subscribed=True):
+        """Subscribe a given user to events from another one."""
+
+        if not response_only:
+            try:
+                if subscriber not in self.subscriptions[to]:
+                    self.subscriptions[to].append(subscriber)
+            except:
+                self.subscriptions[to] = [subscriber]
+
+            log.debug("subscriptions: %r" % (self.subscriptions, ))
+
+        if send_subscribed:
+            # send subscription accepted immediately
+            pres = domish.Element((None, "presence"))
+            if gid:
+                pres['id'] = gid
+            pres['to'] = subscriber.full()
+            pres['from'] = to.userhost()
+            pres['type'] = 'subscribed'
+            self.send(pres)
+
+        if not response_only:
+            # simulate a presence probe response
+            if not gid:
+                gid = util.rand_str(8)
+            self.cache.send_user_presence(gid, subscriber, to)
+
+        """
+        # send a fake roster entry
+        roster = domish.Element((None, 'iq'))
+        roster['type'] = 'set'
+        roster['to'] = subscriber.full()
+        query = domish.Element((xmlstream2.NS_IQ_ROSTER, 'query'))
+        query.addChild(domish.Element((None, 'item'), attribs={
+            'jid'           : to.userhost(),
+            'subscription'  : 'both',
+        }))
+        roster.addChild(query)
+        self.send(roster)
+        """
+
+    def unsubscribe(self, to, subscriber):
+        """Unsubscribe a given user from events from another one."""
+        try:
+            self.subscriptions[to].remove(subscriber)
+
+            # clean up
+            if len(self.subscriptions[to]) == 0:
+                del self.subscriptions[to]
+        except:
+            pass
+
+    def broadcastSubscribers(self, stanza):
+        """Broadcast stanza to JID subscribers."""
+
+        user = jid.JID(stanza['from'])
+
+        try:
+            unused, host = util.jid_component(user.host)
+
+            # FIXME wrong host check (this is a one of the causes of the invalid-from bug)
+            if host == self.servername or host in self.keyring.hostlist():
+                # local or network user: translate host name
+                watched = jid.JID(tuple=(user.user, self.network, user.resource))
+            else:
+                # other JIDs, use unchanged
+                watched = user
+
+        except ValueError:
+            # other JIDs, use unchanged
+            watched = user
+
+        #log.debug("checking subscriptions to %s" % (watched.full(), ))
+        bareWatched = watched.userhostJID()
+        if bareWatched in self.subscriptions:
+            #stanza['from'] = watched.full()
+
+            removed = []
+            for sub in self.subscriptions[bareWatched]:
+                if self.is_presence_allowed(sub, watched) == 1:
+                    log.debug("notifying subscriber %s" % (sub, ))
+                    stanza['to'] = sub.userhost()
+                    self.send(stanza)
+                else:
+                    log.debug("%s is not allowed to see presence" % (sub, ))
+                    removed.append(sub)
+
+            # remove unauthorized users
+            for e in removed:
+                self.subscriptions[bareWatched].remove(e)
+
+    def _broadcast_privacy_list_change(self, dest, src, node):
+        # broadcast to all resolvers
+        iq = domish.Element((None, 'iq'))
+        iq['from'] = dest
+        iq['type'] = 'set'
+        iq['id'] = util.rand_str(8)
+        nodeElement = iq.addElement((xmlstream2.NS_IQ_BLOCKING, node))
+        elem = nodeElement.addElement((None, 'item'))
+        elem['jid'] = src
+
+        for server in self.keyring.hostlist():
+            if server != self.servername:
+                iq['to'] = util.component_jid(server, util.COMPONENT_C2S)
+                self.send(iq)
+
+    def _privacy_list_add(self, jid_to, jid_from, list_type, broadcast=True):
+        if list_type == self.WHITELIST:
+            node = 'allow'
+            data = self.whitelists
+        elif list_type == self.BLACKLIST:
+            node = 'block'
+            data = self.blacklists
+
+        try:
+            wl = data[jid_to.user]
+        except KeyError:
+            wl = data[jid_to.user] = set()
+
+        src = self.translateJID(jid_to, False).userhost()
+        dest = self.translateJID(jid_from, False).userhost()
+
+        wl.add(dest)
+
+        # broadcast to all resolvers
+        if broadcast:
+            self._broadcast_privacy_list_change(src, dest, node)
+
+    def _privacy_list_remove(self, jid_to, jid_from, list_type, broadcast=True):
+        if list_type == self.WHITELIST:
+            node = 'unallow'
+            data = self.whitelists
+        elif list_type == self.BLACKLIST:
+            node = 'unblock'
+            data = self.blacklists
+
+        if jid_to.user in data:
+            wl = data[jid_to.user]
+
+            src = self.translateJID(jid_to, False).userhost()
+            dest = self.translateJID(jid_from, False).userhost()
+
+            wl.discard(dest)
+
+            # broadcast to all resolvers
+            if broadcast:
+                self._broadcast_privacy_list_change(src, dest, node)
+
+    def add_blacklist(self, jid_to, jid_from, broadcast=True):
+        """Adds jid_from to jid_to's blacklist."""
+        self._privacy_list_add(jid_to, jid_from, self.BLACKLIST, broadcast)
+
+    def add_whitelist(self, jid_to, jid_from, broadcast=True):
+        """Adds jid_from to jid_to's whitelist."""
+        self._privacy_list_add(jid_to, jid_from, self.WHITELIST, broadcast)
+
+    def remove_blacklist(self, jid_to, jid_from, broadcast=True):
+        """Removes jid_from from jid_to's blacklist."""
+        self._privacy_list_remove(jid_to, jid_from, self.BLACKLIST, broadcast)
+
+    def remove_whitelist(self, jid_to, jid_from, broadcast=True):
+        """Removes jid_from from jid_to's whitelist."""
+        self._privacy_list_remove(jid_to, jid_from, self.WHITELIST, broadcast)
+
+    def get_whitelist(self, _jid):
+        try:
+            return self.whitelists[_jid.user]
+        except KeyError:
+            return None
+
+    def get_blacklist(self, _jid):
+        try:
+            return self.blacklists[_jid.user]
+        except KeyError:
+            return None
+
+    def is_presence_allowed(self, jid_from, jid_to):
+        """
+        Checks if requester (from) is allowed to see a user's (to) presence.
+        @return 1 if allowed, 0 if not allowed, -1 if blacklisted, -2 if user not found
+        """
+
+        if not self.cache.lookup(jid_to):
+            return -2
+
+        # servers are allowed to subscribe to user presence
+        if not jid_from.user:
+            return 1
+
+        # translate to network JID first
+        jid_from = self.translateJID(jid_from, False)
+        translated_to = self.translateJID(jid_to, False)
+
+        # talking to ourselves :)
+        if jid_from == translated_to:
+            return 1
+
+        # blacklist has priority
+        try:
+            bl = self.blacklists[jid_to.user]
+            if jid_from.userhost() in bl:
+                return -1
+
+        except KeyError:
+            # blacklist not present for user - go ahead
+            pass
+
+        try:
+            wl = self.whitelists[jid_to.user]
+            if jid_from.userhost() in wl:
+                return 1
+
+        except KeyError:
+            # whitelist not present for the user - not authorized
+            pass
+
+        return 0
+
+    def local_presence(self, user, stanza):
+        user = jid.JID(stanza['from'])
+        if user.user:
+            if stanza.getAttribute('type') == 'unavailable':
+                self.cache.user_unavailable(stanza)
+                # forget any subscription requested by this user
+                self.parent.cancelSubscriptions(self.translateJID(user))
+                # broadcast presence
+                self.parent.broadcastSubscribers(stanza)
+            else:
+                self.cache.user_available(stanza)
+                self.broadcastSubscribers(stanza)
