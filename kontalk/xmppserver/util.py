@@ -142,8 +142,6 @@ def hostjid_local(component, component_object, host):
     # depending on the component, one of network or server name must be chosen
     if component == COMPONENT_C2S:
         check = component_object.servername
-    elif component == COMPONENT_RESOLVER:
-        check = component_object.network
     else:
         check = None
 
