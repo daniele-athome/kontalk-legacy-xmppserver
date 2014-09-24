@@ -263,12 +263,8 @@ class JIDCache(XMPPHandler):
         self.xmlstream.addObserver("/presence[@type='probe']", self.onProbe, 600)
         # vCards MUST be handled by server so the high priority
         self.xmlstream.addObserver("/iq[@type='set']/vcard[@xmlns='%s']" % (xmlstream2.NS_XMPP_VCARD4, ), self.onVCardSet, 600)
-        self.xmlstream.addObserver("/stanza/iq[@type='set']/vcard[@xmlns='%s']" % (xmlstream2.NS_XMPP_VCARD4, ), self.wrapped, 600, fn=self.onVCardSet)
+        self.xmlstream.addObserver("/stanza/iq[@type='set']/vcard[@xmlns='%s']" % (xmlstream2.NS_XMPP_VCARD4, ), self.parent.wrapped, 600, fn=self.onVCardSet)
         self.xmlstream.addObserver("/iq[@type='get']/vcard[@xmlns='%s']" % (xmlstream2.NS_XMPP_VCARD4, ), self.onVCardGet, 600)
-
-    def wrapped(self, stanza, fn):
-        if stanza.getAttribute('type') != 'error':
-            fn(stanza.firstChildElement())
 
     def onPresenceAvailable(self, stanza):
         """Handle availability presence stanzas."""
@@ -651,6 +647,7 @@ class PrivacyListHandler(XMPPHandler):
         self.xmlstream.addObserver("/iq[@type='set']/blocklist[@xmlns='%s']" % (xmlstream2.NS_IQ_BLOCKING), self.blacklist, 100)
         self.xmlstream.addObserver("/iq[@type='set']/whitelist[@xmlns='%s']" % (xmlstream2.NS_IQ_BLOCKING), self.whitelist, 100)
         self.xmlstream.addObserver("/iq[@type='set']/allow[@xmlns='%s']" % (xmlstream2.NS_IQ_BLOCKING), self.allow, 100)
+        self.xmlstream.addObserver("/stanza/iq[@type='set']/iq[@type='set']/allow[@xmlns='%s']" % (xmlstream2.NS_IQ_BLOCKING, ), self.parent.wrapped, 600, fn=self.allow)
         self.xmlstream.addObserver("/iq[@type='set']/unallow[@xmlns='%s']" % (xmlstream2.NS_IQ_BLOCKING), self.unallow, 100)
         self.xmlstream.addObserver("/iq[@type='set']/block[@xmlns='%s']" % (xmlstream2.NS_IQ_BLOCKING), self.block, 100)
         self.xmlstream.addObserver("/iq[@type='set']/unblock[@xmlns='%s']" % (xmlstream2.NS_IQ_BLOCKING), self.unblock, 100)
@@ -758,9 +755,6 @@ class PresenceHandler(XMPPHandler):
     def connectionInitialized(self):
         self.xmlstream.addObserver("/presence[not(@type)]", self.onPresenceAvailable, 100)
         self.xmlstream.addObserver("/presence[@type='unavailable']", self.onPresenceUnavailable, 100)
-        self.xmlstream.addObserver("/presence[@type='subscribe']", self.onSubscribe, 100)
-        self.xmlstream.addObserver("/presence[@type='unsubscribe']", self.onUnsubscribe, 100)
-        self.xmlstream.addObserver("/presence[@type='subscribed']", self.onSubscribed, 600)
 
     def onPresenceAvailable(self, stanza):
         """Handle available presence stanzas."""
@@ -808,73 +802,6 @@ class PresenceHandler(XMPPHandler):
         # broadcast presence
         self.parent.broadcastSubscribers(stanza)
 
-    def onSubscribe(self, stanza):
-        """Handle subscription requests."""
-
-        if stanza.consumed:
-            return
-
-        if self.parent.logTraffic:
-            log.debug("subscription request: %s" % (stanza.toXml(), ))
-        else:
-            log.debug("subscription request to %s from %s" % (stanza['to'], stanza['from']))
-
-        # extract jid the user wants to subscribe to
-        jid_to = jid.JID(stanza['to'])
-        jid_from = jid.JID(stanza['from'])
-
-        # are we subscribing to a user we have blocked?
-        if self.parent.is_presence_allowed(jid_to, jid_from) == -1:
-            log.debug("subscribing to blocked user, bouncing error")
-            e = error.StanzaError('not-acceptable', 'cancel')
-            errstanza = e.toResponse(stanza)
-            errstanza.error.addElement((xmlstream2.NS_IQ_BLOCKING_ERRORS, 'blocked'))
-            self.send(errstanza)
-
-        else:
-            if not self.parent.subscribe(self.parent.translateJID(jid_from),
-                    self.parent.translateJID(jid_to), stanza.getAttribute('id')):
-                e = error.StanzaError('item-not-found')
-                self.send(e.toResponse(stanza))
-
-    def onUnsubscribe(self, stanza):
-        """Handle unsubscription requests."""
-
-        if stanza.consumed:
-            return
-
-        if self.parent.logTraffic:
-            log.debug("unsubscription request: %s" % (stanza.toXml(), ))
-        else:
-            log.debug("unsubscription request to %s from %s" % (stanza['to'], stanza['from']))
-
-        # extract jid the user wants to unsubscribe from
-        jid_to = jid.JID(stanza['to'])
-        jid_from = jid.JID(stanza['from'])
-
-        self.parent.unsubscribe(self.parent.translateJID(jid_to),
-            self.parent.translateJID(jid_from))
-
-    def onSubscribed(self, stanza):
-        if stanza.consumed:
-            return
-
-        log.debug("user %s accepted subscription by %s" % (stanza['from'], stanza['to']))
-        stanza.consumed = True
-        jid_to = jid.JID(stanza['to'])
-
-        jid_from = jid.JID(stanza['from'])
-
-        # add "to" user to whitelist of "from" user
-        self.parent.add_whitelist(jid_from, jid_to)
-
-        log.debug("SUBSCRIPTION SUCCESSFUL")
-
-        if self.parent.cache.jid_available(jid_from):
-            # send subscription accepted immediately and subscribe
-            # TODO this is wrong, but do it for the moment until we find a way to handle this case
-            self.parent.doSubscribe(jid_from, jid_to, stanza.getAttribute('id'), response_only=False)
-
 
 class ResolverMixIn():
 
@@ -918,6 +845,20 @@ class ResolverMixIn():
         bind['name'] = self.network
         bind.addElement((None, 'private'))
         xs.send(bind)
+
+    def send(self, stanza):
+        pass
+
+    def send_wrapped(self, stanza, sender, destination=None):
+        """
+        Wraps the given stanza in a <stanza/> stanza intended to the given
+        recipient. If recipient is None, the "to" of the original stanza is used.
+        """
+        envelope = domish.Element((None, 'stanza'))
+        envelope['from'] = sender
+        envelope['to'] = destination if destination else stanza['to']
+        envelope.addChild(stanza)
+        self.send(envelope)
 
     def translateJID(self, _jid, resource=True):
         """
@@ -1054,7 +995,8 @@ class ResolverMixIn():
             # other JIDs, use unchanged
             watched = user
 
-        #log.debug("checking subscriptions to %s" % (watched.full(), ))
+        log.debug("checking subscriptions to %s" % (watched.full(), ))
+        log.debug("subscriptions: %s" % (self.subscriptions, ))
         bareWatched = watched.userhostJID()
         if bareWatched in self.subscriptions:
             #stanza['from'] = watched.full()
@@ -1083,10 +1025,11 @@ class ResolverMixIn():
         elem = nodeElement.addElement((None, 'item'))
         elem['jid'] = src
 
+        from_component = util.component_jid(self.servername, util.COMPONENT_C2S)
         for server in self.keyring.hostlist():
             if server != self.servername:
                 iq['to'] = util.component_jid(server, util.COMPONENT_C2S)
-                self.send(iq)
+                self.send_wrapped(iq, from_component)
 
     def _privacy_list_add(self, jid_to, jid_from, list_type, broadcast=True):
         if list_type == self.WHITELIST:
@@ -1211,3 +1154,7 @@ class ResolverMixIn():
             else:
                 self.cache.user_available(stanza)
                 self.broadcastSubscribers(stanza)
+
+    def wrapped(self, stanza, fn):
+        if stanza.getAttribute('type') != 'error':
+            fn(stanza.firstChildElement())

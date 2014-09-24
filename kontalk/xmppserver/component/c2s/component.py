@@ -292,7 +292,6 @@ class C2SComponent(xmlstream2.SocketComponent, resolver.ResolverMixIn):
         handlers.InitialPresenceHandler,
         handlers.PresenceProbeHandler,
         handlers.LastActivityHandler,
-        handlers.PresenceSubscriptionHandler,
         handlers.MessageHandler,
     )
 
@@ -457,8 +456,6 @@ class C2SComponent(xmlstream2.SocketComponent, resolver.ResolverMixIn):
                 else:
                     log.debug("local presence: %s" % (response['from'], ))
 
-
-
     def uptime(self):
         return time.time() - self.start_time
 
@@ -520,18 +517,6 @@ class C2SComponent(xmlstream2.SocketComponent, resolver.ResolverMixIn):
             if host in self.keyring.hostlist():
                 del stanza['from']
 
-    def send_wrapped(self, stanza, sender, destination=None):
-        """
-        Wraps the given stanza in a <stanza/> stanza intended to the given
-        recipient. If recipient is None, the "to" of the original stanza is used.
-        """
-
-        envelope = domish.Element((None, 'stanza'))
-        envelope['from'] = sender
-        envelope['to'] = destination if destination else stanza['to']
-        envelope.addChild(stanza)
-        self.send(envelope)
-
     def send(self, stanza, force_delivery=False, force_bare=False):
         """
         Resolves stanza recipient and send the stanza to the router.
@@ -576,7 +561,7 @@ class C2SComponent(xmlstream2.SocketComponent, resolver.ResolverMixIn):
                     stanza.consumed = True
                     log.debug("JID %s not found" % (to.full(), ))
                     e = error.StanzaError('item-not-found', 'cancel')
-                    component.Component.send(self, e.toResponse(stanza))
+                    self.dispatch(e.toResponse(stanza))
                 else:
                     log.debug("JID %s not found (stanza has been consumed)" % (to.full(), ))
                     return
@@ -590,8 +575,6 @@ class C2SComponent(xmlstream2.SocketComponent, resolver.ResolverMixIn):
                   a. deliver to full JID
                 """
                 log.debug("JID found: %r" % (rcpts, ))
-                stanza.consumed = True
-
                 jids = rcpts.jids()
 
                 # destination was a full JID
@@ -599,14 +582,14 @@ class C2SComponent(xmlstream2.SocketComponent, resolver.ResolverMixIn):
                     # no available resources, deliver to bare JID if force delivery
                     if len(jids) == 0 and force_delivery:
                         stanza['to'] = rcpts.jid.userhost()
-                        component.Component.send(self, stanza)
+                        self.dispatch(stanza)
                     # deliver if resource is available
                     else:
                         sent = False
                         for _to in jids:
                             if _to.resource == to.resource:
                                 stanza['to'] = _to.full()
-                                component.Component.send(self, stanza)
+                                self.dispatch(stanza)
                                 sent = True
                                 break
 
@@ -614,23 +597,24 @@ class C2SComponent(xmlstream2.SocketComponent, resolver.ResolverMixIn):
                         # if force delivery is enabled, deliver to the first available resource
                         if not sent and len(jids) > 0 and force_delivery:
                             stanza['to'] = jids[0].full()
-                            component.Component.send(self, stanza)
+                            self.dispatch(stanza)
 
                 # destination was a bare JID
                 else:
                     log.debug("destination was a bare JID (force_bare=%s)" % (force_bare, ))
+                    log.debug("jids = %s, rcpts = %s" % (jids, rcpts))
                     # no available resources, send to first network bare JID
                     if len(jids) == 0 or force_bare:
                         stanza['to'] = rcpts.jid.userhost()
-                        component.Component.send(self, stanza)
+                        self.dispatch(stanza)
                     else:
                         for _to in jids:
                             stanza['to'] = _to.full()
-                            component.Component.send(self, stanza)
+                            self.dispatch(stanza)
 
         # otherwise send to router
         else:
-            component.Component.send(self, stanza)
+            self.dispatch(stanza)
 
     def dispatch(self, stanza):
         """Dispatches stanzas from the router."""
@@ -652,24 +636,24 @@ class C2SComponent(xmlstream2.SocketComponent, resolver.ResolverMixIn):
                             """
                             self.sfactory.dispatch(stanza)
                         except:
-                            # manager not found - send error or send to offline storage
+                            # manager not found - send to offline storage
                             log.debug("c2s manager for %s not found" % (stanza['to'], ))
-                            self.not_found(stanza)
+                            self.message_offline_store(stanza)
+                            # push notify client
+                            if self.push_manager:
+                                self.push_manager.notify(to)
                     else:
                         self.local(stanza)
                 else:
-                    log.debug("stanza is not our concern or is an error")
+                    #log.debug("stanza is not our concern or is an error")
+                    # send to router
+                    component.Component.send(self, stanza)
 
                 # TODO stanzas from s2s will be network domain!! They must be resolved!
 
     def local(self, stanza):
         """Handle stanzas delivered to this component."""
         # nothing here yet...
-        pass
-
-    def not_found(self, stanza):
-        """Handle stanzas for unavailable resources."""
-        # TODO if stanza.name == ...
         pass
 
     def consume(self, stanza):
@@ -728,6 +712,7 @@ class C2SComponent(xmlstream2.SocketComponent, resolver.ResolverMixIn):
         """
 
         available = not stanza.hasAttribute('type')
+        stanza['from'] = self.resolveJID(user).full()
 
         # send presence to storage
         if user.user:
@@ -844,11 +829,12 @@ class C2SComponent(xmlstream2.SocketComponent, resolver.ResolverMixIn):
 
     def resolveJID(self, _jid):
         """Transform host attribute of JID from network name to server name."""
+        host = util.component_jid(self.servername, util.COMPONENT_C2S)
         if isinstance(_jid, jid.JID):
-            return jid.JID(tuple=(_jid.user, self.xmlstream.thisEntity.host, _jid.resource))
+            return jid.JID(tuple=(_jid.user, host, _jid.resource))
         else:
             _jid = jid.JID(_jid)
-            _jid.host = self.xmlstream.thisEntity.host
+            _jid.host = host
             return _jid
 
     def message_offline_delete(self, stanzaId, stanzaName, sender=None, recipient=None):

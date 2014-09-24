@@ -338,61 +338,6 @@ class LastActivityHandler(XMPPHandler):
         d = self.parent.presencedb.get(userid)
         d.addCallback(_db, stanza)
 
-
-class PresenceSubscriptionHandler(XMPPHandler):
-    """Presence subscription handler."""
-
-    def connectionInitialized(self):
-        self.xmlstream.addObserver("/presence[@type='subscribe']", self.dispatch)
-        self.xmlstream.addObserver("/presence[@type='subscribed']", self.subscribed)
-        self.xmlstream.addObserver("/presence[@type='unsubscribed']", self.unsubscribed)
-
-    def features(self):
-        return tuple()
-
-    def subscribed(self, stanza):
-        log.debug("user has accepted subscription")
-        # TODO
-        pass
-
-    def unsubscribed(self, stanza):
-        log.debug("user has refused subscription")
-        # TODO
-        pass
-
-    def dispatch(self, stanza):
-        if not stanza.consumed:
-            if self.parent.logTraffic:
-                log.debug("incoming subscription request: %s" % (stanza.toXml().encode('utf-8')))
-
-            stanza.consumed = True
-
-            util.resetNamespace(stanza, component.NS_COMPONENT_ACCEPT)
-
-            if stanza.hasAttribute('to'):
-                to = jid.JID(stanza['to'])
-                # process only our JIDs
-                if util.jid_local(util.COMPONENT_C2S, self.parent, to):
-                    if to.user is not None:
-                        try:
-                            # send stanza to sm only to non-negative resources
-                            self.parent.sfactory.dispatch(stanza)
-                        except:
-                            # manager not found - send error or send to offline storage
-                            log.debug("c2s manager for %s not found" % (stanza['to'], ))
-                            self.parent.message_offline_store(stanza)
-                            # push notify client
-                            if self.parent.push_manager:
-                                self.parent.push_manager.notify(to)
-
-                    else:
-                        # deliver local stanza
-                        self.parent.local(stanza)
-
-                else:
-                    log.debug("stanza is not our concern or is an error")
-
-
 class MessageHandler(XMPPHandler):
     """Message stanzas handler."""
 

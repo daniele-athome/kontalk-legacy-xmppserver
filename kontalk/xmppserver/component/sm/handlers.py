@@ -42,6 +42,9 @@ class PresenceHandler(XMPPHandler):
         self.xmlstream.addOnetimeObserver("/presence[not(@type)]", self.initialPresence)
         self.xmlstream.addObserver("/presence[not(@type)]", self.presence)
         self.xmlstream.addObserver("/presence[@type='unavailable']", self.unavailablePresence)
+        self.xmlstream.addObserver("/presence[@type='subscribe']", self.onSubscribe, 100)
+        self.xmlstream.addObserver("/presence[@type='unsubscribe']", self.onUnsubscribe, 100)
+        self.xmlstream.addObserver("/presence[@type='subscribed']", self.onSubscribed, 600)
 
     def connectionLost(self, reason):
         if self.xmlstream and self.xmlstream.otherEntity is not None and self.parent._presence is not None:
@@ -83,6 +86,73 @@ class PresenceHandler(XMPPHandler):
 
             # this will do the necessary checks with public key
             self.parent.public_key_presence(self.xmlstream)
+
+    def onSubscribe(self, stanza):
+        """Handle subscription requests."""
+
+        if stanza.consumed:
+            return
+
+        if self.parent.logTraffic:
+            log.debug("subscription request: %s" % (stanza.toXml(), ))
+        else:
+            log.debug("subscription request to %s from %s" % (stanza['to'], self.xmlstream.otherEntity))
+
+        # extract jid the user wants to subscribe to
+        jid_to = jid.JID(stanza['to'])
+        jid_from = self.xmlstream.otherEntity
+
+        # are we subscribing to a user we have blocked?
+        if self.parent.router.is_presence_allowed(jid_to, jid_from) == -1:
+            log.debug("subscribing to blocked user, bouncing error")
+            e = error.StanzaError('not-acceptable', 'cancel')
+            errstanza = e.toResponse(stanza)
+            errstanza.error.addElement((xmlstream2.NS_IQ_BLOCKING_ERRORS, 'blocked'))
+            self.send(errstanza)
+
+        else:
+            if not self.parent.router.subscribe(self.parent.router.translateJID(jid_from),
+                    self.parent.router.translateJID(jid_to), stanza.getAttribute('id')):
+                e = error.StanzaError('item-not-found')
+                self.send(e.toResponse(stanza))
+
+    def onUnsubscribe(self, stanza):
+        """Handle unsubscription requests."""
+
+        if stanza.consumed:
+            return
+
+        if self.parent.logTraffic:
+            log.debug("unsubscription request: %s" % (stanza.toXml(), ))
+        else:
+            log.debug("unsubscription request to %s from %s" % (stanza['to'], self.xmlstream.otherEntity))
+
+        # extract jid the user wants to unsubscribe from
+        jid_to = jid.JID(stanza['to'])
+        jid_from = self.xmlstream.otherEntity
+
+        self.parent.router.unsubscribe(self.parent.router.translateJID(jid_to),
+            self.parent.router.translateJID(jid_from))
+
+    def onSubscribed(self, stanza):
+        if stanza.consumed:
+            return
+
+        log.debug("user %s accepted subscription by %s" % (self.xmlstream.otherEntity, stanza['to']))
+        stanza.consumed = True
+        jid_to = jid.JID(stanza['to'])
+
+        jid_from = self.xmlstream.otherEntity
+
+        # add "to" user to whitelist of "from" user
+        self.parent.router.add_whitelist(jid_from, jid_to)
+
+        log.debug("SUBSCRIPTION SUCCESSFUL")
+
+        if self.parent.router.cache.jid_available(jid_from):
+            # send subscription accepted immediately and subscribe
+            # TODO this is wrong, but do it for the moment until we find a way to handle this case
+            self.parent.router.doSubscribe(jid_from, jid_to, stanza.getAttribute('id'), response_only=False)
 
 
 class PingHandler(XMPPHandler):
