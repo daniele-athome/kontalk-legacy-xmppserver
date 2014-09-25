@@ -984,7 +984,7 @@ class ResolverMixIn():
             unused, host = util.jid_component(user.host)
 
             # FIXME wrong host check (this is a one of the causes of the invalid-from bug)
-            if host == self.servername or host in self.keyring.hostlist():
+            if host in self.keyring.hostlist():
                 # local or network user: translate host name
                 watched = jid.JID(tuple=(user.user, self.network, user.resource))
             else:

@@ -55,6 +55,7 @@ class PresenceHandler(XMPPHandler):
             stanza['from'] = self.xmlstream.otherEntity.full()
             self.parent.forward(stanza, True)
             # notify c2s
+            stanza.consumed = False
             self.parent.router.local_presence(self.xmlstream.otherEntity, stanza)
 
     def features(self):
@@ -99,7 +100,7 @@ class PresenceHandler(XMPPHandler):
             log.debug("subscription request to %s from %s" % (stanza['to'], self.xmlstream.otherEntity))
 
         # extract jid the user wants to subscribe to
-        jid_to = jid.JID(stanza['to'])
+        jid_to = jid.JID(stanza['to']).userhostJID()
         jid_from = self.xmlstream.otherEntity
 
         # are we subscribing to a user we have blocked?
@@ -128,7 +129,7 @@ class PresenceHandler(XMPPHandler):
             log.debug("unsubscription request to %s from %s" % (stanza['to'], self.xmlstream.otherEntity))
 
         # extract jid the user wants to unsubscribe from
-        jid_to = jid.JID(stanza['to'])
+        jid_to = jid.JID(stanza['to']).userhostJID()
         jid_from = self.xmlstream.otherEntity
 
         self.parent.router.unsubscribe(self.parent.router.translateJID(jid_to),
@@ -142,7 +143,7 @@ class PresenceHandler(XMPPHandler):
         stanza.consumed = True
         jid_to = jid.JID(stanza['to'])
 
-        jid_from = self.xmlstream.otherEntity
+        jid_from = self.xmlstream.otherEntity.userhostJID()
 
         # add "to" user to whitelist of "from" user
         self.parent.router.add_whitelist(jid_from, jid_to)
