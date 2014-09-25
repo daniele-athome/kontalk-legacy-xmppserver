@@ -145,7 +145,11 @@ def hostjid_local(component, component_object, host):
     else:
         check = None
 
-    return host in (check, component_object.xmlstream.thisEntity.host)
+    if component_object.xmlstream and component_object.xmlstream.thisEntity:
+        check2 = component_object.xmlstream.thisEntity.host
+    else:
+        check2 = None
+    return host in (check, check2)
 
 def generate_filename(mime):
     '''Generates a random filename for the given mime type.'''

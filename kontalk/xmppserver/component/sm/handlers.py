@@ -595,6 +595,8 @@ class MessageHandler(XMPPHandler):
     """Message stanzas handler."""
 
     def connectionInitialized(self):
+        # generic messages
+        self.xmlstream.addObserver("/message", self.message, 90)
         # messages for the server
         #self.xmlstream.addObserver("/message[@to='%s']" % (self.parent.servername), self.parent.error, 100)
         # ack is above stanza processing rules
@@ -619,6 +621,44 @@ class MessageHandler(XMPPHandler):
                     self.parent.router.message_offline_delete(msgId, stanza.name, to.user, sender.user)
             except:
                 pass
+
+    def message(self, stanza):
+        if not stanza.consumed:
+            jid_from = self.parent.resolveJID(self.xmlstream.otherEntity)
+            stanza['from'] = jid_from.full()
+
+            # no destination - use sender bare JID
+            if not stanza.hasAttribute('to'):
+                jid_to = jid_from
+                stanza['to'] = jid_to.userhost()
+            else:
+                jid_to = jid.JID(stanza['to'])
+
+            # are we sending a message to a user we have blocked?
+            if self.parent.router.is_presence_allowed(jid_to, jid_from) == -1:
+                log.debug("sending message to blocked user, bouncing error")
+                e = error.StanzaError('not-acceptable', 'cancel')
+                errstanza = e.toResponse(stanza)
+                errstanza.error.addElement((xmlstream2.NS_IQ_BLOCKING_ERRORS, 'blocked'))
+                self.parent.send(errstanza)
+
+            else:
+
+                # check for permission
+                if self.parent.router.is_presence_allowed(jid_from, jid_to) == 1:
+                    # send to c2s hub (without implicitly consuming)
+                    self.parent.router.send(stanza, force_delivery=True)
+                else:
+                    log.debug("not allowed to send messages, sending fake response to %s" % (stanza['from'], ))
+                    if stanza.getAttribute('type') == 'chat' and xmlstream2.extract_receipt(stanza, 'request'):
+                        self.send_fake_receipt(stanza)
+
+    def send_fake_receipt(self, stanza):
+        """Sends back a fake sent receipt, while silently discard the message."""
+        msg = xmlstream.toResponse(stanza, stanza['type'])
+        r = msg.addElement((xmlstream2.NS_XMPP_SERVER_RECEIPTS, 'sent'))
+        r['id'] = util.rand_str(30, util.CHARSBOX_AZN_LOWERCASE)
+        self.parent.send(msg)
 
     def features(self):
         pass

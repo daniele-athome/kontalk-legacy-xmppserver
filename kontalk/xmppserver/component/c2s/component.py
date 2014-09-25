@@ -546,7 +546,7 @@ class C2SComponent(xmlstream2.SocketComponent, resolver.ResolverMixIn):
         to = jid.JID(stanza['to'])
 
         # stanza is intended to the network
-        if to.full() == self.network or to.host == component_jid:
+        if to.full() == self.network:
             # TODO
             log.debug("stanza for the network: %s" % (stanza.toXml(), ))
             return
@@ -618,38 +618,182 @@ class C2SComponent(xmlstream2.SocketComponent, resolver.ResolverMixIn):
 
     def dispatch(self, stanza):
         """Dispatches stanzas from the router."""
+        stanza.consumed = True
 
-        if not stanza.consumed:
-            stanza.consumed = True
+        util.resetNamespace(stanza, component.NS_COMPONENT_ACCEPT)
 
-            util.resetNamespace(stanza, component.NS_COMPONENT_ACCEPT)
+        # messages follow a different path
+        if stanza.name == 'message':
+            return self.process_message(stanza)
 
-            if stanza.hasAttribute('to'):
-                to = jid.JID(stanza['to'])
-                # process only our JIDs
-                if util.jid_local(util.COMPONENT_C2S, self, to):
-                    if to.user is not None:
-                        try:
-                            """ TEST to store message anyway :)
-                            if stanza.name == 'message':
-                                raise Exception()
-                            """
-                            self.sfactory.dispatch(stanza)
-                        except:
-                            # manager not found - send to offline storage
-                            log.debug("c2s manager for %s not found" % (stanza['to'], ))
-                            self.message_offline_store(stanza)
-                            # push notify client
-                            if self.push_manager:
-                                self.push_manager.notify(to)
-                    else:
-                        self.local(stanza)
+        if stanza.hasAttribute('to'):
+            to = jid.JID(stanza['to'])
+            # process only our JIDs
+            if util.jid_local(util.COMPONENT_C2S, self, to):
+                if to.user is not None:
+                    try:
+                        """ TEST to store message anyway :)
+                        if stanza.name == 'message':
+                            raise Exception()
+                        """
+                        self.sfactory.dispatch(stanza)
+                    except:
+                        # manager not found - send to offline storage
+                        log.debug("c2s manager for %s not found" % (stanza['to'], ))
+                        self.message_offline_store(stanza)
+                        # push notify client
+                        if self.push_manager:
+                            self.push_manager.notify(to)
                 else:
-                    #log.debug("stanza is not our concern or is an error")
-                    # send to router
-                    component.Component.send(self, stanza)
+                    self.local(stanza)
+            else:
+                #log.debug("stanza is not our concern or is an error")
+                # send to router
+                component.Component.send(self, stanza)
 
-                # TODO stanzas from s2s will be network domain!! They must be resolved!
+            # TODO stanzas from s2s will be network domain!! They must be resolved!
+
+    def process_message(self, stanza):
+        if stanza.hasAttribute('to'):
+            to = jid.JID(stanza['to'])
+            # process only our JIDs
+            if util.jid_local(util.COMPONENT_C2S, self, to):
+                chat_msg = (stanza.getAttribute('type') == 'chat')
+                if to.user is not None:
+                    keepId = None
+                    receipt = xmlstream2.extract_receipt(stanza, 'request')
+                    received = xmlstream2.extract_receipt(stanza, 'received')
+                    try:
+                        """
+                        We are deliberately ignoring messages with sent
+                        receipt because they are supposed to be volatile.
+                        """
+                        if chat_msg and not xmlstream2.has_element(stanza, xmlstream2.NS_XMPP_STORAGE, 'storage') and (receipt or received):
+                            """
+                            Apply generated id if we are getting a received receipt.
+                            This way stanza is received by the client with the
+                            correct id to cancel preemptive storage.
+                            """
+                            if received:
+                                keepId = stanza['id'] = util.rand_str(30, util.CHARSBOX_AZN_LOWERCASE)
+
+                            # send message to offline storage just to be safe (delayed)
+                            keepId = self.message_offline_store(stanza, delayed=True, reuseId=keepId)
+
+
+                        # send message to sm only to non-negative resources
+                        log.debug("sending message %s" % (stanza['id'], ))
+                        self.sfactory.dispatch(stanza)
+
+                    except:
+                        # manager not found - send error or send to offline storage
+                        log.debug("c2s manager for %s not found" % (stanza['to'], ))
+                        """
+                        Since our previous call to message_offline_store()
+                        was with delayed parameter, we need to store for
+                        real now.
+                        """
+                        if chat_msg and (stanza.body or stanza.e2e or received):
+                            self.message_offline_store(stanza, delayed=False, reuseId=keepId)
+                        if self.push_manager and chat_msg and (stanza.body or stanza.e2e) and (not receipt or receipt.name == 'request'):
+                            self.push_manager.notify(to)
+
+                    # if message is a received receipt, we can delete the original message
+                    if chat_msg and received:
+                        # delete the received message
+                        # TODO safe delete with sender/recipient
+                        self.message_offline_delete(received['id'], stanza.name)
+
+                    stamp = time.time()
+
+                    """
+                    Receipts will be sent only if message is not coming from
+                    storage or message is from a remote server.
+                    This is because if the message is coming from storage,
+                    it means that it's a user collecting its offline
+                    messages, so we don't need to send a <sent/> again.
+                    If a message is coming from a remote server, it means
+                    that is being delivered by a remote c2s by either:
+                     * sm request (direct message from client)
+                     * offline delivery (triggered by an initial presence from this server)
+                    """
+                    host = util.jid_host(stanza['from'])
+
+                    from_storage = xmlstream2.has_element(stanza, xmlstream2.NS_XMPP_STORAGE, 'storage')
+
+                    try:
+                        log.debug("host(unparsed): %s" % (host, ))
+                        unused, host = util.jid_component(host, util.COMPONENT_C2S)
+                        log.debug("host(parsed): %s" % (host, ))
+                        from_remote = host != self.servername
+                    except:
+                        from_remote = False
+
+                    if chat_msg and (not from_storage or from_remote):
+
+                        # send ack only for chat messages (if requested)
+                        # do not send if coming from remote storage
+                        if receipt and not from_storage:
+                            self.send_ack(stanza, 'sent', stamp)
+
+                        # send receipt to originating server, if requested
+                        receipt = None
+                        # receipt request: send <sent/>
+                        if stanza.request:
+                            receipt = stanza.request
+                            request = 'request'
+                            delivery = 'sent'
+                        # received receipt: send <ack/>
+                        elif stanza.received:
+                            receipt = stanza.received
+                            request = 'received'
+                            delivery = 'ack'
+
+                        # now send what we prepared
+                        if receipt:
+                            try:
+                                from_server = receipt['from']
+                                if not util.hostjid_local(util.COMPONENT_C2S, self.parent, from_server):
+                                    stanza['from'] = from_server
+                                    self.send_ack(stanza, delivery, stamp, request)
+                            except KeyError:
+                                pass
+
+                else:
+                    # deliver local stanza
+                    self.local(stanza)
+
+                """
+                If message is a receipt coming from a remote server, delete
+                the message from our storage.
+                """
+                r_sent = xmlstream2.extract_receipt(stanza, 'sent')
+                if chat_msg and r_sent:
+                    sender_host = util.jid_host(stanza['from'])
+                    """
+                    We are receiving a sent receipt from another server,
+                    meaning that the server has now responsibility for the
+                    message - we can delete it now.
+                    Special case is the sender domain being the network
+                    domain, meaning the resolver rejected the message.
+                    """
+                    unused, sender_host = util.jid_component(sender_host)
+                    if sender_host != self.servername:
+                        log.debug("remote server now has responsibility for message %s - deleting" % (r_sent['id'], ))
+                        # TODO safe delete with sender/recipient
+                        self.message_offline_delete(r_sent['id'], stanza.name)
+
+            else:
+                log.debug("stanza is not our concern or is an error")
+
+    def send_ack(self, stanza, status, stamp=None, receipt='request'):
+        request = xmlstream2.extract_receipt(stanza, receipt)
+        ack = xmlstream.toResponse(stanza, stanza.getAttribute('type'))
+        rec = ack.addElement((xmlstream2.NS_XMPP_SERVER_RECEIPTS, status))
+        rec['id'] = request['id']
+        if stamp:
+            rec['stamp'] = time.strftime(xmlstream2.XMPP_STAMP_FORMAT, time.gmtime(stamp))
+        self.send(ack)
 
     def local(self, stanza):
         """Handle stanzas delivered to this component."""
