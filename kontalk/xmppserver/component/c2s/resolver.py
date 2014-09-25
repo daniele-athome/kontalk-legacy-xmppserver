@@ -420,16 +420,12 @@ class JIDCache(XMPPHandler):
                     keydata = base64.b64decode(keydata[len(xmlstream2.DATA_PGP_PREFIX):])
                     # import into cache keyring
                     userid = util.jid_user(stanza['from'])
-                    # this chould take a lot of time (up to 500ms) so defer to a thread
-                    checkDef = threads.deferToThread(self.parent.keyring.check_user_key, keydata, userid)
-                    def _cached(fpr):
-                        if fpr:
-                            log.debug("key cached successfully")
-                        else:
-                            log.warn("invalid key")
-                        # TODO send response!!!
-
-                    checkDef.addCallback(_cached)
+                    # this chould take a lot of time (up to 500ms)
+                    if self.parent.keyring.check_user_key(keydata, userid):
+                        log.debug("key cached successfully")
+                    else:
+                        log.warn("invalid key")
+                    # TODO send response!!!
 
     def send_user_presence(self, gid, sender, recipient):
         stub = self.lookup(recipient)

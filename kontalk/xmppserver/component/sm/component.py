@@ -121,7 +121,7 @@ class C2SManager(xmlstream2.StreamManager):
         xs.addObserver('/message', self.message, 500)
 
         # forward everything that is not handled
-        #xs.addObserver('/*', self.forward)
+        xs.addObserver('/*', self.forward)
 
     def handle(self, stanza):
         to = stanza.getAttribute('to')

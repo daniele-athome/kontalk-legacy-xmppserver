@@ -622,14 +622,14 @@ class C2SComponent(xmlstream2.SocketComponent, resolver.ResolverMixIn):
 
         util.resetNamespace(stanza, component.NS_COMPONENT_ACCEPT)
 
-        # messages follow a different path
-        if stanza.name == 'message':
-            return self.process_message(stanza)
-
         if stanza.hasAttribute('to'):
             to = jid.JID(stanza['to'])
             # process only our JIDs
             if util.jid_local(util.COMPONENT_C2S, self, to):
+                # messages follow a different path
+                if stanza.name == 'message':
+                    return self.process_message(stanza)
+
                 if to.user is not None:
                     try:
                         """ TEST to store message anyway :)
@@ -802,6 +802,11 @@ class C2SComponent(xmlstream2.SocketComponent, resolver.ResolverMixIn):
 
     def consume(self, stanza):
         stanza.consumed = True
+
+    def result(self, stanza):
+        """Sends back a result response stanza. Used for IQ stanzas."""
+        stanza = xmlstream.toResponse(stanza, 'result')
+        self.send(stanza)
 
     def _verify_fingerprint(self, userjid, fingerprint):
         """Check if the given fingerprint matches with the currently cached one."""
