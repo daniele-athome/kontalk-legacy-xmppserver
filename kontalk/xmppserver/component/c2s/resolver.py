@@ -333,7 +333,7 @@ class JIDCache(XMPPHandler):
                         presence = e.presence()
                         for p in presence:
                             # do not consider available presence stanzas
-                            if p['type'] == 'unavailable':
+                            if p.getAttribute('type') == 'unavailable':
                                 rewrite = PresenceStub.fromElement(p, util
                                     .component_jid(self.parent.servername, util.COMPONENT_C2S))
                                 self.presence_cache[e.jid.user] = rewrite
