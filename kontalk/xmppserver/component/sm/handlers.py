@@ -654,6 +654,9 @@ class MessageHandler(XMPPHandler):
                     if stanza.getAttribute('type') == 'chat' and xmlstream2.extract_receipt(stanza, 'request'):
                         self.send_fake_receipt(stanza)
 
+            # we have now consumed the stanza
+            stanza.consumed = True
+
     def send_fake_receipt(self, stanza):
         """Sends back a fake sent receipt, while silently discard the message."""
         msg = xmlstream.toResponse(stanza, stanza['type'])

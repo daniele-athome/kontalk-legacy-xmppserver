@@ -172,7 +172,7 @@ class C2SManager(xmlstream2.StreamManager):
                 # TODO safe delete with sender/recipient
                 self.router.message_offline_delete(received['id'], stanza.name)
 
-        self.handle(stanza)
+        # TODO should we remove this? -- self.handle(stanza)
 
     def _disconnected(self, reason):
         self.factory.connectionLost(self.xmlstream, reason)

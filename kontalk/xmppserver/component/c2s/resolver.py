@@ -751,6 +751,7 @@ class PresenceHandler(XMPPHandler):
     def connectionInitialized(self):
         self.xmlstream.addObserver("/presence[not(@type)]", self.onPresenceAvailable, 100)
         self.xmlstream.addObserver("/presence[@type='unavailable']", self.onPresenceUnavailable, 100)
+        self.xmlstream.addObserver("/presence[@type='subscribed']", self.onSubscribed, 600)
 
     def onPresenceAvailable(self, stanza):
         """Handle available presence stanzas."""
@@ -798,6 +799,23 @@ class PresenceHandler(XMPPHandler):
         # broadcast presence
         self.parent.broadcastSubscribers(stanza)
 
+    def onSubscribed(self, stanza):
+        if stanza.consumed:
+            return
+
+        log.debug("user %s accepted subscription by %s" % (stanza['from'], stanza['to']))
+        stanza.consumed = True
+        jid_to = jid.JID(stanza['to'])
+        jid_from = jid.JID(stanza['from'])
+
+        # add "to" user to whitelist of "from" user
+        self.parent.add_whitelist(jid_from, jid_to)
+        log.debug("SUBSCRIPTION SUCCESSFUL")
+
+        if self.parent.cache.jid_available(jid_from):
+            # send subscription accepted immediately and subscribe
+            # TODO this is wrong, but do it for the moment until we find a way to handle this case
+            self.parent.doSubscribe(jid_from, jid_to, stanza.getAttribute('id'), response_only=False)
 
 class ResolverMixIn():
 
