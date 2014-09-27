@@ -123,6 +123,7 @@ class PresenceHandler(XMPPHandler):
 
         if stanza.consumed:
             return
+        stanza.consumed = True
 
         if self.parent.logTraffic:
             log.debug("unsubscription request: %s" % (stanza.toXml(), ))
