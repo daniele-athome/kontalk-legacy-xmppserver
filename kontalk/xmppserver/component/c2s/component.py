@@ -430,6 +430,12 @@ class C2SComponent(xmlstream2.SocketComponent, resolver.ResolverMixIn):
                         presence = x._presence
                         if presence and not presence.hasAttribute('type'):
                             self.cache.user_available(presence)
+
+                            if self.logTraffic:
+                                log.debug("local presence: %s" % (presence.toXml().encode('utf-8'), ))
+                            else:
+                                log.debug("local presence: %s" % (presence['from'], ))
+
                             num_avail += 1
                 except KeyError:
                     pass
@@ -451,10 +457,10 @@ class C2SComponent(xmlstream2.SocketComponent, resolver.ResolverMixIn):
 
                     self.cache.user_unavailable(response)
 
-                if self.logTraffic:
-                    log.debug("local presence: %s" % (response.toXml().encode('utf-8'), ))
-                else:
-                    log.debug("local presence: %s" % (response['from'], ))
+                    if self.logTraffic:
+                        log.debug("local presence: %s" % (response.toXml().encode('utf-8'), ))
+                    else:
+                        log.debug("local presence: %s" % (response['from'], ))
 
     def uptime(self):
         return time.time() - self.start_time
