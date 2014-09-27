@@ -640,6 +640,7 @@ class C2SComponent(xmlstream2.SocketComponent, resolver.ResolverMixIn):
                     except:
                         # manager not found - send to offline storage
                         log.debug("c2s manager for %s not found" % (stanza['to'], ))
+                        log.debug("storing stanza: %s" % (stanza.toXml(), ))
                         self.message_offline_store(stanza)
                         # push notify client
                         if self.push_manager:

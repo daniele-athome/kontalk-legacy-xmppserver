@@ -251,10 +251,12 @@ class JIDCache(XMPPHandler):
         self.presence_cache = {}
         self._last_lookup = 0
 
+        """
         # TEST TEST TEST
         def _print_cache():
             log.debug("CACHE(%d): %r" % (len(self.presence_cache), self.presence_cache, ))
         task.LoopingCall(_print_cache).start(5)
+        """
 
     def connectionInitialized(self):
         self.xmlstream.addObserver("/presence[not(@type)]", self.onPresenceAvailable, 200)
@@ -396,7 +398,7 @@ class JIDCache(XMPPHandler):
         except:
             self.parent.error(stanza)
 
-    def onVCardSet(self, stanza):
+    def onVCardSet(self, stanza, sender=None):
         """
         Handle vCards set IQs.
         This simply takes care of importing the key in the keyring for future
@@ -642,8 +644,9 @@ class PrivacyListHandler(XMPPHandler):
     def connectionInitialized(self):
         self.xmlstream.addObserver("/iq[@type='set']/blocklist[@xmlns='%s']" % (xmlstream2.NS_IQ_BLOCKING), self.blacklist, 100)
         self.xmlstream.addObserver("/iq[@type='set']/whitelist[@xmlns='%s']" % (xmlstream2.NS_IQ_BLOCKING), self.whitelist, 100)
+        self.xmlstream.addObserver("/stanza/iq[@type='set']/whitelist[@xmlns='%s']" % (xmlstream2.NS_IQ_BLOCKING, ), self.parent.wrapped, 600, fn=self.whitelist)
         self.xmlstream.addObserver("/iq[@type='set']/allow[@xmlns='%s']" % (xmlstream2.NS_IQ_BLOCKING), self.allow, 100)
-        self.xmlstream.addObserver("/stanza/iq[@type='set']/iq[@type='set']/allow[@xmlns='%s']" % (xmlstream2.NS_IQ_BLOCKING, ), self.parent.wrapped, 600, fn=self.allow)
+        self.xmlstream.addObserver("/stanza/iq[@type='set']/allow[@xmlns='%s']" % (xmlstream2.NS_IQ_BLOCKING, ), self.parent.wrapped, 600, fn=self.allow)
         self.xmlstream.addObserver("/iq[@type='set']/unallow[@xmlns='%s']" % (xmlstream2.NS_IQ_BLOCKING), self.unallow, 100)
         self.xmlstream.addObserver("/iq[@type='set']/block[@xmlns='%s']" % (xmlstream2.NS_IQ_BLOCKING), self.block, 100)
         self.xmlstream.addObserver("/iq[@type='set']/unblock[@xmlns='%s']" % (xmlstream2.NS_IQ_BLOCKING), self.unblock, 100)
@@ -691,16 +694,17 @@ class PrivacyListHandler(XMPPHandler):
 
         self.parent.result(stanza)
 
-    def whitelist(self, stanza):
+    def whitelist(self, stanza, sender=None):
         jid_from = jid.JID(stanza['from'])
         items = stanza.whitelist.elements(uri=xmlstream2.NS_IQ_BLOCKING, name='item')
         if items:
             # FIXME shouldn't we replace instead of just adding?
             self._whitelist(jid_from, items, broadcast=False)
 
-        self.parent.result(stanza)
+        if not sender:
+            self.parent.result(stanza)
 
-    def allow(self, stanza):
+    def allow(self, stanza, sender=None):
         jid_from = jid.JID(stanza['from'])
         broadcast = (jid_from.host == util.component_jid(self.parent.servername, util.COMPONENT_C2S))
         items = stanza.allow.elements(uri=xmlstream2.NS_IQ_BLOCKING, name='item')
@@ -751,7 +755,6 @@ class PresenceHandler(XMPPHandler):
     def connectionInitialized(self):
         self.xmlstream.addObserver("/presence[not(@type)]", self.onPresenceAvailable, 100)
         self.xmlstream.addObserver("/presence[@type='unavailable']", self.onPresenceUnavailable, 100)
-        self.xmlstream.addObserver("/presence[@type='subscribed']", self.onSubscribed, 600)
 
     def onPresenceAvailable(self, stanza):
         """Handle available presence stanzas."""
@@ -773,6 +776,7 @@ class PresenceHandler(XMPPHandler):
         self.parent.broadcastSubscribers(stanza)
 
     def send_privacy_lists(self, pname, plist, addr_from):
+        sender = util.component_jid(self.parent.servername, util.COMPONENT_C2S)
         for user, wl in plist.iteritems():
             iq = domish.Element((None, 'iq'))
             iq['from'] = '%s@%s' % (user, self.parent.network)
@@ -785,7 +789,7 @@ class PresenceHandler(XMPPHandler):
                 elem = allow.addElement((None, 'item'))
                 elem['jid'] = item
 
-            self.parent.send(iq)
+            self.parent.send_wrapped(iq, sender)
 
     def onPresenceUnavailable(self, stanza):
         """Handle unavailable presence stanzas."""
@@ -799,23 +803,6 @@ class PresenceHandler(XMPPHandler):
         # broadcast presence
         self.parent.broadcastSubscribers(stanza)
 
-    def onSubscribed(self, stanza):
-        if stanza.consumed:
-            return
-
-        log.debug("user %s accepted subscription by %s" % (stanza['from'], stanza['to']))
-        stanza.consumed = True
-        jid_to = jid.JID(stanza['to'])
-        jid_from = jid.JID(stanza['from'])
-
-        # add "to" user to whitelist of "from" user
-        self.parent.add_whitelist(jid_from, jid_to)
-        log.debug("SUBSCRIPTION SUCCESSFUL")
-
-        if self.parent.cache.jid_available(jid_from):
-            # send subscription accepted immediately and subscribe
-            # TODO this is wrong, but do it for the moment until we find a way to handle this case
-            self.parent.doSubscribe(jid_from, jid_to, stanza.getAttribute('id'), response_only=False)
 
 class ResolverMixIn():
 
@@ -946,8 +933,6 @@ class ResolverMixIn():
             except:
                 self.subscriptions[to] = [subscriber]
 
-            log.debug("subscriptions: %r" % (self.subscriptions, ))
-
         if send_subscribed:
             # send subscription accepted immediately
             pres = domish.Element((None, "presence"))
@@ -1009,8 +994,6 @@ class ResolverMixIn():
             # other JIDs, use unchanged
             watched = user
 
-        log.debug("checking subscriptions to %s" % (watched.full(), ))
-        log.debug("subscriptions: %s" % (self.subscriptions, ))
         bareWatched = watched.userhostJID()
         if bareWatched in self.subscriptions:
             #stanza['from'] = watched.full()
@@ -1171,4 +1154,4 @@ class ResolverMixIn():
 
     def wrapped(self, stanza, fn):
         if stanza.getAttribute('type') != 'error':
-            fn(stanza.firstChildElement())
+            fn(stanza.firstChildElement(), stanza['from'])
