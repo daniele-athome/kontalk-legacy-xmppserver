@@ -53,6 +53,7 @@ class PresenceHandler(XMPPHandler):
             self.presence(None)
             # send unavailable presence
             stanza = xmppim.UnavailablePresence()
+            stanza['from'] = self.xmlstream.otherEntity.full()
             self.parent.forward(stanza)
             # notify c2s
             stanza.consumed = False
@@ -215,6 +216,7 @@ class PingHandler(XMPPHandler):
         # broadcast unavailable presence
         if self.xmlstream.otherEntity is not None:
             stanza = xmppim.UnavailablePresence()
+            stanza['from'] = self.xmlstream.otherEntity.full()
             self.parent.forward(stanza)
 
     def ping(self, stanza):
