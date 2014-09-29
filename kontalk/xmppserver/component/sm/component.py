@@ -290,6 +290,11 @@ class C2SManager(xmlstream2.StreamManager):
             util.resetNamespace(stanza, component.NS_COMPONENT_ACCEPT)
             self.router.send(stanza)
 
+    def result(self, stanza):
+        """Sends back a result response stanza. Used for IQ stanzas."""
+        stanza = xmlstream.toResponse(stanza, 'result')
+        self.send(stanza)
+
     def resolveJID(self, _jid):
         """Transform host attribute of JID from network name to component name."""
         host = util.component_jid(self.servername, util.COMPONENT_C2S)

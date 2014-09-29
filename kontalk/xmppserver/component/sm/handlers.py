@@ -395,11 +395,56 @@ class PrivacyListHandler(XMPPHandler):
     """Handles IQ urn:xmpp:blocking stanzas."""
 
     def connectionInitialized(self):
-        self.xmlstream.addObserver("/iq[@type='set']/allow[@xmlns='%s']" % (xmlstream2.NS_IQ_BLOCKING), self.parent.router.privacy.allow, 100)
-        self.xmlstream.addObserver("/iq[@type='set']/unallow[@xmlns='%s']" % (xmlstream2.NS_IQ_BLOCKING), self.parent.router.privacy.unallow, 100)
-        self.xmlstream.addObserver("/iq[@type='set']/block[@xmlns='%s']" % (xmlstream2.NS_IQ_BLOCKING), self.parent.router.privacy.block, 100)
-        self.xmlstream.addObserver("/iq[@type='set']/unblock[@xmlns='%s']" % (xmlstream2.NS_IQ_BLOCKING), self.parent.router.privacy.unblock, 100)
-        self.xmlstream.addObserver("/iq[@type='get']/blocklist[@xmlns='%s']" % (xmlstream2.NS_IQ_BLOCKING), self.parent.router.privacy.get_blacklist, 100)
+        self.xmlstream.addObserver("/iq[@type='set']/allow[@xmlns='%s']" % (xmlstream2.NS_IQ_BLOCKING), self.allow, 100)
+        self.xmlstream.addObserver("/iq[@type='set']/unallow[@xmlns='%s']" % (xmlstream2.NS_IQ_BLOCKING), self.unallow, 100)
+        self.xmlstream.addObserver("/iq[@type='set']/block[@xmlns='%s']" % (xmlstream2.NS_IQ_BLOCKING), self.block, 100)
+        self.xmlstream.addObserver("/iq[@type='set']/unblock[@xmlns='%s']" % (xmlstream2.NS_IQ_BLOCKING), self.unblock, 100)
+        self.xmlstream.addObserver("/iq[@type='get']/blocklist[@xmlns='%s']" % (xmlstream2.NS_IQ_BLOCKING), self.get_blacklist, 100)
+
+    def allow(self, stanza):
+        jid_from = jid.JID(stanza['from'])
+        items = stanza.allow.elements(uri=xmlstream2.NS_IQ_BLOCKING, name='item')
+        if items:
+            self.parent.router.privacy._whitelist(jid_from, items, broadcast=True)
+
+        self.parent.result(stanza)
+
+    def unallow(self, stanza):
+        jid_from = jid.JID(stanza['from'])
+        items = stanza.unallow.elements(uri=xmlstream2.NS_IQ_BLOCKING, name='item')
+        if items:
+            self.parent.router.privacy._whitelist(jid_from, items, True, broadcast=True)
+
+        self.parent.result(stanza)
+
+    def block(self, stanza):
+        jid_from = jid.JID(stanza['from'])
+        items = stanza.block.elements(uri=xmlstream2.NS_IQ_BLOCKING, name='item')
+        if items:
+            self.parent.router.privacy._blacklist(jid_from, items, broadcast=True)
+
+        self.parent.result(stanza)
+
+    def unblock(self, stanza):
+        jid_from = jid.JID(stanza['from'])
+        items = stanza.unblock.elements(uri=xmlstream2.NS_IQ_BLOCKING, name='item')
+        if items:
+            self.parent.router.privacy._blacklist(jid_from, items, True, broadcast=True)
+
+        self.parent.result(stanza)
+
+    def get_blacklist(self, stanza):
+        iq = xmlstream.toResponse(stanza, 'result')
+        iq['to'] = stanza['from']
+        blocklist = iq.addElement((xmlstream2.NS_IQ_BLOCKING, 'blocklist'))
+
+        wl = self.parent.router.get_blacklist(jid.JID(stanza['from']))
+        if wl:
+            for item in wl:
+                elem = blocklist.addElement((None, 'item'))
+                elem['jid'] = item
+
+        self.send(iq)
 
     def features(self):
         return (xmlstream2.NS_IQ_BLOCKING, )
