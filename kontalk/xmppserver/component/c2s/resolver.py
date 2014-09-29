@@ -1185,6 +1185,17 @@ class ResolverMixIn():
                 self.cache.user_available(stanza)
                 self.broadcastSubscribers(stanza)
 
+    def build_vcard(self, userid, iq):
+        """Adds a vCard to the given iq stanza."""
+        fpr = self.keyring.get_fingerprint(userid)
+        keydata = self.keyring.get_key(userid, fpr)
+        # add vcard
+        vcard = iq.addElement((xmlstream2.NS_XMPP_VCARD4, 'vcard'))
+        vcard_key = vcard.addElement((None, 'key'))
+        vcard_data = vcard_key.addElement((None, 'uri'))
+        vcard_data.addContent(xmlstream2.DATA_PGP_PREFIX + base64.b64encode(keydata))
+        return iq
+
     def wrapped(self, stanza, fn):
         if stanza.getAttribute('type') != 'error':
             fn(stanza.firstChildElement(), stanza['from'])

@@ -481,7 +481,7 @@ class RosterHandler(XMPPHandler):
                 iq['type'] = 'set'
                 iq['from'] = jid_from.userhost()
                 iq['to'] = stanza['from']
-                self.parent.build_vcard(jid_from.user, iq)
+                self.parent.router.build_vcard(jid_from.user, iq)
                 self.send(iq)
 
         # no roster lookup, XMPP standard roster instead
