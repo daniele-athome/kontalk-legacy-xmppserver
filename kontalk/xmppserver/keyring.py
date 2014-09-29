@@ -250,6 +250,12 @@ class Keyring:
         except KeyError:
             raise KeyNotFoundException(userid)
 
+    def set_fingerprint(self, userid, fpr):
+        if self._fingerprints is None:
+            raise AttributeError("fingerprint cache is disabled")
+
+        self._fingerprints[userid] = fpr
+
     def import_key(self, keydata):
         """Imports a key without checking."""
         try:

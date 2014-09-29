@@ -421,6 +421,9 @@ class C2SComponent(xmlstream2.SocketComponent, resolver.ResolverMixIn):
         if type(presence) == list and len(presence) > 0:
 
             for user in presence:
+                # store fingerprint
+                self.keyring.set_fingerprint(user['userid'], user['fingerprint'])
+
                 host = util.component_jid(self.servername, util.COMPONENT_C2S)
                 response_from = jid.JID(tuple=(user['userid'], host, None)).full()
 
