@@ -29,7 +29,7 @@ from twisted.words.xish import domish
 
 from wokkel import xmppim
 
-from kontalk.xmppserver import log, xmlstream2, version, util, push, upload, tls
+from kontalk.xmppserver import log, xmlstream2, version, util, push, upload, tls, keyring
 
 
 class PresenceHandler(XMPPHandler):
@@ -483,7 +483,10 @@ class RosterHandler(XMPPHandler):
                 iq['type'] = 'set'
                 iq['from'] = jid_from.userhost()
                 iq['to'] = stanza['from']
-                self.parent.router.build_vcard(jid_from.user, iq)
+                try:
+                    self.parent.router.build_vcard(jid_from.user, iq)
+                except keyring.KeyNotFoundException:
+                    pass
                 self.send(iq)
 
         # no roster lookup, XMPP standard roster instead
