@@ -712,7 +712,39 @@ class IQHandler(XMPPHandler):
     def vcard_get(self, stanza):
         if not stanza.hasAttribute('to'):
             stanza['to'] = self.xmlstream.otherEntity.userhost()
-        self.parent.forward(stanza)
+
+        log.debug("%s requested vCard for %s" % (stanza['from'], stanza['to']))
+        jid_from = jid.JID(stanza['from'])
+        jid_to = jid.JID(stanza['to'])
+        try:
+            # are we requesting vCard for a user we have blocked?
+            if self.parent.router.is_presence_allowed(jid_to, jid_from) == -1:
+                log.debug("requesting vCard for a blocked user, bouncing error")
+                e = error.StanzaError('not-acceptable', 'cancel')
+                errstanza = e.toResponse(stanza)
+                errstanza.error.addElement((xmlstream2.NS_IQ_BLOCKING_ERRORS, 'blocked'))
+                self.send(errstanza)
+
+            else:
+                fpr = self.parent.router.is_presence_allowed(jid_from, jid_to)
+                log.debug("is_presence_allowed: %d" % (fpr, ))
+                if fpr != 1:
+                    raise Exception()
+
+                fpr = self.parent.router.keyring.get_fingerprint(jid_to.user)
+                keydata = self.parent.router.keyring.get_key(jid_to.user, fpr)
+
+                iq = xmlstream.toResponse(stanza, 'result')
+                # add vcard
+                vcard = iq.addElement((xmlstream2.NS_XMPP_VCARD4, 'vcard'))
+                vcard_key = vcard.addElement((None, 'key'))
+                vcard_data = vcard_key.addElement((None, 'uri'))
+                vcard_data.addContent(xmlstream2.DATA_PGP_PREFIX + base64.b64encode(keydata))
+                self.send(iq)
+
+                stanza.consumed = True
+        except:
+            self.parent.error(stanza)
 
     def features(self):
         ft = [
