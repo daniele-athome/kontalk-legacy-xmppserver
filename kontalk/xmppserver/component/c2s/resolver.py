@@ -826,6 +826,7 @@ class ResolverMixIn():
         self.network = None
         self.keyring = None
         self.cache = None
+        self.privacy = None
 
         # active subscriptions
         self.subscriptions = {}
@@ -839,6 +840,8 @@ class ResolverMixIn():
             inst = handler()
             if handler == JIDCache:
                 self.cache = inst
+            elif handler == PrivacyListHandler:
+                self.privacy = inst
             inst.setHandlerParent(self)
 
     def _load_privacy_lists(self):

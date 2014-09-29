@@ -395,18 +395,11 @@ class PrivacyListHandler(XMPPHandler):
     """Handles IQ urn:xmpp:blocking stanzas."""
 
     def connectionInitialized(self):
-        self.xmlstream.addObserver("/iq[@type='set']/allow[@xmlns='%s']" % (xmlstream2.NS_IQ_BLOCKING), self.forward, 100)
-        self.xmlstream.addObserver("/iq[@type='set']/unallow[@xmlns='%s']" % (xmlstream2.NS_IQ_BLOCKING), self.forward, 100)
-        self.xmlstream.addObserver("/iq[@type='set']/block[@xmlns='%s']" % (xmlstream2.NS_IQ_BLOCKING), self.forward, 100)
-        self.xmlstream.addObserver("/iq[@type='set']/unblock[@xmlns='%s']" % (xmlstream2.NS_IQ_BLOCKING), self.forward, 100)
-        self.xmlstream.addObserver("/iq[@type='get']/blocklist[@xmlns='%s']" % (xmlstream2.NS_IQ_BLOCKING), self.forward, 100)
-
-    def forward(self, stanza):
-        # enforce destination (resolver)
-        stanza['to'] = self.parent.network
-
-        # forward to resolver
-        self.parent.forward(stanza)
+        self.xmlstream.addObserver("/iq[@type='set']/allow[@xmlns='%s']" % (xmlstream2.NS_IQ_BLOCKING), self.parent.router.privacy.allow, 100)
+        self.xmlstream.addObserver("/iq[@type='set']/unallow[@xmlns='%s']" % (xmlstream2.NS_IQ_BLOCKING), self.parent.router.privacy.unallow, 100)
+        self.xmlstream.addObserver("/iq[@type='set']/block[@xmlns='%s']" % (xmlstream2.NS_IQ_BLOCKING), self.parent.router.privacy.block, 100)
+        self.xmlstream.addObserver("/iq[@type='set']/unblock[@xmlns='%s']" % (xmlstream2.NS_IQ_BLOCKING), self.parent.router.privacy.unblock, 100)
+        self.xmlstream.addObserver("/iq[@type='get']/blocklist[@xmlns='%s']" % (xmlstream2.NS_IQ_BLOCKING), self.parent.router.privacy.blocklist, 100)
 
     def features(self):
         return (xmlstream2.NS_IQ_BLOCKING, )
