@@ -402,6 +402,7 @@ class PrivacyListHandler(XMPPHandler):
         self.xmlstream.addObserver("/iq[@type='get']/blocklist[@xmlns='%s']" % (xmlstream2.NS_IQ_BLOCKING), self.get_blacklist, 100)
 
     def allow(self, stanza):
+        stanza.consumed = True
         jid_from = jid.JID(stanza['from'])
         items = stanza.allow.elements(uri=xmlstream2.NS_IQ_BLOCKING, name='item')
         if items:
@@ -410,6 +411,7 @@ class PrivacyListHandler(XMPPHandler):
         self.parent.result(stanza)
 
     def unallow(self, stanza):
+        stanza.consumed = True
         jid_from = jid.JID(stanza['from'])
         items = stanza.unallow.elements(uri=xmlstream2.NS_IQ_BLOCKING, name='item')
         if items:
@@ -418,6 +420,7 @@ class PrivacyListHandler(XMPPHandler):
         self.parent.result(stanza)
 
     def block(self, stanza):
+        stanza.consumed = True
         jid_from = jid.JID(stanza['from'])
         items = stanza.block.elements(uri=xmlstream2.NS_IQ_BLOCKING, name='item')
         if items:
@@ -426,6 +429,7 @@ class PrivacyListHandler(XMPPHandler):
         self.parent.result(stanza)
 
     def unblock(self, stanza):
+        stanza.consumed = True
         jid_from = jid.JID(stanza['from'])
         items = stanza.unblock.elements(uri=xmlstream2.NS_IQ_BLOCKING, name='item')
         if items:
@@ -434,6 +438,7 @@ class PrivacyListHandler(XMPPHandler):
         self.parent.result(stanza)
 
     def get_blacklist(self, stanza):
+        stanza.consumed = True
         iq = xmlstream.toResponse(stanza, 'result')
         iq['to'] = stanza['from']
         blocklist = iq.addElement((xmlstream2.NS_IQ_BLOCKING, 'blocklist'))
