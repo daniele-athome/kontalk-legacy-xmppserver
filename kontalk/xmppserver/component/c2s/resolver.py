@@ -812,13 +812,14 @@ class ResolverMixIn():
         PresenceHandler,
     )
     """
-    RosterHandler,
     IQHandler,
-    MessageHandler,
     """
 
     WHITELIST = 1
     BLACKLIST = 2
+
+    PERSIST_INTERVAL = 10
+    PERSIST_STORAGE = "privacy_lists.db"
 
     def __init__(self):
         self.servername = None
@@ -839,6 +840,38 @@ class ResolverMixIn():
             if handler == JIDCache:
                 self.cache = inst
             inst.setHandlerParent(self)
+
+    def _load_privacy_lists(self):
+        try:
+            with open(self.PERSIST_STORAGE, 'r') as f:
+                import cPickle
+                data = cPickle.load(f)
+            self.whitelists = data['whitelists']
+            self.blacklists = data['blacklists']
+        except:
+            log.warn("unable to load privacy lists")
+            import traceback
+            traceback.print_exc()
+
+    def _save_privacy_lists(self):
+        try:
+            with open(self.PERSIST_STORAGE, 'w+') as f:
+                import cPickle
+                data = {
+                    'whitelists': self.whitelists,
+                    'blacklists': self.blacklists,
+                }
+                cPickle.dump(data, f)
+        except:
+            # ignore errors
+            pass
+
+    def startService(self):
+        ### privacy lists persistent storage (very temporary method) ###
+        # load privacy lists
+        self._load_privacy_lists()
+        # schedule save to storage
+        task.LoopingCall(self._save_privacy_lists).start(self.PERSIST_INTERVAL, now=False)
 
     def _authd(self, xs):
         # bind to network route
