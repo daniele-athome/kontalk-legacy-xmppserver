@@ -385,6 +385,7 @@ class C2SComponent(xmlstream2.SocketComponent, resolver.ResolverMixIn):
 
     def startService(self):
         component.Component.startService(self)
+        resolver.ResolverMixIn.startService(self)
 
         # register the registration provider if configured
         if 'registration' in self.config:

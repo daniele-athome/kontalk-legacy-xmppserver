@@ -124,6 +124,9 @@ class C2SManager(xmlstream2.StreamManager):
         xs.addObserver('/*', self.forward)
 
     def handle(self, stanza):
+        # enforce sender
+        stanza['from'] = self.resolveJID(self.xmlstream.otherEntity).full()
+
         to = stanza.getAttribute('to')
         if to is not None:
             try:
@@ -272,7 +275,7 @@ class C2SManager(xmlstream2.StreamManager):
             stanza['id'] = util.rand_str(8, util.CHARSBOX_AZN_LOWERCASE)
         xmlstream2.StreamManager.send(self, stanza, force)
 
-    def forward(self, stanza, useFrom=False):
+    def forward(self, stanza):
         """
         Forward incoming stanza from clients to the router, setting the from
         attribute to the sender entity.
@@ -285,7 +288,6 @@ class C2SManager(xmlstream2.StreamManager):
 
             stanza.consumed = True
             util.resetNamespace(stanza, component.NS_COMPONENT_ACCEPT)
-            stanza['from'] = self.resolveJID(stanza['from'] if useFrom else self.xmlstream.otherEntity).full()
             self.router.send(stanza)
 
     def resolveJID(self, _jid):
