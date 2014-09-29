@@ -38,7 +38,7 @@ class KontalkC2SServiceMaker(object):
     options = Options
 
     def makeService(self, options):
-        from kontalk.xmppserver.component.c2s import C2SComponent
+        from kontalk.xmppserver.component.c2s.component import C2SComponent
         from kontalk.xmppserver import log
 
         # load configuration

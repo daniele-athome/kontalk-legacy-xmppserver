@@ -85,7 +85,7 @@ class KontalkCertificate(object):
             def _error(reason):
                 return None
 
-            # deferred to check fingerprint against resolver data
+            # deferred to check fingerprint against JID cache data
             if verify_cb:
                 d = verify_cb(_jid, fpr)
                 d.addCallback(_continue)

@@ -240,7 +240,6 @@ class Keyring:
         return fingerprint in self._enabled
 
     def get_fingerprint(self, userid):
-        """Used only by the resolver."""
         # TODO find a more efficient way
 
         if self._fingerprints is None:
@@ -250,6 +249,12 @@ class Keyring:
             return self._fingerprints[userid]
         except KeyError:
             raise KeyNotFoundException(userid)
+
+    def set_fingerprint(self, userid, fpr):
+        if self._fingerprints is None:
+            raise AttributeError("fingerprint cache is disabled")
+
+        self._fingerprints[userid] = fpr
 
     def import_key(self, keydata):
         """Imports a key without checking."""

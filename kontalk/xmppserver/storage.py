@@ -34,7 +34,7 @@ try:
 except:
     from ordereddict import OrderedDict
 
-from kontalk.xmppserver.component import sm
+from kontalk.xmppserver.component.sm import component as sm
 import util, xmlstream2, log
 
 dbpool = None
@@ -300,6 +300,7 @@ class MySQLStanzaStorage(StanzaStorage):
         )
         # for presence we want to overwrite old requests
         if stanza.name == 'presence':
+            # WARNING this won't work because primary key is stanza id which is always different
             op = 'REPLACE'
         else:
             op = 'INSERT'

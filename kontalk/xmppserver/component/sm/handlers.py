@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Kontalk XMPP sm component (part of c2s)."""
+"""sm protocol handlers."""
 """
   Kontalk XMPP server
   Copyright (C) 2014 Kontalk Devteam <devteam@kontalk.org>
@@ -20,17 +20,16 @@
 
 
 import base64
+from copy import deepcopy
 
 from twisted.internet import reactor
-from twisted.words.protocols.jabber import error, jid, component, xmlstream
+from twisted.words.protocols.jabber import error, jid, xmlstream
 from twisted.words.protocols.jabber.xmlstream import XMPPHandler
 from twisted.words.xish import domish
 
 from wokkel import xmppim
 
-from gnutls.constants import OPENPGP_FMT_RAW, OPENPGP_FMT_BASE64
-
-from kontalk.xmppserver import log, xmlstream2, version, util, push, upload, keyring, tls
+from kontalk.xmppserver import log, xmlstream2, version, util, push, upload, tls, keyring
 
 
 class PresenceHandler(XMPPHandler):
@@ -44,12 +43,21 @@ class PresenceHandler(XMPPHandler):
         self.xmlstream.addOnetimeObserver("/presence[not(@type)]", self.initialPresence)
         self.xmlstream.addObserver("/presence[not(@type)]", self.presence)
         self.xmlstream.addObserver("/presence[@type='unavailable']", self.unavailablePresence)
+        self.xmlstream.addObserver("/presence[@type='subscribe']", self.onSubscribe, 100)
+        self.xmlstream.addObserver("/presence[@type='unsubscribe']", self.onUnsubscribe, 100)
+        self.xmlstream.addObserver("/presence[@type='subscribed']", self.onSubscribed, 600)
 
     def connectionLost(self, reason):
         if self.xmlstream and self.xmlstream.otherEntity is not None and self.parent._presence is not None:
+            # void the current presence
+            self.presence(None)
+            # send unavailable presence
             stanza = xmppim.UnavailablePresence()
             stanza['from'] = self.xmlstream.otherEntity.full()
-            self.parent.forward(stanza, True)
+            self.parent.forward(stanza)
+            # notify c2s
+            stanza.consumed = False
+            self.parent.router.local_presence(self.xmlstream.otherEntity, stanza)
 
     def features(self):
         pass
@@ -80,6 +88,75 @@ class PresenceHandler(XMPPHandler):
 
             # this will do the necessary checks with public key
             self.parent.public_key_presence(self.xmlstream)
+
+    def onSubscribe(self, stanza):
+        """Handle subscription requests."""
+
+        if stanza.consumed:
+            return
+        stanza.consumed = True
+
+        if self.parent.logTraffic:
+            log.debug("subscription request: %s" % (stanza.toXml(), ))
+        else:
+            log.debug("subscription request to %s from %s" % (stanza['to'], self.xmlstream.otherEntity))
+
+        # extract jid the user wants to subscribe to
+        jid_to = jid.JID(stanza['to']).userhostJID()
+        jid_from = self.xmlstream.otherEntity
+
+        # are we subscribing to a user we have blocked?
+        if self.parent.router.is_presence_allowed(jid_to, jid_from) == -1:
+            log.debug("subscribing to blocked user, bouncing error")
+            e = error.StanzaError('not-acceptable', 'cancel')
+            errstanza = e.toResponse(stanza)
+            errstanza.error.addElement((xmlstream2.NS_IQ_BLOCKING_ERRORS, 'blocked'))
+            self.send(errstanza)
+
+        else:
+            if not self.parent.router.subscribe(self.parent.router.translateJID(jid_from),
+                    self.parent.router.translateJID(jid_to), stanza.getAttribute('id')):
+                e = error.StanzaError('item-not-found')
+                self.send(e.toResponse(stanza))
+
+    def onUnsubscribe(self, stanza):
+        """Handle unsubscription requests."""
+
+        if stanza.consumed:
+            return
+        stanza.consumed = True
+
+        if self.parent.logTraffic:
+            log.debug("unsubscription request: %s" % (stanza.toXml(), ))
+        else:
+            log.debug("unsubscription request to %s from %s" % (stanza['to'], self.xmlstream.otherEntity))
+
+        # extract jid the user wants to unsubscribe from
+        jid_to = jid.JID(stanza['to']).userhostJID()
+        jid_from = self.xmlstream.otherEntity
+
+        self.parent.router.unsubscribe(self.parent.router.translateJID(jid_to),
+            self.parent.router.translateJID(jid_from))
+
+    def onSubscribed(self, stanza):
+        if stanza.consumed:
+            return
+
+        log.debug("user %s accepted subscription by %s" % (self.xmlstream.otherEntity, stanza['to']))
+        stanza.consumed = True
+        jid_to = jid.JID(stanza['to'])
+
+        jid_from = self.xmlstream.otherEntity.userhostJID()
+
+        # add "to" user to whitelist of "from" user
+        self.parent.router.add_whitelist(jid_from, jid_to)
+
+        log.debug("SUBSCRIPTION SUCCESSFUL")
+
+        if self.parent.router.cache.jid_available(jid_from):
+            # send subscription accepted immediately and subscribe
+            # TODO this is wrong, but do it for the moment until we find a way to handle this case
+            self.parent.router.doSubscribe(jid_from, jid_to, stanza.getAttribute('id'), response_only=False)
 
 
 class PingHandler(XMPPHandler):
@@ -140,7 +217,7 @@ class PingHandler(XMPPHandler):
         if self.xmlstream.otherEntity is not None:
             stanza = xmppim.UnavailablePresence()
             stanza['from'] = self.xmlstream.otherEntity.full()
-            self.parent.forward(stanza, True)
+            self.parent.forward(stanza)
 
     def ping(self, stanza):
         if not stanza.hasAttribute('to') or stanza['to'] == self.parent.network:
@@ -318,18 +395,61 @@ class PrivacyListHandler(XMPPHandler):
     """Handles IQ urn:xmpp:blocking stanzas."""
 
     def connectionInitialized(self):
-        self.xmlstream.addObserver("/iq[@type='set']/allow[@xmlns='%s']" % (xmlstream2.NS_IQ_BLOCKING), self.forward, 100)
-        self.xmlstream.addObserver("/iq[@type='set']/unallow[@xmlns='%s']" % (xmlstream2.NS_IQ_BLOCKING), self.forward, 100)
-        self.xmlstream.addObserver("/iq[@type='set']/block[@xmlns='%s']" % (xmlstream2.NS_IQ_BLOCKING), self.forward, 100)
-        self.xmlstream.addObserver("/iq[@type='set']/unblock[@xmlns='%s']" % (xmlstream2.NS_IQ_BLOCKING), self.forward, 100)
-        self.xmlstream.addObserver("/iq[@type='get']/blocklist[@xmlns='%s']" % (xmlstream2.NS_IQ_BLOCKING), self.forward, 100)
+        self.xmlstream.addObserver("/iq[@type='set']/allow[@xmlns='%s']" % (xmlstream2.NS_IQ_BLOCKING), self.allow, 100)
+        self.xmlstream.addObserver("/iq[@type='set']/unallow[@xmlns='%s']" % (xmlstream2.NS_IQ_BLOCKING), self.unallow, 100)
+        self.xmlstream.addObserver("/iq[@type='set']/block[@xmlns='%s']" % (xmlstream2.NS_IQ_BLOCKING), self.block, 100)
+        self.xmlstream.addObserver("/iq[@type='set']/unblock[@xmlns='%s']" % (xmlstream2.NS_IQ_BLOCKING), self.unblock, 100)
+        self.xmlstream.addObserver("/iq[@type='get']/blocklist[@xmlns='%s']" % (xmlstream2.NS_IQ_BLOCKING), self.get_blacklist, 100)
 
-    def forward(self, stanza):
-        # enforce destination (resolver)
-        stanza['to'] = self.parent.network
+    def allow(self, stanza):
+        stanza.consumed = True
+        jid_from = jid.JID(stanza['from'])
+        items = stanza.allow.elements(uri=xmlstream2.NS_IQ_BLOCKING, name='item')
+        if items:
+            self.parent.router.privacy._whitelist(jid_from, items, broadcast=True)
 
-        # forward to resolver
-        self.parent.forward(stanza)
+        self.parent.result(stanza)
+
+    def unallow(self, stanza):
+        stanza.consumed = True
+        jid_from = jid.JID(stanza['from'])
+        items = stanza.unallow.elements(uri=xmlstream2.NS_IQ_BLOCKING, name='item')
+        if items:
+            self.parent.router.privacy._whitelist(jid_from, items, True, broadcast=True)
+
+        self.parent.result(stanza)
+
+    def block(self, stanza):
+        stanza.consumed = True
+        jid_from = jid.JID(stanza['from'])
+        items = stanza.block.elements(uri=xmlstream2.NS_IQ_BLOCKING, name='item')
+        if items:
+            self.parent.router.privacy._blacklist(jid_from, items, broadcast=True)
+
+        self.parent.result(stanza)
+
+    def unblock(self, stanza):
+        stanza.consumed = True
+        jid_from = jid.JID(stanza['from'])
+        items = stanza.unblock.elements(uri=xmlstream2.NS_IQ_BLOCKING, name='item')
+        if items:
+            self.parent.router.privacy._blacklist(jid_from, items, True, broadcast=True)
+
+        self.parent.result(stanza)
+
+    def get_blacklist(self, stanza):
+        stanza.consumed = True
+        iq = xmlstream.toResponse(stanza, 'result')
+        iq['to'] = stanza['from']
+        blocklist = iq.addElement((xmlstream2.NS_IQ_BLOCKING, 'blocklist'))
+
+        wl = self.parent.router.get_blacklist(jid.JID(stanza['from']))
+        if wl:
+            for item in wl:
+                elem = blocklist.addElement((None, 'item'))
+                elem['jid'] = item
+
+        self.send(iq)
 
     def features(self):
         return (xmlstream2.NS_IQ_BLOCKING, )
@@ -342,18 +462,111 @@ class RosterHandler(XMPPHandler):
     """Handles the roster and XMPP compatibility mode."""
 
     def connectionInitialized(self):
-        self.xmlstream.addObserver("/iq[@type='get']/query[@xmlns='%s']" % (xmlstream2.NS_IQ_ROSTER), self.roster, 100)
+        self.xmlstream.addObserver("/iq[@type='get']/query[@xmlns='%s']" % (xmlstream2.NS_IQ_ROSTER, ), self.roster, 100)
 
     def roster(self, stanza):
-        # enforce destination (resolver)
-        stanza['to'] = self.parent.network
-
         if not xmlstream2.has_element(stanza.query, uri=xmlstream2.NS_IQ_ROSTER, name='item'):
             # requesting initial roster - enter XMPP compatibility mode
             self.parent.compatibility_mode = True
 
-        # forward to resolver
-        self.parent.forward(stanza)
+        _items = stanza.query.elements(uri=xmlstream2.NS_IQ_ROSTER, name='item')
+        requester = jid.JID(stanza['from'])
+        stanza.consumed = True
+
+        # items present, requesting roster lookup
+        response = xmlstream.toResponse(stanza, 'result')
+        roster = response.addElement((xmlstream2.NS_IQ_ROSTER, 'query'))
+
+        probes = []
+        # this will be true if roster lookup is requested
+        roster_lookup = False
+        for item in _items:
+            # items present, meaning roster lookup
+            roster_lookup = True
+
+            itemJid = jid.internJID(item['jid'])
+
+            # include the entry in the roster reply anyway
+            entry = self.parent.router.cache.lookup(itemJid)
+            if entry:
+                allowed = self.parent.router.is_presence_allowed(requester, itemJid)
+                if allowed != -1:
+                    item = roster.addElement((None, 'item'))
+                    item['jid'] = self.parent.router.translateJID(entry.jid).userhost()
+
+                if allowed == 1:
+                    probes.append(entry.presence())
+
+        # roster lookup, send presence data and vcards
+        if roster_lookup:
+
+            # lookup response
+            self.send(response)
+
+            # simulate a presence probe and send vcards
+            # we'll use one group ID so the client knows when to stop waiting
+            gid = stanza.getAttribute('id')
+            if not gid:
+                gid = util.rand_str(8, util.CHARSBOX_AZN_LOWERCASE)
+
+            i = sum([len(x) for x in probes])
+            for presence_list in probes:
+                for presence in presence_list:
+                    presence = deepcopy(presence)
+                    presence['to'] = stanza['from']
+                    group = presence.addElement((xmlstream2.NS_XMPP_STANZA_GROUP, 'group'))
+                    group['id'] = gid
+                    group['count'] = str(i)
+                    i -= 1
+                    self.send(presence)
+
+                # send vcard for this user
+                jid_from = jid.JID(presence_list[0]['from'])
+                iq = domish.Element((None, 'iq'))
+                iq['type'] = 'set'
+                iq['from'] = jid_from.userhost()
+                iq['to'] = stanza['from']
+                try:
+                    self.parent.router.build_vcard(jid_from.user, iq)
+                    self.send(iq)
+                except keyring.KeyNotFoundException:
+                    pass
+
+        # no roster lookup, XMPP standard roster instead
+        else:
+
+            # include items from the user's whitelist
+            wl = self.parent.router.get_whitelist(requester)
+            probes = None
+            if wl:
+                subscriptions = []
+                for e in wl:
+                    item = roster.addElement((None, 'item'))
+                    item['jid'] = e
+
+                    itemJid = jid.JID(e)
+
+                    # check if subscription status is 'both' or just 'from'
+                    allowed = self.parent.router.is_presence_allowed(requester, itemJid)
+                    if allowed == 1:
+                        status = 'both'
+                    else:
+                        status = 'from'
+
+                    # TODO include name from PGP key?
+                    item['subscription'] = status
+
+                    # add to subscription list
+                    subscriptions.append(itemJid)
+
+            # send the roster
+            self.send(response)
+
+            # subscribe to all users (without sending subscribed stanza of course)
+            if wl:
+                for itemJid in subscriptions:
+                    self.parent.router.subscribe(requester, itemJid, send_subscribed=False)
+
 
     def features(self):
         return (xmlstream2.NS_IQ_ROSTER, )
@@ -499,7 +712,39 @@ class IQHandler(XMPPHandler):
     def vcard_get(self, stanza):
         if not stanza.hasAttribute('to'):
             stanza['to'] = self.xmlstream.otherEntity.userhost()
-        self.parent.forward(stanza)
+
+        log.debug("%s requested vCard for %s" % (stanza['from'], stanza['to']))
+        jid_from = jid.JID(stanza['from'])
+        jid_to = jid.JID(stanza['to'])
+        try:
+            # are we requesting vCard for a user we have blocked?
+            if self.parent.router.is_presence_allowed(jid_to, jid_from) == -1:
+                log.debug("requesting vCard for a blocked user, bouncing error")
+                e = error.StanzaError('not-acceptable', 'cancel')
+                errstanza = e.toResponse(stanza)
+                errstanza.error.addElement((xmlstream2.NS_IQ_BLOCKING_ERRORS, 'blocked'))
+                self.send(errstanza)
+
+            else:
+                fpr = self.parent.router.is_presence_allowed(jid_from, jid_to)
+                log.debug("is_presence_allowed: %d" % (fpr, ))
+                if fpr != 1:
+                    raise Exception()
+
+                fpr = self.parent.router.keyring.get_fingerprint(jid_to.user)
+                keydata = self.parent.router.keyring.get_key(jid_to.user, fpr)
+
+                iq = xmlstream.toResponse(stanza, 'result')
+                # add vcard
+                vcard = iq.addElement((xmlstream2.NS_XMPP_VCARD4, 'vcard'))
+                vcard_key = vcard.addElement((None, 'key'))
+                vcard_data = vcard_key.addElement((None, 'uri'))
+                vcard_data.addContent(xmlstream2.DATA_PGP_PREFIX + base64.b64encode(keydata))
+                self.send(iq)
+
+                stanza.consumed = True
+        except:
+            self.parent.error(stanza)
 
     def features(self):
         ft = [
@@ -521,6 +766,8 @@ class MessageHandler(XMPPHandler):
     """Message stanzas handler."""
 
     def connectionInitialized(self):
+        # generic messages
+        self.xmlstream.addObserver("/message", self.message, 90)
         # messages for the server
         #self.xmlstream.addObserver("/message[@to='%s']" % (self.parent.servername), self.parent.error, 100)
         # ack is above stanza processing rules
@@ -545,6 +792,47 @@ class MessageHandler(XMPPHandler):
                     self.parent.router.message_offline_delete(msgId, stanza.name, to.user, sender.user)
             except:
                 pass
+
+    def message(self, stanza):
+        if not stanza.consumed:
+            jid_from = self.parent.resolveJID(self.xmlstream.otherEntity)
+            stanza['from'] = jid_from.full()
+
+            # no destination - use sender bare JID
+            if not stanza.hasAttribute('to'):
+                jid_to = jid_from
+                stanza['to'] = jid_to.userhost()
+            else:
+                jid_to = jid.JID(stanza['to'])
+
+            # are we sending a message to a user we have blocked?
+            if self.parent.router.is_presence_allowed(jid_to, jid_from) == -1:
+                log.debug("sending message to blocked user, bouncing error")
+                e = error.StanzaError('not-acceptable', 'cancel')
+                errstanza = e.toResponse(stanza)
+                errstanza.error.addElement((xmlstream2.NS_IQ_BLOCKING_ERRORS, 'blocked'))
+                self.parent.send(errstanza)
+
+            else:
+
+                # check for permission
+                if self.parent.router.is_presence_allowed(jid_from, jid_to) == 1:
+                    # send to c2s hub (without implicitly consuming)
+                    self.parent.router.send(stanza, force_delivery=True)
+                else:
+                    log.debug("not allowed to send messages, sending fake response to %s" % (stanza['from'], ))
+                    if stanza.getAttribute('type') == 'chat' and xmlstream2.extract_receipt(stanza, 'request'):
+                        self.send_fake_receipt(stanza)
+
+            # we have now consumed the stanza
+            stanza.consumed = True
+
+    def send_fake_receipt(self, stanza):
+        """Sends back a fake sent receipt, while silently discard the message."""
+        msg = xmlstream.toResponse(stanza, stanza['type'])
+        r = msg.addElement((xmlstream2.NS_XMPP_SERVER_RECEIPTS, 'sent'))
+        r['id'] = util.rand_str(30, util.CHARSBOX_AZN_LOWERCASE)
+        self.parent.send(msg)
 
     def features(self):
         pass
@@ -610,333 +898,3 @@ class DiscoveryHandler(XMPPHandler):
             self.send(response)
 
 
-class C2SManager(xmlstream2.StreamManager):
-    """
-    Handles communication with a client. Note that this is the L{StreamManager}
-    towards the client, not the router!!
-
-    @param router: the connection with the router
-    @type router: L{xmlstream.StreamManager}
-    """
-
-    namespace = 'jabber:client'
-
-    disco_handler = DiscoveryHandler
-    init_handlers = (
-        PresenceHandler,
-        PingHandler,
-        CommandsHandler,
-        PushNotificationsHandler,
-        UploadHandler,
-        IQHandler,
-        PrivacyListHandler,
-        RosterHandler,
-        MessageHandler,
-    )
-
-    def __init__(self, xs, factory, router, network, servername):
-        self.factory = factory
-        self.router = router
-        self.network = network
-        self.servername = servername
-        self._presence = None
-        self.compatibility_mode = False
-        xmlstream2.StreamManager.__init__(self, xs)
-
-        """
-        Register the discovery handler first so it can process features from
-        the other handlers.
-        """
-        disco = self.disco_handler()
-
-        for handler in self.init_handlers:
-            # skip push notifications handler if no push manager is registered
-            if handler == PushNotificationsHandler and not self.router.push_manager:
-                continue
-            # skip upload handler if disabled
-            if handler == UploadHandler and not self.router.upload_enabled():
-                continue
-
-            h = handler()
-            h.setHandlerParent(self)
-            info = h.features()
-            if info:
-                disco.supportedFeatures.extend(info)
-            # we will use this later
-            disco.post_handlers.append(h)
-
-        # disco is added at last element so onConnectionInitialized will be called last
-        disco.setHandlerParent(self)
-
-    def _connected(self, xs):
-        xmlstream2.StreamManager._connected(self, xs)
-        # add observers for unauthorized stanzas
-        xs.addObserver("/iq", self._unauthorized)
-        xs.addObserver("/presence", self._unauthorized)
-        xs.addObserver("/message", self._unauthorized)
-        # everything else is handled by initializers
-
-    def conflict(self):
-        if self.xmlstream:
-            self.xmlstream.sendStreamError(error.StreamError('conflict'))
-            # refuse to process any more stanzas
-            self.xmlstream.setDispatchFn(None)
-
-    def _unauthorized(self, stanza):
-        if not stanza.consumed and (not stanza.hasAttribute('to') or stanza['to'] != self.network):
-            stanza.consumed = True
-            self.xmlstream.sendStreamError(error.StreamError('not-authorized'))
-            # refuse to process any more stanzas
-            self.xmlstream.setDispatchFn(None)
-
-    def _authd(self, xs):
-        xmlstream2.StreamManager._authd(self, xs)
-
-        # remove unauthorized stanzas handler
-        xs.removeObserver("/iq", self._unauthorized)
-        xs.removeObserver("/presence", self._unauthorized)
-        xs.removeObserver("/message", self._unauthorized)
-        self.factory.connectionInitialized(xs)
-
-        # stanza server processing rules - before they are sent to handlers
-        xs.addObserver('/iq', self.iq, 500)
-        xs.addObserver('/presence', self.presence, 500)
-        xs.addObserver('/message', self.message, 500)
-
-        # forward everything that is not handled
-        xs.addObserver('/*', self.forward)
-
-    def handle(self, stanza):
-        to = stanza.getAttribute('to')
-        if to is not None:
-            try:
-                to = jid.JID(to)
-            except:
-                # invalid destination, consume stanza and return error
-                stanza.consumed = True
-                log.debug("invalid address: %s" % (to, ))
-                e = error.StanzaError('jid-malformed', 'modify')
-                self.send(e.toResponse(stanza))
-                return
-
-            # stanza is for us
-            if to.host == self.network:
-                # sending to full JID, forward to router
-                if to.user is not None and to.resource is not None:
-                    self.forward(stanza)
-
-            # stanza is not intended to component either
-            elif to.host != util.component_jid(self.servername, util.COMPONENT_C2S):
-                self.forward(stanza)
-
-            # everything else is handled by handlers
-
-    def iq(self, stanza):
-        return self.handle(stanza)
-
-    def presence(self, stanza):
-        return self.handle(stanza)
-
-    def message(self, stanza):
-        # generate message id if receipt is requested by client
-        if xmlstream2.extract_receipt(stanza, 'request'):
-            stanza.request['id'] = util.rand_str(30, util.CHARSBOX_AZN_LOWERCASE)
-
-        # no to address, presume sender bare JID
-        if not stanza.hasAttribute('to'):
-            stanza['to'] = self.xmlstream.otherEntity.userhost()
-
-        # if message is a received receipt, we can delete the original message
-        # TODO move this to MessageHandler
-        if stanza.getAttribute('type') == 'chat':
-            received = xmlstream2.extract_receipt(stanza, 'received')
-            if stanza.received:
-                # delete the received message
-                # TODO safe delete with sender/recipient
-                self.router.message_offline_delete(received['id'], stanza.name)
-
-        self.handle(stanza)
-
-    def _disconnected(self, reason):
-        self.factory.connectionLost(self.xmlstream, reason)
-        xmlstream2.StreamManager._disconnected(self, reason)
-
-        # disown handlers
-        for h in list(self):
-            h.disownHandlerParent(self)
-
-        # cleanup
-        self.factory = None
-        self.router = None
-
-    def error(self, stanza, condition='service-unavailable', errtype='cancel', text=None):
-        if not stanza.consumed:
-            log.debug("error %s" % (stanza.toXml(), ))
-            stanza.consumed = True
-            util.resetNamespace(stanza, self.namespace)
-            e = error.StanzaError(condition, errtype, text)
-            self.send(e.toResponse(stanza), True)
-
-    def bounce(self, stanza):
-        """Bounce stanzas as results."""
-        if not stanza.consumed:
-            util.resetNamespace(stanza, self.namespace)
-
-            if self.router.logTraffic:
-                log.debug("bouncing %s" % (stanza.toXml(), ))
-
-            stanza.consumed = True
-            self.send(xmlstream.toResponse(stanza, 'result'))
-
-    def send(self, stanza, force=False):
-        """Send stanza to client, setting to and id attributes if not present."""
-
-        if stanza.hasAttribute('original-to'):
-            origTo = stanza.getAttribute('original-to')
-            del stanza['original-to']
-
-            """
-            Extract original recipient from stanza.
-            If original-to is not present, we will assume that
-            stanza was intended to the full JID.
-            """
-            origTo = jid.JID(origTo)
-
-            if self.router.logTraffic:
-                log.debug("sending message to client %s (original was %s)" % (self.xmlstream.otherEntity, origTo))
-                if self._presence:
-                    log.debug("_presence: %s" % (self._presence.toXml(), ))
-
-            # sending to bare JID
-            # initial presence found
-            # negative resource
-            # => DROP STANZA
-            try:
-                if not origTo.resource and int(str(self._presence.priority)) < 0:
-                    return None
-            except:
-                pass
-
-        # FIXME using deepcopy is not safe
-        from copy import deepcopy
-        stanza = deepcopy(stanza)
-
-        util.resetNamespace(stanza, component.NS_COMPONENT_ACCEPT, self.namespace)
-
-        # translate sender to network JID
-        sender = stanza.getAttribute('from')
-        if sender and sender != self.network:
-            sender = jid.JID(stanza['from'])
-            sender.host = self.network
-            stanza['from'] = sender.full()
-        # TODO should we force self.network if no sender?
-
-        # remove reserved elements
-        if stanza.name in ('presence', 'message'):
-            # storage child
-            if stanza.storage and stanza.storage.uri == xmlstream2.NS_XMPP_STORAGE:
-                stanza.children.remove(stanza.storage)
-            # origin in receipt
-            if stanza.request and stanza.request.hasAttribute('from'):
-                del stanza.request['from']
-            elif stanza.received and stanza.received.hasAttribute('from'):
-                del stanza.received['from']
-        if stanza.name == 'presence':
-            # push device id
-            for c in stanza.elements(name='c', uri=xmlstream2.NS_PRESENCE_PUSH):
-                stanza.children.remove(c)
-                break
-
-        # force destination address
-        if self.xmlstream.otherEntity:
-            stanza['to'] = self.xmlstream.otherEntity.full()
-
-        if not stanza.hasAttribute('id'):
-            stanza['id'] = util.rand_str(8, util.CHARSBOX_AZN_LOWERCASE)
-        xmlstream2.StreamManager.send(self, stanza, force)
-
-    def forward(self, stanza, useFrom=False):
-        """
-        Forward incoming stanza from clients to the router, setting the from
-        attribute to the sender entity.
-        """
-        if not stanza.consumed:
-            util.resetNamespace(stanza, self.namespace)
-
-            if self.router.logTraffic:
-                log.debug("forwarding %s" % (stanza.toXml().encode('utf-8'), ))
-
-            stanza.consumed = True
-            util.resetNamespace(stanza, component.NS_COMPONENT_ACCEPT)
-            stanza['from'] = self.resolveJID(stanza['from'] if useFrom else self.xmlstream.otherEntity).full()
-            self.router.send(stanza)
-
-    def resolveJID(self, _jid):
-        """Transform host attribute of JID from network name to component name."""
-        host = util.component_jid(self.servername, util.COMPONENT_C2S)
-        if isinstance(_jid, jid.JID):
-            return jid.JID(tuple=(_jid.user, host, _jid.resource))
-        else:
-            _jid = jid.JID(_jid)
-            _jid.host = host
-            return _jid
-
-    def link_public_key(self, publickey, userid):
-        """
-        Link the provided public key to a userid.
-        @param publickey: public key in DER format
-        @return: the signed public key, in DER binary format.
-        """
-
-        # check if key is already valid
-        fp = self.router.keyring.check_user_key(publickey, userid)
-        if not fp:
-            # import public key and sign it
-            try:
-                fp, keydata = self.router.keyring.sign_public_key(publickey, userid)
-            except:
-                import traceback
-                traceback.print_exc()
-                return None
-
-        else:
-            # use given key
-            keydata = publickey
-
-        if fp and keydata:
-            # signed public key to presence table
-            self.router.presencedb.public_key(userid, fp)
-
-            # broadcast public key
-            self.router.broadcast_public_key(userid, keydata)
-
-            # return signed public key
-            return keydata
-
-    def public_key_presence(self, xs):
-        """
-        Calls C2SComponent.broadcast_public_key from the data found in the
-        provided client certificate. It also saves the public key in the local
-        presence cache.
-        This also checks if the key fingerprint matches the one found in our
-        local presence cache.
-        """
-
-        userid = xs.otherEntity.user
-        cert = xs.transport.getPeerCertificate()
-        pkey = keyring.extract_public_key(cert)
-
-        if pkey:
-            # export raw key data
-            keydata = pkey.export(OPENPGP_FMT_RAW)
-
-            # TODO workaround for GnuTLS bug (?)
-            # public key block less than 50 bytes? Impossible.
-            if len(keydata) < 50:
-                keydata = keyring.convert_openpgp_from_base64(pkey.export(OPENPGP_FMT_BASE64))
-
-            # store in local presence cache
-            self.router.presencedb.public_key(userid, pkey.fingerprint)
-
-            # broadcast the key
-            self.router.broadcast_public_key(userid, keydata)

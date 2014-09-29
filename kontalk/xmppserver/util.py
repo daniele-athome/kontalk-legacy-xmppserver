@@ -39,7 +39,6 @@ CHARSBOX_NUMBERS = '1234567890'
 CHARSBOX_HEX_LOWERCASE = 'abcdef1234567890'
 CHARSBOX_HEX_UPPERCASE = 'ABCDEF1234567890'
 
-COMPONENT_RESOLVER = 'resolver'
 COMPONENT_C2S = 'c2s'
 COMPONENT_NET = 'net'
 
@@ -143,12 +142,14 @@ def hostjid_local(component, component_object, host):
     # depending on the component, one of network or server name must be chosen
     if component == COMPONENT_C2S:
         check = component_object.servername
-    elif component == COMPONENT_RESOLVER:
-        check = component_object.network
     else:
         check = None
 
-    return host in (check, component_object.xmlstream.thisEntity.host)
+    if component_object.xmlstream and component_object.xmlstream.thisEntity:
+        check2 = component_object.xmlstream.thisEntity.host
+    else:
+        check2 = None
+    return host in (check, check2)
 
 def generate_filename(mime):
     '''Generates a random filename for the given mime type.'''
