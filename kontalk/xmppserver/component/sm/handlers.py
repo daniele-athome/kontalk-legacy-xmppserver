@@ -485,9 +485,9 @@ class RosterHandler(XMPPHandler):
                 iq['to'] = stanza['from']
                 try:
                     self.parent.router.build_vcard(jid_from.user, iq)
+                    self.send(iq)
                 except keyring.KeyNotFoundException:
                     pass
-                self.send(iq)
 
         # no roster lookup, XMPP standard roster instead
         else:
