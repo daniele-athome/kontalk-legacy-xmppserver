@@ -442,12 +442,12 @@ class RosterHandler(XMPPHandler):
             itemJid = jid.internJID(item['jid'])
 
             # include the entry in the roster reply anyway
-            entry = self.parent.cache.lookup(itemJid)
+            entry = self.parent.router.cache.lookup(itemJid)
             if entry:
-                allowed = self.parent.is_presence_allowed(requester, itemJid)
+                allowed = self.parent.router.is_presence_allowed(requester, itemJid)
                 if allowed != -1:
                     item = roster.addElement((None, 'item'))
-                    item['jid'] = self.parent.translateJID(entry.jid).userhost()
+                    item['jid'] = self.parent.router.translateJID(entry.jid).userhost()
 
                 if allowed == 1:
                     probes.append(entry.presence())
@@ -488,7 +488,7 @@ class RosterHandler(XMPPHandler):
         else:
 
             # include items from the user's whitelist
-            wl = self.parent.get_whitelist(requester)
+            wl = self.parent.router.get_whitelist(requester)
             probes = None
             if wl:
                 subscriptions = []
@@ -499,7 +499,7 @@ class RosterHandler(XMPPHandler):
                     itemJid = jid.JID(e)
 
                     # check if subscription status is 'both' or just 'from'
-                    allowed = self.parent.is_presence_allowed(requester, itemJid)
+                    allowed = self.parent.router.is_presence_allowed(requester, itemJid)
                     if allowed == 1:
                         status = 'both'
                     else:
@@ -517,7 +517,7 @@ class RosterHandler(XMPPHandler):
             # subscribe to all users (without sending subscribed stanza of course)
             if wl:
                 for itemJid in subscriptions:
-                    self.parent.subscribe(requester, itemJid, send_subscribed=False)
+                    self.parent.router.subscribe(requester, itemJid, send_subscribed=False)
 
 
     def features(self):
