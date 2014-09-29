@@ -20,6 +20,7 @@
 
 
 import base64
+from copy import deepcopy
 
 from twisted.internet import reactor
 from twisted.words.protocols.jabber import error, jid, xmlstream
@@ -52,8 +53,7 @@ class PresenceHandler(XMPPHandler):
             self.presence(None)
             # send unavailable presence
             stanza = xmppim.UnavailablePresence()
-            stanza['from'] = self.xmlstream.otherEntity.full()
-            self.parent.forward(stanza, True)
+            self.parent.forward(stanza)
             # notify c2s
             stanza.consumed = False
             self.parent.router.local_presence(self.xmlstream.otherEntity, stanza)
@@ -215,8 +215,7 @@ class PingHandler(XMPPHandler):
         # broadcast unavailable presence
         if self.xmlstream.otherEntity is not None:
             stanza = xmppim.UnavailablePresence()
-            stanza['from'] = self.xmlstream.otherEntity.full()
-            self.parent.forward(stanza, True)
+            self.parent.forward(stanza)
 
     def ping(self, stanza):
         if not stanza.hasAttribute('to') or stanza['to'] == self.parent.network:
@@ -418,18 +417,108 @@ class RosterHandler(XMPPHandler):
     """Handles the roster and XMPP compatibility mode."""
 
     def connectionInitialized(self):
-        self.xmlstream.addObserver("/iq[@type='get']/query[@xmlns='%s']" % (xmlstream2.NS_IQ_ROSTER), self.roster, 100)
+        self.xmlstream.addObserver("/iq[@type='get']/query[@xmlns='%s']" % (xmlstream2.NS_IQ_ROSTER, ), self.roster, 100)
 
     def roster(self, stanza):
-        # enforce destination (resolver)
-        stanza['to'] = self.parent.network
-
         if not xmlstream2.has_element(stanza.query, uri=xmlstream2.NS_IQ_ROSTER, name='item'):
             # requesting initial roster - enter XMPP compatibility mode
             self.parent.compatibility_mode = True
 
-        # forward to resolver
-        self.parent.forward(stanza)
+        _items = stanza.query.elements(uri=xmlstream2.NS_IQ_ROSTER, name='item')
+        requester = jid.JID(stanza['from'])
+        stanza.consumed = True
+
+        # items present, requesting roster lookup
+        response = xmlstream.toResponse(stanza, 'result')
+        roster = response.addElement((xmlstream2.NS_IQ_ROSTER, 'query'))
+
+        probes = []
+        # this will be true if roster lookup is requested
+        roster_lookup = False
+        for item in _items:
+            # items present, meaning roster lookup
+            roster_lookup = True
+
+            itemJid = jid.internJID(item['jid'])
+
+            # include the entry in the roster reply anyway
+            entry = self.parent.cache.lookup(itemJid)
+            if entry:
+                allowed = self.parent.is_presence_allowed(requester, itemJid)
+                if allowed != -1:
+                    item = roster.addElement((None, 'item'))
+                    item['jid'] = self.parent.translateJID(entry.jid).userhost()
+
+                if allowed == 1:
+                    probes.append(entry.presence())
+
+        # roster lookup, send presence data and vcards
+        if roster_lookup:
+
+            # lookup response
+            self.send(response)
+
+            # simulate a presence probe and send vcards
+            # we'll use one group ID so the client knows when to stop waiting
+            gid = stanza.getAttribute('id')
+            if not gid:
+                gid = util.rand_str(8, util.CHARSBOX_AZN_LOWERCASE)
+
+            i = sum([len(x) for x in probes])
+            for presence_list in probes:
+                for presence in presence_list:
+                    presence = deepcopy(presence)
+                    presence['to'] = stanza['from']
+                    group = presence.addElement((xmlstream2.NS_XMPP_STANZA_GROUP, 'group'))
+                    group['id'] = gid
+                    group['count'] = str(i)
+                    i -= 1
+                    self.send(presence)
+
+                # send vcard for this user
+                jid_from = jid.JID(presence_list[0]['from'])
+                iq = domish.Element((None, 'iq'))
+                iq['type'] = 'set'
+                iq['from'] = jid_from.userhost()
+                iq['to'] = stanza['from']
+                self.parent.build_vcard(jid_from.user, iq)
+                self.send(iq)
+
+        # no roster lookup, XMPP standard roster instead
+        else:
+
+            # include items from the user's whitelist
+            wl = self.parent.get_whitelist(requester)
+            probes = None
+            if wl:
+                subscriptions = []
+                for e in wl:
+                    item = roster.addElement((None, 'item'))
+                    item['jid'] = e
+
+                    itemJid = jid.JID(e)
+
+                    # check if subscription status is 'both' or just 'from'
+                    allowed = self.parent.is_presence_allowed(requester, itemJid)
+                    if allowed == 1:
+                        status = 'both'
+                    else:
+                        status = 'from'
+
+                    # TODO include name from PGP key?
+                    item['subscription'] = status
+
+                    # add to subscription list
+                    subscriptions.append(itemJid)
+
+            # send the roster
+            self.send(response)
+
+            # subscribe to all users (without sending subscribed stanza of course)
+            if wl:
+                for itemJid in subscriptions:
+                    self.parent.subscribe(requester, itemJid, send_subscribed=False)
+
 
     def features(self):
         return (xmlstream2.NS_IQ_ROSTER, )
