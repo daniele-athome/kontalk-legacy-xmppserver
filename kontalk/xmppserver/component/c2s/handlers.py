@@ -338,6 +338,7 @@ class LastActivityHandler(XMPPHandler):
         d = self.parent.presencedb.get(userid)
         d.addCallback(_db, stanza)
 
+
 class MessageHandler(XMPPHandler):
     """Message stanzas handler."""
 

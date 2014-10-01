@@ -639,6 +639,8 @@ class C2SComponent(xmlstream2.SocketComponent, resolver.ResolverMixIn):
                 # messages follow a different path
                 if stanza.name == 'message':
                     return self.process_message(stanza)
+                elif stanza.name == 'presence' and stanza.getAttribute('type') == 'subscribe':
+                    return self.process_subscription(stanza)
 
                 if to.user is not None:
                     try:
@@ -648,13 +650,8 @@ class C2SComponent(xmlstream2.SocketComponent, resolver.ResolverMixIn):
                         """
                         self.sfactory.dispatch(stanza)
                     except:
-                        # manager not found - send to offline storage
+                        # manager not found
                         log.debug("c2s manager for %s not found" % (stanza['to'], ))
-                        log.debug("storing stanza: %s" % (stanza.toXml(), ))
-                        self.message_offline_store(stanza)
-                        # push notify client
-                        if self.push_manager:
-                            self.push_manager.notify(to)
                 else:
                     self.local(stanza)
             else:
@@ -793,6 +790,30 @@ class C2SComponent(xmlstream2.SocketComponent, resolver.ResolverMixIn):
                         log.debug("remote server now has responsibility for message %s - deleting" % (r_sent['id'], ))
                         # TODO safe delete with sender/recipient
                         self.message_offline_delete(r_sent['id'], stanza.name)
+
+            else:
+                log.debug("stanza is not our concern or is an error")
+
+    def process_subscription(self, stanza):
+        if stanza.hasAttribute('to'):
+            to = jid.JID(stanza['to'])
+            # process only our JIDs
+            if util.jid_local(util.COMPONENT_C2S, self, to):
+                if to.user is not None:
+                    try:
+                        # send stanza to sm only to non-negative resources
+                        self.sfactory.dispatch(stanza)
+                    except:
+                        # manager not found - send error or send to offline storage
+                        log.debug("c2s manager for %s not found" % (stanza['to'], ))
+                        self.message_offline_store(stanza)
+                        # push notify client
+                        if self.push_manager:
+                            self.push_manager.notify(to)
+
+                else:
+                    # deliver local stanza
+                    self.local(stanza)
 
             else:
                 log.debug("stanza is not our concern or is an error")
