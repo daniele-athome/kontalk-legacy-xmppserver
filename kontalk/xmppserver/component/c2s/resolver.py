@@ -1039,6 +1039,7 @@ class ResolverMixIn():
                 if self.is_presence_allowed(sub, watched) == 1:
                     log.debug("notifying subscriber %s" % (sub, ))
                     stanza['to'] = sub.userhost()
+                    stanza.consumed = False
                     self.send(stanza)
                 else:
                     log.debug("%s is not allowed to see presence" % (sub, ))
