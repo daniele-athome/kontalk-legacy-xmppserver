@@ -527,10 +527,19 @@ class C2SComponent(xmlstream2.SocketComponent, resolver.ResolverMixIn):
             if host in self.keyring.hostlist():
                 del stanza['from']
 
-    def send(self, stanza, force_delivery=False, force_bare=False):
+    def send(self, stanza, force_delivery=False, force_bare=False, hold=False):
         """
         Resolves stanza recipient and send the stanza to the router.
-        @todo document parameters
+        @param stanza: the stanza to be sent
+        @type stanza: domish.Element
+        @param force_delivery: if true, deliver the stanza to the first available resource found if the intended one
+        is not available
+        @type force_delivery bool
+        @param force_bare: if true, deliver the stanza to the bare JID despite of the indicated destination
+        @type force_bare bool
+        @param hold: this parameter is passed directly to the dispatch method, instructing it to not deliver the stanza
+        and hold it in offline storage instead (e.g. delayed/unauthorized messages)
+        @type hold bool
         """
 
         # send raw xml if you really know what you are doing
@@ -626,8 +635,13 @@ class C2SComponent(xmlstream2.SocketComponent, resolver.ResolverMixIn):
         else:
             self.dispatch(stanza)
 
-    def dispatch(self, stanza):
-        """Dispatches stanzas from the router."""
+    def dispatch(self, stanza, hold=False):
+        """
+        Dispatches stanzas from router and from local clients.
+        @param hold: if true, the stanza will not be delivered but sent to offline storage instead (used only for
+        message stanzas)
+        @type hold: bool
+        """
         stanza.consumed = True
 
         util.resetNamespace(stanza, component.NS_COMPONENT_ACCEPT)
@@ -638,7 +652,7 @@ class C2SComponent(xmlstream2.SocketComponent, resolver.ResolverMixIn):
             if util.jid_local(util.COMPONENT_C2S, self, to):
                 # messages follow a different path
                 if stanza.name == 'message':
-                    return self.process_message(stanza)
+                    return self.process_message(stanza, hold)
                 elif stanza.name == 'presence' and stanza.getAttribute('type') == 'subscribe':
                     return self.process_subscription(stanza)
 
@@ -661,7 +675,7 @@ class C2SComponent(xmlstream2.SocketComponent, resolver.ResolverMixIn):
 
             # TODO stanzas from s2s will be network domain!! They must be resolved!
 
-    def process_message(self, stanza):
+    def process_message(self, stanza, hold=False):
         if stanza.hasAttribute('to'):
             to = jid.JID(stanza['to'])
             # process only our JIDs
@@ -688,14 +702,20 @@ class C2SComponent(xmlstream2.SocketComponent, resolver.ResolverMixIn):
                             # send message to offline storage just to be safe (delayed)
                             keepId = self.message_offline_store(stanza, delayed=True, reuseId=keepId)
 
+                        if hold:
+                            raise Exception()
 
                         # send message to sm only to non-negative resources
                         log.debug("sending message %s" % (stanza['id'], ))
                         self.sfactory.dispatch(stanza)
 
                     except:
-                        # manager not found - send error or send to offline storage
-                        log.debug("c2s manager for %s not found" % (stanza['to'], ))
+                        # manager not found or holding -- send to offline storage
+                        if hold:
+                            log.debug("holding stanza for %s" % (stanza['to'], ))
+                        else:
+                            log.debug("c2s manager for %s not found" % (stanza['to'], ))
+
                         """
                         Since our previous call to message_offline_store()
                         was with delayed parameter, we need to store for
@@ -851,38 +871,56 @@ class C2SComponent(xmlstream2.SocketComponent, resolver.ResolverMixIn):
         log.debug("data: %r" % (data, ))
         # this will be used to set a safe recipient
         # WARNING this will create a JID anyway :(
-        to = self.resolveJID(user).full()
+        jid_to = self.resolveJID(user)
         for msg in data:
             log.debug("msg[%s]=%s" % (msg['id'], msg['stanza'].toXml().encode('utf-8'), ))
+            stanza = msg['stanza']
             try:
                 """
                 Mark the stanza with our server name, so we'll receive a
                 copy of the receipt
                 """
-                if msg['stanza'].request:
-                    msg['stanza'].request['from'] = self.xmlstream.thisEntity.full()
-                elif msg['stanza'].received:
-                    msg['stanza'].received['from'] = self.xmlstream.thisEntity.full()
+                if stanza.request:
+                    stanza.request['from'] = self.xmlstream.thisEntity.full()
+                elif stanza.received:
+                    stanza.received['from'] = self.xmlstream.thisEntity.full()
 
                 # mark delayed delivery
                 if 'timestamp' in msg:
-                    delay = msg['stanza'].addElement((xmlstream2.NS_XMPP_DELAY, 'delay'))
+                    delay = stanza.addElement((xmlstream2.NS_XMPP_DELAY, 'delay'))
                     delay['stamp'] = msg['timestamp'].strftime(xmlstream2.XMPP_STAMP_FORMAT)
 
-                """
-                We use direct delivery here: it's faster and does not
-                involve JID resolution
-                """
-                msg['stanza']['to'] = to
-                self.dispatch(msg['stanza'])
+                # are we sending a message to a user we have blocked?
+                jid_from = jid.JID(stanza['from'])
+                if self.parent.router.is_presence_allowed(jid_to, jid_from) == -1:
+                    log.debug("sending message to blocked user, bouncing error")
+                    e = error.StanzaError('not-acceptable', 'cancel')
+                    errstanza = e.toResponse(msg['stanza'])
+                    errstanza.error.addElement((xmlstream2.NS_IQ_BLOCKING_ERRORS, 'blocked'))
+                    self.send(errstanza)
+
+                else:
+                    # check for permission
+                    allowed = self.parent.router.is_presence_allowed(jid_from, jid_to)
+                    if allowed == -1:
+                        # user is blocked!
+                        log.debug("not allowed to send messages to %s, discarding message" % (stanza['to'], ))
+                        self.message_offline_delete(msg['id'], stanza.name)
+                    else:
+                        """
+                        We use direct delivery here: it's faster and does not
+                        involve JID resolution
+                        """
+                        stanza['to'] = jid_to.full()
+                        self.dispatch(stanza, hold=(allowed != 1))
 
                 """
                 If a receipt is requested, we won't delete the message from
                 storage now; we must be sure client has received it.
                 Otherwise just delete the message immediately.
                 """
-                if not xmlstream2.extract_receipt(msg['stanza'], 'request'):
-                    self.message_offline_delete(msg['id'], msg['stanza'].name)
+                if not xmlstream2.extract_receipt(stanza, 'request'):
+                    self.message_offline_delete(msg['id'], stanza.name)
             except:
                 log.debug("offline message delivery failed (%s)" % (msg['id'], ))
                 traceback.print_exc()
