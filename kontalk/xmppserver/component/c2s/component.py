@@ -500,9 +500,9 @@ class C2SComponent(xmlstream2.SocketComponent, resolver.ResolverMixIn):
     def _authd(self, xs):
         component.Component._authd(self, xs)
         log.debug("connected to router.")
-        self.xmlstream.addObserver("/presence", self.dispatch)
+        self.xmlstream.addObserver("/presence", self.dispatch, ignore_consumed=False)
         self.xmlstream.addObserver("/iq", self.iq, 50)
-        self.xmlstream.addObserver("/iq", self.dispatch)
+        self.xmlstream.addObserver("/iq", self.dispatch, ignore_consumed=False)
         # <message/> has its own handler
 
         # resolver stuff
@@ -635,13 +635,18 @@ class C2SComponent(xmlstream2.SocketComponent, resolver.ResolverMixIn):
         else:
             self.dispatch(stanza)
 
-    def dispatch(self, stanza, hold=False):
+    def dispatch(self, stanza, hold=False, ignore_consumed=True):
         """
         Dispatches stanzas from router and from local clients.
         @param hold: if true, the stanza will not be delivered but sent to offline storage instead (used only for
         message stanzas)
         @type hold: bool
+        @param ignore_consumed: if true, stanza's consumed attribute will be ignored
+        @type ignore_consumed: bool
         """
+        if not ignore_consumed and stanza.consumed:
+            return
+
         stanza.consumed = True
 
         util.resetNamespace(stanza, component.NS_COMPONENT_ACCEPT)
