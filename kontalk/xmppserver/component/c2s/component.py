@@ -897,7 +897,7 @@ class C2SComponent(xmlstream2.SocketComponent, resolver.ResolverMixIn):
 
                 # are we sending a message to a user we have blocked?
                 jid_from = jid.JID(stanza['from'])
-                if self.parent.router.is_presence_allowed(jid_to, jid_from) == -1:
+                if self.is_presence_allowed(jid_to, jid_from) == -1:
                     log.debug("sending message to blocked user, bouncing error")
                     e = error.StanzaError('not-acceptable', 'cancel')
                     errstanza = e.toResponse(msg['stanza'])
@@ -906,7 +906,7 @@ class C2SComponent(xmlstream2.SocketComponent, resolver.ResolverMixIn):
 
                 else:
                     # check for permission
-                    allowed = self.parent.router.is_presence_allowed(jid_from, jid_to)
+                    allowed = self.is_presence_allowed(jid_from, jid_to)
                     if allowed == -1:
                         # user is blocked!
                         log.debug("not allowed to send messages to %s, discarding message" % (stanza['to'], ))
