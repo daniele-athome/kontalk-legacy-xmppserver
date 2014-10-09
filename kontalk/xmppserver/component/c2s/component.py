@@ -771,7 +771,7 @@ class C2SComponent(xmlstream2.SocketComponent, resolver.ResolverMixIn):
                         if receipt:
                             try:
                                 from_server = receipt['from']
-                                if not util.hostjid_local(util.COMPONENT_C2S, self.parent, from_server):
+                                if not util.hostjid_local(util.COMPONENT_C2S, self, from_server):
                                     stanza['from'] = from_server
                                     self.send_ack(stanza, delivery, stamp, request)
                             except KeyError:
