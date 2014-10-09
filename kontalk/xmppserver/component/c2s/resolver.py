@@ -1013,6 +1013,10 @@ class ResolverMixIn():
     def broadcastSubscribers(self, stanza):
         """Broadcast stanza to JID subscribers."""
 
+        # direct delivery: do not broadcast
+        if stanza.direct and stanza.direct.uri == xmlstream2.NS_XMPP_DIRECT:
+            return
+
         user = jid.JID(stanza['from'])
 
         try:
@@ -1039,6 +1043,8 @@ class ResolverMixIn():
                 if self.is_presence_allowed(sub, watched) == 1:
                     log.debug("notifying subscriber %s" % (sub, ))
                     stanza['to'] = sub.userhost()
+                    # direct delivery to workaround presence loops
+                    stanza.addElement((xmlstream2.NS_XMPP_DIRECT, 'direct'))
                     stanza.consumed = True
                     self.send(stanza)
                 else:

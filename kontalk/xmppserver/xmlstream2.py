@@ -56,6 +56,8 @@ NS_XMPP_VCARD4 = 'urn:ietf:params:xml:ns:vcard-4.0'
 NS_XMPP_STANZA_GROUP = 'urn:xmpp:stanza-group'
 NS_XMPP_SERVER_RECEIPTS = 'urn:xmpp:server-receipts'
 NS_XMPP_STORAGE = 'urn:xmpp:storage'
+# <presence/> direct delivery: no notification to subscribers
+NS_XMPP_DIRECT = 'urn:xmpp:direct'
 
 NS_PRESENCE_PUSH = 'http://kontalk.org/extensions/presence#push'
 NS_MESSAGE_UPLOAD = 'http://kontalk.org/extensions/message#upload'
