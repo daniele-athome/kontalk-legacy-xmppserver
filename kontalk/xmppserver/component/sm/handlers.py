@@ -158,6 +158,10 @@ class PresenceHandler(XMPPHandler):
             # TODO this is wrong, but do it for the moment until we find a way to handle this case
             self.parent.router.doSubscribe(jid_from, jid_to, stanza.getAttribute('id'), response_only=False)
 
+            # blindly try to deliver offline storage
+            # this will process any pending message
+            self.parent.router.deliver_offline_storage(jid_from)
+
 
 class PingHandler(XMPPHandler):
     """

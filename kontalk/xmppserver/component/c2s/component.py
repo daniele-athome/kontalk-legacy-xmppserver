@@ -601,14 +601,14 @@ class C2SComponent(xmlstream2.SocketComponent, resolver.ResolverMixIn):
                     # no available resources, deliver to bare JID if force delivery
                     if len(jids) == 0 and force_delivery:
                         stanza['to'] = rcpts.jid.userhost()
-                        self.dispatch(stanza)
+                        self.dispatch(stanza, hold=hold)
                     # deliver if resource is available
                     else:
                         sent = False
                         for _to in jids:
                             if _to.resource == to.resource:
                                 stanza['to'] = _to.full()
-                                self.dispatch(stanza)
+                                self.dispatch(stanza, hold=hold)
                                 sent = True
                                 break
 
@@ -616,7 +616,7 @@ class C2SComponent(xmlstream2.SocketComponent, resolver.ResolverMixIn):
                         # if force delivery is enabled, deliver to the first available resource
                         if not sent and len(jids) > 0 and force_delivery:
                             stanza['to'] = jids[0].full()
-                            self.dispatch(stanza)
+                            self.dispatch(stanza, hold=hold)
 
                 # destination was a bare JID
                 else:
@@ -625,15 +625,15 @@ class C2SComponent(xmlstream2.SocketComponent, resolver.ResolverMixIn):
                     # no available resources, send to first network bare JID
                     if len(jids) == 0 or force_bare:
                         stanza['to'] = rcpts.jid.userhost()
-                        self.dispatch(stanza)
+                        self.dispatch(stanza, hold=hold)
                     else:
                         for _to in jids:
                             stanza['to'] = _to.full()
-                            self.dispatch(stanza)
+                            self.dispatch(stanza, hold=hold)
 
         # otherwise send to router
         else:
-            self.dispatch(stanza)
+            self.dispatch(stanza, hold=hold)
 
     def dispatch(self, stanza, hold=False, ignore_consumed=True):
         """
@@ -872,6 +872,11 @@ class C2SComponent(xmlstream2.SocketComponent, resolver.ResolverMixIn):
         else:
             return defer.fail(Exception())
 
+    def deliver_offline_storage(self, user):
+        d = self.stanzadb.get_by_recipient(user)
+        d.addCallback(self._local_presence_output, user)
+        return d
+
     def _local_presence_output(self, data, user):
         log.debug("data: %r" % (data, ))
         # this will be used to set a safe recipient
@@ -947,8 +952,7 @@ class C2SComponent(xmlstream2.SocketComponent, resolver.ResolverMixIn):
 
         if available:
             # initial presence - deliver offline storage
-            d = self.stanzadb.get_by_recipient(user)
-            d.addCallback(self._local_presence_output, user)
+            self.deliver_offline_storage(user)
 
         # send to resolver and cache
         resolver.ResolverMixIn.local_presence(self, user, stanza)
