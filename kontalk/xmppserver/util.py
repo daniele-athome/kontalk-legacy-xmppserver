@@ -18,7 +18,9 @@
  along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
-import random, hashlib
+import random
+import hashlib
+import mimetypes
 
 from zope.interface import implements
 
@@ -41,6 +43,8 @@ CHARSBOX_HEX_UPPERCASE = 'ABCDEF1234567890'
 
 COMPONENT_C2S = 'c2s'
 COMPONENT_NET = 'net'
+
+DEFAULT_EXTENSION = '.bin'
 
 
 def split_userid(userid):
@@ -167,23 +171,25 @@ def hostjid_local(component, component_object, host):
 
 
 def generate_filename(mime):
-    """Generates a random filename for the given mime type."""
+    """Generates a random filename for the given MIME type."""
     supported_mimes = {
-        'image/png': 'png',
-        'image/jpeg': 'jpg',
-        'image/gif': 'gif',
-        'text/x-vcard': 'vcf',
-        'text/vcard': 'vcf',
-        'text/plain': 'txt',
+        'image/png': '.png',
+        'image/jpeg': '.jpg',
+        'image/gif': '.gif',
+        'text/x-vcard': '.vcf',
+        'text/vcard': '.vcf',
+        'text/plain': '.txt',
+        'audio/3gpp': '.3gp',
     }
 
     try:
         ext = supported_mimes[mime]
     except KeyError:
-        # generic extension
-        ext = 'bin'
+        ext = mimetypes.guess_extension(mime, strict=False)
+        if ext is None:
+            ext = DEFAULT_EXTENSION
 
-    return 'att%s.%s' % (rand_str(6, CHARSBOX_AZN_LOWERCASE), ext)
+    return 'att%s%s' % (rand_str(6, CHARSBOX_AZN_LOWERCASE), ext)
 
 
 def md5sum(filename):
