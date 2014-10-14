@@ -46,6 +46,7 @@ COMPONENT_NET = 'net'
 def split_userid(userid):
     return userid[:USERID_LENGTH], userid[USERID_LENGTH:]
 
+
 def jid_to_userid(_jid, splitted=False):
     """Converts a L{JID} to a user id."""
     if _jid.resource:
@@ -57,10 +58,12 @@ def jid_to_userid(_jid, splitted=False):
             return _jid.user, None
         return _jid.user
 
+
 def userid_to_jid(userid, host=None):
     """Converts a user id to a L{JID}."""
     h, r = split_userid(userid)
     return jid.JID(tuple=(h, host, r))
+
 
 def rand_str(length = 32, chars = CHARSBOX_AZN_CASEINS):
     # Length of character list
@@ -84,6 +87,7 @@ def rand_str(length = 32, chars = CHARSBOX_AZN_CASEINS):
     # Return the string
     return string
 
+
 def resetNamespace(node, fromUri = None, toUri = None):
     """
     Reset namespace of the given node and all of its children
@@ -91,6 +95,7 @@ def resetNamespace(node, fromUri = None, toUri = None):
     node.defaultUri = node.uri = fromUri
     generic.stripNamespace(node)
     node.defaultUri = node.uri = toUri
+
 
 def str_none(obj, encoding='utf-8'):
     if obj is not None:
@@ -102,22 +107,28 @@ def str_none(obj, encoding='utf-8'):
             return data
     return None
 
+
 def sha1(text):
     hashed = hashlib.sha1(text)
     return hashed.hexdigest()
+
 
 def _jid_parse(jidstring, index):
     j = jid.parse(jidstring)
     return j[index]
 
+
 def jid_user(jidstring):
     return _jid_parse(jidstring, 0)
+
 
 def jid_host(jidstring):
     return _jid_parse(jidstring, 1)
 
+
 def component_jid(host, component):
     return component + '.' + host
+
 
 def jid_component(jidstring, component=None):
     if '@' not in jidstring:
@@ -128,8 +139,10 @@ def jid_component(jidstring, component=None):
         else:
             return parsed
 
+
 def jid_local(component, component_object, _jid):
     return hostjid_local(component, component_object, _jid.host)
+
 
 def hostjid_server(jidstring, servername):
     try:
@@ -137,6 +150,7 @@ def hostjid_server(jidstring, servername):
         return host == servername
     except:
         pass
+
 
 def hostjid_local(component, component_object, host):
     # depending on the component, one of network or server name must be chosen
@@ -151,24 +165,26 @@ def hostjid_local(component, component_object, host):
         check2 = None
     return host in (check, check2)
 
+
 def generate_filename(mime):
-    '''Generates a random filename for the given mime type.'''
+    """Generates a random filename for the given mime type."""
     supported_mimes = {
-        'image/png' : 'png',
-        'image/jpeg' : 'jpg',
-        'image/gif' : 'gif',
-        'text/x-vcard' : 'vcf',
-        'text/vcard' : 'vcf',
-        'text/plain' : 'txt',
+        'image/png': 'png',
+        'image/jpeg': 'jpg',
+        'image/gif': 'gif',
+        'text/x-vcard': 'vcf',
+        'text/vcard': 'vcf',
+        'text/plain': 'txt',
     }
 
     try:
         ext = supported_mimes[mime]
-    except:
+    except KeyError:
         # generic extension
         ext = 'bin'
 
     return 'att%s.%s' % (rand_str(6, CHARSBOX_AZN_LOWERCASE), ext)
+
 
 def md5sum(filename):
     md5 = hashlib.md5()
@@ -195,6 +211,7 @@ class SimpleReceiver(protocol.Protocol):
         else:
             self.d.errback(reason)
 
+
 class StringProducer(object):
     implements(IBodyProducer)
 
@@ -211,6 +228,7 @@ class StringProducer(object):
 
     def stopProducing(self):
         pass
+
 
 def bitlist_to_chars(bl):
     """See http://stackoverflow.com/a/10238101/1045199"""
