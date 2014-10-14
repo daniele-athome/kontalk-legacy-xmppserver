@@ -61,7 +61,10 @@ class PresenceStub(object):
                 self.show = None
         elif name == 'status':
             if value:
-                self.status = value.encode('utf-8')
+                if isinstance(value, unicode):
+                    self.status = value
+                else:
+                    self.status = value.decode('utf-8')
             else:
                 self.status = None
         elif name == 'priority':
