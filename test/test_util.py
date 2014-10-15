@@ -1,18 +1,33 @@
-
 import unittest
 import os
 import tempfile
+from unittest import TestCase
 
 from kontalk.xmppserver import util
 
 
 class TestUtil(unittest.TestCase):
-
     def setUp(self):
         pass
 
     def tearDown(self):
         pass
+
+    def test_split_userid(self):
+        userid = '4bdd4f929f3a1062253e4e496bafba0bdfb5db75ABCDEFGH'
+        splitted = util.split_userid(userid)
+        self.assertTupleEqual(splitted, ('4bdd4f929f3a1062253e4e496bafba0bdfb5db75', 'ABCDEFGH'))
+
+    def test_component_jid(self):
+        host = 'localhost.localdomain'
+        component = 'c2s'
+        data = util.component_jid(host, component)
+        self.assertEqual(data, 'c2s.localhost.localdomain')
+
+    def test_sha1(self):
+        text = 'test data'
+        data = util.sha1(text)
+        self.assertEqual(data, 'f48dd853820860816c75d54d0f584dc863327a7c')
 
     def test_generate_filename(self):
         mimes = {
@@ -39,5 +54,5 @@ class TestUtil(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    #import sys;sys.argv = ['', 'Test.testName']
+    # import sys;sys.argv = ['', 'Test.testName']
     unittest.main()

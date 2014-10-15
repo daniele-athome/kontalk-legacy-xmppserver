@@ -69,7 +69,7 @@ def userid_to_jid(userid, host=None):
     return jid.JID(tuple=(h, host, r))
 
 
-def rand_str(length = 32, chars = CHARSBOX_AZN_CASEINS):
+def rand_str(length=32, chars=CHARSBOX_AZN_CASEINS):
     # Length of character list
     chars_length = (len(chars) - 1)
 
@@ -84,7 +84,7 @@ def rand_str(length = 32, chars = CHARSBOX_AZN_CASEINS):
 
         # Make sure the same two characters don't appear next to each other
         if r != string[i - 1]:
-            string +=  r
+            string += r
 
         i = len(string)
 
@@ -92,24 +92,13 @@ def rand_str(length = 32, chars = CHARSBOX_AZN_CASEINS):
     return string
 
 
-def resetNamespace(node, fromUri = None, toUri = None):
+def resetNamespace(node, fromUri=None, toUri=None):
     """
     Reset namespace of the given node and all of its children
     """
     node.defaultUri = node.uri = fromUri
     generic.stripNamespace(node)
     node.defaultUri = node.uri = toUri
-
-
-def str_none(obj, encoding='utf-8'):
-    if obj is not None:
-        try:
-            data = str(obj)
-        except:
-            data = obj.__str__().encode(encoding)
-        if len(data) > 0:
-            return data
-    return None
 
 
 def sha1(text):
@@ -200,6 +189,15 @@ def md5sum(filename):
     return md5.hexdigest()
 
 
+def bitlist_to_chars(bl):
+    """See http://stackoverflow.com/a/10238101/1045199"""
+    bi = iter(bl)
+    _bytes = zip(*(bi,) * 8)
+    shifts = (7, 6, 5, 4, 3, 2, 1, 0)
+    for byte in _bytes:
+        yield chr(sum(bit << s for bit, s in zip(byte, shifts)))
+
+
 class SimpleReceiver(protocol.Protocol):
     """A simple string buffer receiver for http clients."""
 
@@ -234,12 +232,3 @@ class StringProducer(object):
 
     def stopProducing(self):
         pass
-
-
-def bitlist_to_chars(bl):
-    """See http://stackoverflow.com/a/10238101/1045199"""
-    bi = iter(bl)
-    _bytes = zip(*(bi,) * 8)
-    shifts = (7, 6, 5, 4, 3, 2, 1, 0)
-    for byte in _bytes:
-        yield chr(sum(bit << s for bit, s in zip(byte, shifts)))
