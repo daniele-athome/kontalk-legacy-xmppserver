@@ -22,7 +22,7 @@ setup(
     ],
     scripts=[],  # TODO: c2s.sh, router.sh, ...
     license='GNU GPL v3',
-    requires=['twisted', 'wokkel', 'oursql', 'demjson', 'pyasn1'],
+    requires=['twisted', 'wokkel', 'oursql', 'demjson', 'pyasn1', 'pyopenssl'],
     test_suite='tests'
     #package_data={'': ['data/*.*', 'data/cards/*.jpg']},
 )
