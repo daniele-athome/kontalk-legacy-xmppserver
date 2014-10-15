@@ -1,33 +1,50 @@
+from twisted.words.protocols.jabber.jid import JID
 import unittest
 import os
 import tempfile
-from unittest import TestCase
 
 from kontalk.xmppserver import util
 
 
 class TestUtil(unittest.TestCase):
-    def setUp(self):
-        pass
-
-    def tearDown(self):
-        pass
-
     def test_split_userid(self):
         userid = '4bdd4f929f3a1062253e4e496bafba0bdfb5db75ABCDEFGH'
         splitted = util.split_userid(userid)
         self.assertTupleEqual(splitted, ('4bdd4f929f3a1062253e4e496bafba0bdfb5db75', 'ABCDEFGH'))
+
+    def test_jid_to_userid(self):
+        jid = JID('user@localhost.localdomain/resource')
+        userid = util.jid_to_userid(jid, splitted=False)
+        self.assertEqual(userid, 'userresource')
+        userid = util.jid_to_userid(jid, splitted=True)
+        self.assertTupleEqual(userid, ('user', 'resource'))
+
+    def test_userid_to_jid(self):
+        jid = util.userid_to_jid('4bdd4f929f3a1062253e4e496bafba0bdfb5db75ABCDEFGH', 'localhost')
+        self.assertEqual(jid.user, '4bdd4f929f3a1062253e4e496bafba0bdfb5db75')
+        self.assertEqual(jid.host, 'localhost')
+        self.assertEqual(jid.resource, 'ABCDEFGH')
+
+    def test_sha1(self):
+        text = 'test data'
+        data = util.sha1(text)
+        self.assertEqual(data, 'f48dd853820860816c75d54d0f584dc863327a7c')
+
+    def test_jid_user(self):
+        jidstring = 'user@localhost.localdomain/resource'
+        user = util.jid_user(jidstring)
+        self.assertEqual(user, 'user')
+
+    def test_jid_host(self):
+        jidstring = 'user@localhost.localdomain/resource'
+        user = util.jid_host(jidstring)
+        self.assertEqual(user, 'localhost.localdomain')
 
     def test_component_jid(self):
         host = 'localhost.localdomain'
         component = 'c2s'
         data = util.component_jid(host, component)
         self.assertEqual(data, 'c2s.localhost.localdomain')
-
-    def test_sha1(self):
-        text = 'test data'
-        data = util.sha1(text)
-        self.assertEqual(data, 'f48dd853820860816c75d54d0f584dc863327a7c')
 
     def test_generate_filename(self):
         mimes = {
