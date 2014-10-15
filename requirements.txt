@@ -3,3 +3,4 @@ wokkel
 demjson
 oursql
 pyasn1
+pyopenssl
