@@ -4,3 +4,4 @@ demjson
 oursql
 pyasn1
 pyopenssl
+pygpgme
