@@ -2,7 +2,10 @@ language: python
 python:
   - "2.6"
   - "2.7"
+before_install:
+  - apt-get update
 install:
+  - apt-get install libgpgme11-dev
   - pip install -r requirements.txt
   - git clone https://gitorious.org/pygnutls/pygnutls.git && cd pygnutls && python setup.py install && cd ..
   - python setup.py install
