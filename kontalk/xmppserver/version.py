@@ -25,6 +25,6 @@ VERSION = "devel"
 AUTHORS = (
     {
         "name": "Daniele Ricci",
-        "email" : "daniele.athome@gmail.com"
+        "email": "daniele.athome@gmail.com"
     },
 )

@@ -14,3 +14,5 @@ dropin.cache
 /*.log
 /*.log.*
 /.idea
+/build
+/kontalk_xmppserver.egg-info

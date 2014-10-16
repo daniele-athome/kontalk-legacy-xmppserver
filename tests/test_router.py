@@ -12,13 +12,13 @@ class TestRouter(unittest.TestCase):
 
     def setUp(self):
         # load configuration
-        self.loadConfiguration('../router.conf')
+        self.load_configuration('router.conf')
         # init logging
         log.init(self.config)
         # create router
         self.router = Router()
 
-    def loadConfiguration(self, filename):
+    def load_configuration(self, filename):
         # load configuration
         fp = open(filename, 'r')
         self.config = demjson.decode(fp.read(), allow_comments=True)
@@ -27,20 +27,19 @@ class TestRouter(unittest.TestCase):
     def tearDown(self):
         pass
 
-
-    def testConnect(self):
+    def test_connect(self):
         """Tests the connection from a component."""
         xs = xmlstream.XmlStream(xmlstream.Authenticator())
         self.router.addRoute("resolver.prime.kontalk.net", xs)
 
-        routes = { "resolver.prime.kontalk.net" : xs }
+        routes = {"resolver.prime.kontalk.net": xs}
         self.assertDictEqual(self.router.routes, routes, "Routes not matching.")
 
-    def testRoute(self):
+    def test_route(self):
         """Tests stanza routing."""
         pass
 
-    def testBind(self):
+    def test_bind(self):
         """Tests additional name bindings."""
         pass
 

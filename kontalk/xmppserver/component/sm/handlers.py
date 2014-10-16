@@ -158,6 +158,10 @@ class PresenceHandler(XMPPHandler):
             # TODO this is wrong, but do it for the moment until we find a way to handle this case
             self.parent.router.doSubscribe(jid_from, jid_to, stanza.getAttribute('id'), response_only=False)
 
+            # blindly try to deliver offline storage
+            # this will process any pending message
+            self.parent.router.deliver_offline_storage(jid_from)
+
 
 class PingHandler(XMPPHandler):
     """
@@ -816,13 +820,15 @@ class MessageHandler(XMPPHandler):
             else:
 
                 # check for permission
-                if self.parent.router.is_presence_allowed(jid_from, jid_to) == 1:
-                    # send to c2s hub (without implicitly consuming)
-                    self.parent.router.send(stanza, force_delivery=True)
-                else:
+                allowed = self.parent.router.is_presence_allowed(jid_from, jid_to)
+                if allowed == -1:
+                    # user is blocked!
                     log.debug("not allowed to send messages, sending fake response to %s" % (stanza['from'], ))
                     if stanza.getAttribute('type') == 'chat' and xmlstream2.extract_receipt(stanza, 'request'):
                         self.send_fake_receipt(stanza)
+                else:
+                    # send to c2s hub (without implicitly consuming)
+                    self.parent.router.send(stanza, force_delivery=True, hold=(allowed != 1))
 
             # we have now consumed the stanza
             stanza.consumed = True

@@ -45,6 +45,11 @@ class PresenceStub(object):
             raise ValueError('not a bare JID.')
         self._avail = {}
         self.jid = _jid
+        self.type = None
+        self.show = None
+        self.status = None
+        self.delay = None
+        self.priority = 0
 
     def __set__(self, name, value):
         if name == 'type':
@@ -56,7 +61,10 @@ class PresenceStub(object):
                 self.show = None
         elif name == 'status':
             if value:
-                self.status = value.encode('utf-8')
+                if isinstance(value, unicode):
+                    self.status = value
+                else:
+                    self.status = value.decode('utf-8')
             else:
                 self.status = None
         elif name == 'priority':
@@ -154,7 +162,7 @@ class PresenceStub(object):
                 self.delay = datetime.utcnow()
 
             return presence
-        except:
+        except KeyError:
             pass
 
     def presence(self):
@@ -290,15 +298,7 @@ class JIDCache(XMPPHandler):
         # local c2s or remote server has disconnected, remove presences from cache
         try:
             unused, host = util.jid_component(stanza['from'], util.COMPONENT_C2S)
-            if host == self.parent.servername:
-                log.debug("local c2s disconnecting, removing data from presence cache" % (host, ))
-                keys = self.presence_cache.keys()
-                for key in keys:
-                    stub = self.presence_cache[key]
-                    if stub.jid.host == stanza['from']:
-                        del self.presence_cache[key]
-
-            elif host in self.parent.keyring.hostlist():
+            if host in self.parent.keyring.hostlist():
                 log.debug("server %s is disconnecting, taking over presence data" % (host, ))
                 ordered_presence = []
                 for stub in self.presence_cache.itervalues():
@@ -334,12 +334,15 @@ class JIDCache(XMPPHandler):
                         rewrite = None
                         presence = e.presence()
                         for p in presence:
-                            # do not consider available presence stanzas
+                            if not p.hasAttribute('type'):
+                                # available presence will be converted into unavailable
+                                p['type'] = 'unavailable'
+
                             if p.getAttribute('type') == 'unavailable':
+                                # unavailable presence will be broadcasted
                                 rewrite = PresenceStub.fromElement(p, util
                                     .component_jid(self.parent.servername, util.COMPONENT_C2S))
                                 self.presence_cache[e.jid.user] = rewrite
-                                break
 
                         # simulate presence broadcast so resolvers will insert it into their cache
                         if rewrite:

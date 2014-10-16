@@ -476,7 +476,10 @@ class NetService(object):
         """
 
         if self.logTraffic:
-            log.debug("stanza from %s: %s" % (xs.otherEntity.full(), stanza.toXml().encode('utf-8')))
+            try:
+                log.debug("stanza from %s: %s" % (xs.otherEntity.full(), stanza.toXml().encode('utf-8')))
+            except UnicodeDecodeError:
+                log.debug("stanza from %s: <%s/> (cannot encode)" % (xs.otherEntity.full(), stanza.name))
         util.resetNamespace(stanza, xs.namespace)
         stanzaFrom = stanza.getAttribute('from')
         stanzaTo = stanza.getAttribute('to')

@@ -18,7 +18,9 @@
  along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
-import random, hashlib
+import random
+import hashlib
+import mimetypes
 
 from zope.interface import implements
 
@@ -42,9 +44,12 @@ CHARSBOX_HEX_UPPERCASE = 'ABCDEF1234567890'
 COMPONENT_C2S = 'c2s'
 COMPONENT_NET = 'net'
 
+DEFAULT_EXTENSION = '.bin'
+
 
 def split_userid(userid):
     return userid[:USERID_LENGTH], userid[USERID_LENGTH:]
+
 
 def jid_to_userid(_jid, splitted=False):
     """Converts a L{JID} to a user id."""
@@ -57,12 +62,14 @@ def jid_to_userid(_jid, splitted=False):
             return _jid.user, None
         return _jid.user
 
+
 def userid_to_jid(userid, host=None):
     """Converts a user id to a L{JID}."""
     h, r = split_userid(userid)
     return jid.JID(tuple=(h, host, r))
 
-def rand_str(length = 32, chars = CHARSBOX_AZN_CASEINS):
+
+def rand_str(length=32, chars=CHARSBOX_AZN_CASEINS):
     # Length of character list
     chars_length = (len(chars) - 1)
 
@@ -77,14 +84,15 @@ def rand_str(length = 32, chars = CHARSBOX_AZN_CASEINS):
 
         # Make sure the same two characters don't appear next to each other
         if r != string[i - 1]:
-            string +=  r
+            string += r
 
         i = len(string)
 
     # Return the string
     return string
 
-def resetNamespace(node, fromUri = None, toUri = None):
+
+def resetNamespace(node, fromUri=None, toUri=None):
     """
     Reset namespace of the given node and all of its children
     """
@@ -92,32 +100,28 @@ def resetNamespace(node, fromUri = None, toUri = None):
     generic.stripNamespace(node)
     node.defaultUri = node.uri = toUri
 
-def str_none(obj, encoding='utf-8'):
-    if obj is not None:
-        try:
-            data = str(obj)
-        except:
-            data = obj.__str__().encode(encoding)
-        if len(data) > 0:
-            return data
-    return None
 
 def sha1(text):
     hashed = hashlib.sha1(text)
     return hashed.hexdigest()
 
+
 def _jid_parse(jidstring, index):
     j = jid.parse(jidstring)
     return j[index]
 
+
 def jid_user(jidstring):
     return _jid_parse(jidstring, 0)
+
 
 def jid_host(jidstring):
     return _jid_parse(jidstring, 1)
 
+
 def component_jid(host, component):
     return component + '.' + host
+
 
 def jid_component(jidstring, component=None):
     if '@' not in jidstring:
@@ -128,8 +132,10 @@ def jid_component(jidstring, component=None):
         else:
             return parsed
 
+
 def jid_local(component, component_object, _jid):
     return hostjid_local(component, component_object, _jid.host)
+
 
 def hostjid_server(jidstring, servername):
     try:
@@ -137,6 +143,7 @@ def hostjid_server(jidstring, servername):
         return host == servername
     except:
         pass
+
 
 def hostjid_local(component, component_object, host):
     # depending on the component, one of network or server name must be chosen
@@ -151,31 +158,44 @@ def hostjid_local(component, component_object, host):
         check2 = None
     return host in (check, check2)
 
+
 def generate_filename(mime):
-    '''Generates a random filename for the given mime type.'''
+    """Generates a random filename for the given MIME type."""
     supported_mimes = {
-        'image/png' : 'png',
-        'image/jpeg' : 'jpg',
-        'image/gif' : 'gif',
-        'text/x-vcard' : 'vcf',
-        'text/vcard' : 'vcf',
-        'text/plain' : 'txt',
+        'image/png': '.png',
+        'image/jpeg': '.jpg',
+        'image/gif': '.gif',
+        'text/x-vcard': '.vcf',
+        'text/vcard': '.vcf',
+        'text/plain': '.txt',
+        'audio/3gpp': '.3gp',
     }
 
     try:
         ext = supported_mimes[mime]
-    except:
-        # generic extension
-        ext = 'bin'
+    except KeyError:
+        ext = mimetypes.guess_extension(mime, strict=False)
+        if ext is None:
+            ext = DEFAULT_EXTENSION
 
-    return 'att%s.%s' % (rand_str(6, CHARSBOX_AZN_LOWERCASE), ext)
+    return 'att%s%s' % (rand_str(6, CHARSBOX_AZN_LOWERCASE), ext)
+
 
 def md5sum(filename):
     md5 = hashlib.md5()
-    with open(filename,'rb') as f:
+    with open(filename, 'rb') as f:
         for chunk in iter(lambda: f.read(128*md5.block_size), ''):
             md5.update(chunk)
     return md5.hexdigest()
+
+
+def bitlist_to_chars(bl):
+    """See http://stackoverflow.com/a/10238101/1045199"""
+    bi = iter(bl)
+    _bytes = zip(*(bi,) * 8)
+    shifts = (7, 6, 5, 4, 3, 2, 1, 0)
+    for byte in _bytes:
+        yield chr(sum(bit << s for bit, s in zip(byte, shifts)))
 
 
 class SimpleReceiver(protocol.Protocol):
@@ -195,6 +215,7 @@ class SimpleReceiver(protocol.Protocol):
         else:
             self.d.errback(reason)
 
+
 class StringProducer(object):
     implements(IBodyProducer)
 
@@ -211,11 +232,3 @@ class StringProducer(object):
 
     def stopProducing(self):
         pass
-
-def bitlist_to_chars(bl):
-    """See http://stackoverflow.com/a/10238101/1045199"""
-    bi = iter(bl)
-    _bytes = zip(*(bi,) * 8)
-    shifts = (7, 6, 5, 4, 3, 2, 1, 0)
-    for byte in _bytes:
-        yield chr(sum(bit << s for bit, s in zip(byte, shifts)))

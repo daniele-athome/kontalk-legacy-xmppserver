@@ -1,0 +1,7 @@
+twisted>=13.0.0
+wokkel
+demjson
+oursql
+pyasn1
+pyopenssl
+pygpgme

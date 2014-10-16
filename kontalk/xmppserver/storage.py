@@ -84,7 +84,7 @@ class StanzaStorage:
         """Retrieve stanzas by recipient."""
         pass
 
-    def delete(self, stanzaId, sender=None, recipient=None):
+    def delete(self, stanzaId, stanzaName, sender=None, recipient=None):
         """Delete a stanza by id."""
         pass
 
