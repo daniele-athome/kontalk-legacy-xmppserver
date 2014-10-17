@@ -476,6 +476,11 @@ class Keyring:
                 # export signed key
                 keydata = BytesIO()
                 self.ctx.export(fp, keydata)
+
+                if self._fingerprints is not None:
+                    # save the key into the fingerprint cache
+                    self._fingerprints[userid] = fp
+
                 return fp, keydata.getvalue()
 
         except:
