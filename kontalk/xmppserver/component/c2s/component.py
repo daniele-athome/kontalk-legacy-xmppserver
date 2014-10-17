@@ -929,7 +929,8 @@ class C2SComponent(xmlstream2.SocketComponent, resolver.ResolverMixIn):
                 storage now; we must be sure client has received it.
                 Otherwise just delete the message immediately.
                 """
-                if not xmlstream2.extract_receipt(stanza, 'request'):
+                if not xmlstream2.extract_receipt(stanza, 'request') and \
+                        not xmlstream2.extract_receipt(stanza, 'received'):
                     self.message_offline_delete(msg['id'], stanza.name)
             except:
                 log.debug("offline message delivery failed (%s)" % (msg['id'], ))

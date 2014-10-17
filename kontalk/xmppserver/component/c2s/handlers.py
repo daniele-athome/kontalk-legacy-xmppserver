@@ -190,7 +190,8 @@ class InitialPresenceHandler(XMPPHandler):
                     storage now; we must be sure client has received it.
                     Otherwise just delete the message immediately.
                     """
-                    if not xmlstream2.extract_receipt(msg['stanza'], 'request'):
+                    if not xmlstream2.extract_receipt(msg['stanza'], 'request') and \
+                            not xmlstream2.extract_receipt(stanza, 'received'):
                         self.parent.message_offline_delete(msg['id'], msg['stanza'].name)
                 except:
                     log.debug("offline message delivery failed (%s)" % (msg['id'], ))
