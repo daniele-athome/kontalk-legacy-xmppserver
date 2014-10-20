@@ -350,12 +350,12 @@ class Keyring:
     def _cache_fingerprint(self, userid, fpr, key):
         """
         Caches the given fingerprint after having done some checks.
-        @return: True if the fingerprint was cached, False otherwise
+        @return: the fingerprint if it was cached, None otherwise
         """
 
         if self._fingerprints is None:
             # we fake having cached the fingerprint in this case
-            return True
+            return fpr
 
         if userid in self._fingerprints:
             oldfpr = self._fingerprints[userid]
@@ -364,15 +364,16 @@ class Keyring:
                 oldkey = self.ctx.get_key(oldfpr)
 
                 # step 1: check for expiration/revocation
-                if not self._check_key(userid, oldkey):
-                    return False
-
-                # step 2: check for key start date
-                if key.subkeys[0].timestamp <= oldkey.subkeys[0].timestamp:
-                    return False
+                if self._check_key(userid, oldkey):
+                    log.debug("old key is still valid")
+                    # step 2: check for key start date
+                    if key.subkeys[0].timestamp <= oldkey.subkeys[0].timestamp:
+                        log.info("new key is older than new key (old: %d, new: %d)" % (oldkey.subkeys[0].timestamp,
+                                                                                       key.subkeys[0].timestamp))
+                        return None
 
         self._fingerprints[userid] = fpr
-        return True
+        return fpr
 
     def check_token(self, token_data):
         """Checks a Kontalk token. Data must be already base64-decoded."""
