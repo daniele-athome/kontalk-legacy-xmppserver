@@ -980,6 +980,7 @@ class ResolverMixIn():
             pres['to'] = subscriber.full()
             pres['from'] = to.userhost()
             pres['type'] = 'subscribed'
+            pres.consumed = True
             self.send(pres)
 
         if not response_only:
