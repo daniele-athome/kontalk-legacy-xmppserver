@@ -286,15 +286,12 @@ class Keyring:
 
     def check_user_key(self, keydata, userid):
         """
-        Does some checks on a user public key, checking for server signatures
-        and if uid matches.
-        FIXME this method has the side effect of importing the key into the
-        keyring and leaving it there.
+        Does some checks on a user public key, checking for server signatures and if uid matches.
+        This method also caches the fingerprint in our internal cache.
         @return: key fingerprint on success, None otherwise
         """
+        # TODO raise exceptions
         try:
-            # TODO this should remove the key from the keyring when it's done
-
             # import key
             result = self.ctx.import_(BytesIO(keydata))
             #for d in dir(result):
@@ -302,50 +299,79 @@ class Keyring:
             fp = str(result.imports[0][0]).upper()
             key = self.ctx.get_key(fp)
 
-            # revoked key!
-            if key.revoked:
-                return None
+            if self._check_key(userid, key):
+                return self._cache_fingerprint(userid, fp, key)
 
-            # check that at least one of the key uids is userid@network
-            check_email = '%s@%s' % (userid, self.network)
-            for uid in key.uids:
-                # uid found, check signatures
-                if uid.email == check_email:
-
-                    # revoked userid
-                    if uid.revoked:
-                        return None
-
-                    for sig in uid.signatures:
-                        try:
-                            #log.debug("found signature by [KEYID-%s]" % (sig.keyid, ))
-                            mkey = self.ctx.get_key(sig.keyid)
-                            if mkey:
-                                # signer key revoked!
-                                if mkey.revoked:
-                                    continue
-
-                                fpr = str(mkey.subkeys[0].fpr).upper()
-
-                                #log.debug("found signature by %s" % (fpr, ))
-                                # signature made by us
-                                if fpr == self.fingerprint:
-                                    if self._fingerprints is not None:
-                                        self._fingerprints[userid] = fp
-                                    return fp
-
-                                # check against keyring
-                                for rkey in self._list.iterkeys():
-                                    # fingerprint is a match: check if server is trusted
-                                    if fpr == rkey and self.fingerprint in self.get_server_trust(rkey):
-                                        if self._fingerprints is not None:
-                                            self._fingerprints[userid] = fp
-                                        return fp
-                        except:
-                            pass
         except:
             import traceback
             traceback.print_exc()
+
+    def _check_key(self, userid, key):
+        # revoked key!
+        if key.revoked:
+            return False
+
+        # check that at least one of the key uids is userid@network
+        check_email = '%s@%s' % (userid, self.network)
+        for uid in key.uids:
+            # uid found, check signatures
+            if uid.email == check_email:
+
+                # revoked userid
+                if uid.revoked:
+                    return False
+
+                for sig in uid.signatures:
+                    try:
+                        #log.debug("found signature by [KEYID-%s]" % (sig.keyid, ))
+                        mkey = self.ctx.get_key(sig.keyid)
+                        if mkey:
+                            # signer key revoked!
+                            if mkey.revoked:
+                                continue
+
+                            fpr = str(mkey.subkeys[0].fpr).upper()
+
+                            #log.debug("found signature by %s" % (fpr, ))
+                            # signature made by us
+                            if fpr == self.fingerprint:
+                                return True
+
+                            # check against keyring
+                            for rkey in self._list.iterkeys():
+                                # fingerprint is a match: check if server is trusted
+                                if fpr == rkey and self.fingerprint in self.get_server_trust(rkey):
+                                    return True
+                    except:
+                        pass
+
+        return False
+
+    def _cache_fingerprint(self, userid, fpr, key):
+        """
+        Caches the given fingerprint after having done some checks.
+        @return: True if the fingerprint was cached, False otherwise
+        """
+
+        if self._fingerprints is None:
+            # we fake having cached the fingerprint in this case
+            return True
+
+        if userid in self._fingerprints:
+            oldfpr = self._fingerprints[userid]
+            # an old key was found, check for validity
+            oldkey = self.ctx.get_key(oldfpr)
+
+            # step 1: check for expiration/revocation
+            if not self._check_key(userid, oldkey):
+                return False
+
+            # step 2: check for key start date
+            if key.subkeys[0].timestamp <= oldkey.subkeys[0].timestamp:
+                return False
+
+        self._fingerprints[userid] = fpr
+        return True
 
     def check_token(self, token_data):
         """Checks a Kontalk token. Data must be already base64-decoded."""
