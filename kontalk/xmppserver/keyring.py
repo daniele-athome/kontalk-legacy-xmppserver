@@ -368,7 +368,7 @@ class Keyring:
                     log.debug("old key is still valid")
                     # step 2: check for key start date
                     if key.subkeys[0].timestamp <= oldkey.subkeys[0].timestamp:
-                        log.info("new key is older than new key (old: %d, new: %d)" % (oldkey.subkeys[0].timestamp,
+                        log.info("new key is older than old key (old: %d, new: %d)" % (oldkey.subkeys[0].timestamp,
                                                                                        key.subkeys[0].timestamp))
                         return None
 
