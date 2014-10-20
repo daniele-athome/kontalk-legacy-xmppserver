@@ -359,16 +359,17 @@ class Keyring:
 
         if userid in self._fingerprints:
             oldfpr = self._fingerprints[userid]
-            # an old key was found, check for validity
-            oldkey = self.ctx.get_key(oldfpr)
+            if oldfpr != fpr:
+                # an old key was found, check for validity
+                oldkey = self.ctx.get_key(oldfpr)
 
-            # step 1: check for expiration/revocation
-            if not self._check_key(userid, oldkey):
-                return False
+                # step 1: check for expiration/revocation
+                if not self._check_key(userid, oldkey):
+                    return False
 
-            # step 2: check for key start date
-            if key.subkeys[0].timestamp <= oldkey.subkeys[0].timestamp:
-                return False
+                # step 2: check for key start date
+                if key.subkeys[0].timestamp <= oldkey.subkeys[0].timestamp:
+                    return False
 
         self._fingerprints[userid] = fpr
         return True
