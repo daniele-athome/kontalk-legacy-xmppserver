@@ -842,7 +842,7 @@ class MessageHandler(XMPPHandler):
         self.parent.send(msg)
 
     def features(self):
-        pass
+        return (xmlstream2.NS_XMPP_SERVER_RECEIPTS, )
 
     def items(self):
         pass

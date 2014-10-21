@@ -343,6 +343,16 @@ class Handler:
             self.client.send(p)
         reactor.callLater(delay, _execute)
 
+    def discovery(self, delay=0):
+        def _execute():
+            iq = domish.Element((None, 'iq'))
+            iq['to'] = self.client.network
+            iq['type'] = 'get'
+            iq['id'] = 'disco1'
+            iq.addElement((xmlstream2.NS_DISCO_INFO, 'query'))
+            self.client.send(iq)
+        reactor.callLater(delay, _execute)
+
     def quit(self):
         self.client.xmlstream.sendFooter()
 
