@@ -267,6 +267,7 @@ class ServerListCommand():
         stanza.consumed = True
         res = xmlstream.toResponse(stanza, 'result')
         cmd = res.addElement((xmlstream2.NS_PROTO_COMMANDS, 'command'))
+        cmd['sessionid'] = util.rand_str(16)
         cmd['node'] = stanza.command['node']
         cmd['status'] = 'completed'
 
