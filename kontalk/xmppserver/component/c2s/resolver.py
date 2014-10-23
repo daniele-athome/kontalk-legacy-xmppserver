@@ -440,6 +440,7 @@ class JIDCache(XMPPHandler):
             i = len(data)
             for x in data:
                 presence = deepcopy(x)
+                presence.consumed = True
                 presence['to'] = sender.full()
 
                 try:
