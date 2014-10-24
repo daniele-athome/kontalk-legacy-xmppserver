@@ -225,7 +225,7 @@ class C2SManager(xmlstream2.StreamManager):
             if self.router.logTraffic:
                 log.debug("sending message to client %s (original was %s)" % (self.xmlstream.otherEntity, origTo))
                 if self._presence:
-                    log.debug("_presence: %s" % (self._presence.toXml(), ))
+                    log.debug("_presence: %s" % (self._presence.toXml().encode('utf-8'), ))
 
             # sending to bare JID
             # initial presence found
