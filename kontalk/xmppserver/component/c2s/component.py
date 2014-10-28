@@ -690,12 +690,13 @@ class C2SComponent(xmlstream2.SocketComponent, resolver.ResolverMixIn):
                     keepId = None
                     receipt = xmlstream2.extract_receipt(stanza, 'request')
                     received = xmlstream2.extract_receipt(stanza, 'received')
+                    has_storage = xmlstream2.has_element(stanza, xmlstream2.NS_XMPP_STORAGE, 'storage')
                     try:
                         """
                         We are deliberately ignoring messages with sent
                         receipt because they are supposed to be volatile.
                         """
-                        if chat_msg and not xmlstream2.has_element(stanza, xmlstream2.NS_XMPP_STORAGE, 'storage') and (receipt or received):
+                        if chat_msg and not has_storage and (receipt or received):
                             """
                             Apply generated id if we are getting a received receipt.
                             This way stanza is received by the client with the
@@ -725,8 +726,9 @@ class C2SComponent(xmlstream2.SocketComponent, resolver.ResolverMixIn):
                         Since our previous call to message_offline_store()
                         was with delayed parameter, we need to store for
                         real now.
+                        Do not store messages from local storage because
                         """
-                        if chat_msg and (stanza.body or stanza.e2e or received):
+                        if chat_msg and not has_storage and (stanza.body or stanza.e2e or received):
                             self.message_offline_store(stanza, delayed=False, reuseId=keepId)
                         if self.push_manager and chat_msg and (stanza.body or stanza.e2e) and (not receipt or receipt.name == 'request'):
                             self.push_manager.notify(to)
