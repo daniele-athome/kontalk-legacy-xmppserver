@@ -170,7 +170,7 @@ class PingHandler(XMPPHandler):
     """
 
     PING_DELAY = 240
-    PING_TIMEOUT = 240
+    PING_TIMEOUT = 90
 
     def __init__(self):
         XMPPHandler.__init__(self)
