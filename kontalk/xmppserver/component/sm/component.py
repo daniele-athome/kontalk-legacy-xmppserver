@@ -96,15 +96,11 @@ class C2SManager(xmlstream2.StreamManager):
     def conflict(self):
         if self.xmlstream:
             self.xmlstream.sendStreamError(error.StreamError('conflict'))
-            # refuse to process any more stanzas
-            self.xmlstream.setDispatchFn(None)
 
     def _unauthorized(self, stanza):
         if not stanza.consumed and (not stanza.hasAttribute('to') or stanza['to'] != self.network):
             stanza.consumed = True
             self.xmlstream.sendStreamError(error.StreamError('not-authorized'))
-            # refuse to process any more stanzas
-            self.xmlstream.setDispatchFn(None)
 
     def _authd(self, xs):
         xmlstream2.StreamManager._authd(self, xs)

@@ -215,8 +215,6 @@ class PingHandler(XMPPHandler):
         self.ping_timeout = None
         # send stream error
         self.xmlstream.sendStreamError(error.StreamError('connection-timeout'))
-        # refuse to process any more stanzas
-        self.xmlstream.setDispatchFn(None)
         # broadcast unavailable presence
         if self.xmlstream.otherEntity is not None:
             stanza = xmppim.UnavailablePresence()
