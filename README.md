@@ -1,3 +1,10 @@
+> The Kontalk XMPP server is being replaced by Tigase with extensions. Please see our new repositories:
+> * https://github.com/kontalk/tigase-server
+> * https://github.com/kontalk/tigase-extension
+> * https://github.com/kontalk/tigase-utils
+> 
+> Documentation will follow soon.
+
 Kontalk XMPP server
 ===================
 
